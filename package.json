@@ -1,0 +1,31 @@
+{
+  "name": "shellgeiai",
+  "version": "0.1.0",
+  "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
+  "type": "module",
+  "bin": {
+    "shellgeiai": "src/cli.js"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('JavaScript sources do not require a build step.')\"",
+    "dev": "node src/cli.js",
+    "start": "node src/cli.js",
+    "lint": "echo \"TODO: add lint\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "cli",
+    "shell",
+    "ai",
+    "javascript"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^15.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}
