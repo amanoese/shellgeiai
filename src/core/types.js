@@ -1,5 +1,7 @@
 /**
  * @typedef {Object} SolveAttempt
+ * @property {string} [attemptId]
+ * @property {string} [workerId]
  * @property {string} command
  * @property {string} [stdout]
  * @property {string} [stderr]
@@ -8,6 +10,7 @@
  * @property {boolean} [timedOut]
  * @property {string} [explanation]
  * @property {string} [failureReason]
+ * @property {number} [durationMs]
  */
 
 /**
@@ -15,6 +18,8 @@
  * @property {string} problem
  * @property {SolveAttempt[]} attempts
  * @property {string} workdir
+ * @property {string} [workerId]
+ * @property {string} [strategy]
  */
 
 /**
@@ -27,6 +32,8 @@
  * @typedef {Object} ProblemSpec
  * @property {string} raw
  * @property {string} problemText
+ * @property {string} [expectedOutput]
+ * @property {{format: string}} [metadata]
  */
 
 /**
@@ -38,29 +45,69 @@
  */
 
 /**
- * @typedef {Object} SolveResult
+ * @typedef {Object} WorkerTask
+ * @property {string} workerId
+ * @property {string} strategy
+ * @property {number} maxAttempts
+ */
+
+/**
+ * @typedef {Object} ExecutionPlan
+ * @property {string} mode
+ * @property {number} parallelism
+ * @property {WorkerTask[]} workerTasks
+ */
+
+/**
+ * @typedef {Object} SolveCandidate
+ * @property {string} candidateId
+ * @property {string} workerId
+ * @property {string} [strategy]
  * @property {string} command
  * @property {string} output
  * @property {string} explanation
  * @property {SolveAttempt[]} attempts
  * @property {FinalCheck} finalCheck
+ */
+
+/**
+ * @typedef {Object} SolveResult
+ * @property {string} command
+ * @property {string} output
+ * @property {string} explanation
+ * @property {SolveAttempt[]} attempts
+ * @property {SolveCandidate[]} candidates
+ * @property {FinalCheck} finalCheck
+ * @property {{name: string, reason: string, selectedCandidateId?: string|null}} selector
+ * @property {{name: string, limits: import("../runner/Runner.js").RunnerLimits, sandboxPolicy: import("../runner/Runner.js").SandboxPolicy}} runner
+ * @property {string|null} [stopReason]
  * @property {string} workdir
  * @property {ProblemSpec} problem
  * @property {string} logPath
+ * @property {ExecutionPlan} [plan]
  */
 
 /**
  * @typedef {Object} SolveProblemOptions
  * @property {string} problemInput
  * @property {{name: string, generateCommand(context: SolveContext): Promise<EngineResult>}} engine
- * @property {{run(command: string, options: {cwd: string, timeoutMs: number}): Promise<import("../runner/Runner.js").RunResult>}} runner
+ * @property {{name?: string, run(command: string, options: import("../runner/Runner.js").RunOptions): Promise<import("../runner/Runner.js").RunResult>}} runner
  * @property {{judge(input: import("../judge/Judge.js").JudgeInput): Promise<import("../judge/Judge.js").JudgeDecision>}} judge
  * @property {number} maxIterations
  * @property {string} [requestedWorkdir]
+ * @property {"single" | "parallel"} [mode]
+ * @property {number} [parallelism]
+ * @property {"first-pass-wins" | "best-score-wins"} [selector]
+ * @property {number} [timeBudgetMs]
+ * @property {import("../runner/Runner.js").RunnerLimits} [runnerLimits]
+ * @property {{blockedPatterns: {pattern: RegExp, reason: string}[]}} [commandPolicy]
+ * @property {string} [commandPolicyPath]
+ * @property {import("../runner/Runner.js").SandboxPolicy} [sandboxPolicy]
+ * @property {string} [sandboxPolicyPath]
  */
 
 /**
- * @typedef {"mock" | "codex" | "cursor"} EngineName
+ * @typedef {"openai" | "mock"} EngineName
  */
 
 /**
@@ -68,8 +115,15 @@
  * @property {"solve"} command
  * @property {string} problem
  * @property {EngineName} engine
+ * @property {"local" | "docker"} [runner]
  * @property {number} maxIter
  * @property {string} [workdir]
+ * @property {"single" | "parallel"} mode
+ * @property {number} parallelism
+ * @property {"first-pass-wins" | "best-score-wins"} selector
+ * @property {number} [timeBudgetMs]
+ * @property {string} [commandPolicyPath]
+ * @property {string} [sandboxPolicyPath]
  */
 
 export {};

@@ -1,41 +1,34 @@
 #!/usr/bin/env node
 
 import { createCliProgram, parseCliOptions } from "./cliOptions.js";
+import { createSolveRuntime } from "./core/runtime.js";
 import { solveProblem } from "./core/solve.js";
-import { CodexCliEngine } from "./engines/codexCliEngine.js";
-import { CursorCliEngine } from "./engines/cursorCliEngine.js";
-import { MockEngine } from "./engines/mockEngine.js";
 import { formatResult } from "./formatter/formatResult.js";
-import { SimpleJudge } from "./judge/simpleJudge.js";
-import { LocalRunner } from "./runner/localRunner.js";
 
 function printUsage() {
   process.stderr.write(`${createCliProgram().helpInformation()}\n`);
 }
 
-function createEngine(name) {
-  switch (name) {
-    case "mock":
-      return new MockEngine();
-    case "codex":
-      return new CodexCliEngine();
-    case "cursor":
-      return new CursorCliEngine();
-    default:
-      throw new Error(`Unsupported engine: ${String(name)}`);
-  }
-}
-
 async function main() {
   try {
     const options = parseCliOptions(process.argv.slice(2));
+    const runtime = createSolveRuntime({
+      engine: options.engine,
+      runner: options.runner
+    });
     const result = await solveProblem({
       problemInput: options.problem,
-      engine: createEngine(options.engine),
-      runner: new LocalRunner(),
-      judge: new SimpleJudge(),
+      engine: runtime.engine,
+      runner: runtime.runner,
+      judge: runtime.judge,
       maxIterations: options.maxIter,
-      requestedWorkdir: options.workdir
+      requestedWorkdir: options.workdir,
+      mode: options.mode,
+      parallelism: options.parallelism,
+      selector: options.selector,
+      timeBudgetMs: options.timeBudgetMs,
+      commandPolicyPath: options.commandPolicyPath,
+      sandboxPolicyPath: options.sandboxPolicyPath
     });
 
     process.stdout.write(`${formatResult(result)}\n`);

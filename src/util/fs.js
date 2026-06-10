@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -25,13 +25,11 @@ export async function createWorkingDirectory(requestedWorkdir) {
   return await mkdtemp(path.join(os.tmpdir(), "shellgeiai-"));
 }
 
-export function parseProblemInput(problemInput) {
-  return {
-    raw: problemInput,
-    problemText: problemInput
-  };
-}
-
 export async function writeJson(targetPath, value) {
   await writeFile(targetPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+export async function readJson(targetPath) {
+  const content = await readFile(targetPath, "utf8");
+  return JSON.parse(content);
 }

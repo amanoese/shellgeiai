@@ -1,4 +1,16 @@
 import { spawn } from "node:child_process";
+import { commandExists } from "../util/exec.js";
+
+const DEFAULT_IMAGE = process.env.SHELLGEIAI_DOCKER_IMAGE ?? "ubuntu:24.04";
+const CONTAINER_WORKDIR = "/workspace";
+
+function bytesToDockerMemory(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return null;
+  }
+
+  return String(Math.max(1, Math.floor(bytes / (1024 * 1024)))) + "m";
+}
 
 function appendLimitedText(current, chunk, maxBytes) {
   const next = current + chunk.toString();
@@ -13,17 +25,64 @@ function appendLimitedText(current, chunk, maxBytes) {
   return next.slice(0, maxBytes);
 }
 
-export class LocalRunner {
-  name = "local";
+export function buildDockerRunArgs(command, options, config = {}) {
+  const limits = options.limits ?? {};
+  const sandboxPolicy = options.sandboxPolicy ?? {};
+  const image = config.image ?? DEFAULT_IMAGE;
+  const args = [
+    "run",
+    "--rm",
+    "--workdir",
+    CONTAINER_WORKDIR,
+    "--volume",
+    `${options.cwd}:${CONTAINER_WORKDIR}:rw`
+  ];
+
+  if (sandboxPolicy.networkAccess !== "on" || limits.networkAccess !== "on") {
+    args.push("--network", "none");
+  }
+
+  if (limits.cpuCount) {
+    args.push("--cpus", String(limits.cpuCount));
+  }
+
+  const memory = bytesToDockerMemory(limits.memoryMaxBytes);
+  if (memory) {
+    args.push("--memory", memory);
+  }
+
+  if (limits.processMaxCount) {
+    args.push("--pids-limit", String(limits.processMaxCount));
+  }
+
+  args.push(image, "/bin/bash", "--noprofile", "--norc", "-lc", command);
+  return args;
+}
+
+export class DockerRunner {
+  name = "docker";
+
+  constructor(config = {}) {
+    this.image = config.image ?? DEFAULT_IMAGE;
+  }
 
   async run(command, options) {
+    if (!(await commandExists("docker"))) {
+      throw new Error(
+        "Docker runner was requested, but the 'docker' command is not available. Install Docker or use --runner local."
+      );
+    }
+
+    const args = buildDockerRunArgs(command, options, {
+      image: this.image
+    });
+
     return await new Promise((resolve, reject) => {
       const startedAt = Date.now();
       const timeoutMs = options.timeoutMs ?? options.limits?.wallClockMs ?? 5_000;
       const stdoutMaxBytes = options.limits?.stdoutMaxBytes;
       const stderrMaxBytes = options.limits?.stderrMaxBytes;
-      const child = spawn("/bin/bash", ["--noprofile", "--norc", "-lc", command], {
-        cwd: options.cwd,
+      const child = spawn("docker", args, {
         env: {
           PATH: process.env.PATH ?? "",
           LANG: process.env.LANG ?? "C.UTF-8"

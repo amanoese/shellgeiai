@@ -1,0 +1,4 @@
+{
+  "networkAccess": "off",
+  "filesystemScope": "workdir-only"
+}
