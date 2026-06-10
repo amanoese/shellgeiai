@@ -41,12 +41,40 @@ describe("solveProblem", () => {
       passed: true,
       iterations: 1,
       engine: "test-engine",
-      reason: "Basic checks passed."
+      reason: "Basic checks passed.",
+      score: {
+        value: 100,
+        breakdown: {
+          correctness: 60,
+          stdoutQuality: 15,
+          stderrQuality: 10,
+          expectedOutput: 15
+        }
+      }
     });
     expect(result.selector).toEqual({
       name: "first-pass-wins",
       reason: "Selected the first candidate that passed final checks.",
-      selectedCandidateId: "worker-1"
+      selectedCandidateId: "worker-1",
+      score: {
+        value: 100,
+        breakdown: {
+          correctness: 60,
+          stdoutQuality: 15,
+          stderrQuality: 10,
+          expectedOutput: 15
+        }
+      },
+      metrics: {
+        totalScore: 110,
+        judgeScore: 100,
+        stdoutConsistency: 10,
+        outputConsensus: 0,
+        totalDurationMs: expect.any(Number),
+        iterationCount: 1,
+        commandLength: "printf '123\\n'".length,
+        explanationLength: "Prints a known value.".length
+      }
     });
     expect(result.plan).toEqual({
       mode: "single",
@@ -106,6 +134,9 @@ describe("solveProblem", () => {
     expect(result.candidates.map((candidate) => candidate.workerId)).toEqual(["worker-1", "worker-2"]);
     expect(result.selector.name).toBe("best-score-wins");
     expect(result.selector.selectedCandidateId).toBeTypeOf("string");
+    expect(result.selector.reason).toContain("total=");
+    expect(result.selector.metrics?.totalScore).toBeGreaterThanOrEqual(110);
+    expect(result.candidates.every((candidate) => candidate.finalCheck.score?.value === 100)).toBe(true);
   });
 
   it("stops additional worker iterations after the first passing candidate when first-pass-wins is used", async () => {

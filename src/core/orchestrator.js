@@ -93,7 +93,16 @@ async function runWorkerTask(session, task, control, workerState) {
         command: engineResult.command,
         passed: false,
         failureReason: safety.reason,
-        explanation: engineResult.explanation
+        explanation: engineResult.explanation,
+        score: {
+          value: 0,
+          breakdown: {
+            correctness: 0,
+            stdoutQuality: 0,
+            stderrQuality: 0,
+            expectedOutput: 0
+          }
+        }
       });
       stopReason = safety.reason;
       break;
@@ -131,7 +140,16 @@ async function runWorkerTask(session, task, control, workerState) {
           passed: false,
           explanation: engineResult.explanation,
           failureReason: abortedReason,
-          durationMs: runResult.durationMs
+          durationMs: runResult.durationMs,
+          score: {
+            value: 0,
+            breakdown: {
+              correctness: 0,
+              stdoutQuality: 0,
+              stderrQuality: 0,
+              expectedOutput: 0
+            }
+          }
         });
         stopReason = abortedReason;
         break;
@@ -150,7 +168,8 @@ async function runWorkerTask(session, task, control, workerState) {
         passed: decision.passed,
         explanation: engineResult.explanation,
         failureReason: decision.reason,
-        durationMs: runResult.durationMs
+        durationMs: runResult.durationMs,
+        score: decision.score
       };
 
       attempts.push(attempt);
@@ -175,7 +194,16 @@ async function runWorkerTask(session, task, control, workerState) {
         command: engineResult.command,
         passed: false,
         explanation: engineResult.explanation,
-        failureReason: message
+        failureReason: message,
+        score: {
+          value: 0,
+          breakdown: {
+            correctness: 0,
+            stdoutQuality: 0,
+            stderrQuality: 0,
+            expectedOutput: 0
+          }
+        }
       });
       stopReason = message;
       break;
@@ -198,7 +226,8 @@ async function runWorkerTask(session, task, control, workerState) {
     passed: finalAttempt?.passed ?? false,
     iterations: attempts.length,
     engine: session.engine.name,
-    reason: finalReason
+    reason: finalReason,
+    score: finalAttempt?.score
   };
 
   const candidate = {

@@ -1,4 +1,18 @@
 /**
+ * @typedef {Object} JudgeScoreBreakdown
+ * @property {number} correctness
+ * @property {number} stdoutQuality
+ * @property {number} stderrQuality
+ * @property {number} expectedOutput
+ */
+
+/**
+ * @typedef {Object} JudgeScore
+ * @property {number} value
+ * @property {JudgeScoreBreakdown} breakdown
+ */
+
+/**
  * @typedef {Object} JudgeInput
  * @property {string} command
  * @property {string} stdout
@@ -12,6 +26,7 @@
  * @typedef {Object} JudgeDecision
  * @property {boolean} passed
  * @property {string} reason
+ * @property {JudgeScore} score
  */
 
 /**

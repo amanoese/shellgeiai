@@ -17,7 +17,8 @@ async function finalizeSolve(session, execution) {
     passed: false,
     iterations: execution.attempts.length,
     engine: session.engine.name,
-    reason: "No candidate was produced."
+    reason: "No candidate was produced.",
+    score: null
   };
   const { logPath } = await writeSolveSessionLog({
     logsDir: session.logsDir,
@@ -42,7 +43,9 @@ async function finalizeSolve(session, execution) {
     selector: {
       name: selection.selector,
       reason: selection.reason,
-      selectedCandidateId: selectedCandidate?.candidateId ?? null
+      selectedCandidateId: selectedCandidate?.candidateId ?? null,
+      score: selection.score,
+      metrics: selection.metrics
     },
     runner: {
       name: session.runner.name ?? "local",

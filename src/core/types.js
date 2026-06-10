@@ -11,6 +11,7 @@
  * @property {string} [explanation]
  * @property {string} [failureReason]
  * @property {number} [durationMs]
+ * @property {import("../judge/Judge.js").JudgeScore} [score]
  */
 
 /**
@@ -42,6 +43,7 @@
  * @property {number} iterations
  * @property {string} engine
  * @property {string} reason
+ * @property {import("../judge/Judge.js").JudgeScore} [score]
  */
 
 /**
@@ -78,7 +80,7 @@
  * @property {SolveAttempt[]} attempts
  * @property {SolveCandidate[]} candidates
  * @property {FinalCheck} finalCheck
- * @property {{name: string, reason: string, selectedCandidateId?: string|null}} selector
+ * @property {{name: string, reason: string, selectedCandidateId?: string|null, score?: import("../judge/Judge.js").JudgeScore|null, metrics?: {totalScore: number, judgeScore: number, stdoutConsistency: number, outputConsensus: number, totalDurationMs: number, iterationCount: number, commandLength: number, explanationLength: number}|null}} selector
  * @property {{name: string, limits: import("../runner/Runner.js").RunnerLimits, sandboxPolicy: import("../runner/Runner.js").SandboxPolicy}} runner
  * @property {string|null} [stopReason]
  * @property {string} workdir
