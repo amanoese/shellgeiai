@@ -15,15 +15,14 @@ function buildJudgeInput(command, runResult, problem) {
 export async function runSolveOrchestrator(session) {
   const workers = new Map();
   const control = createExecutionControl(session, workers);
-  const queue = [...session.plan.workerTasks];
+  const queue = createWorkerTaskQueue(session.plan.workerTasks);
   const taskOrder = new Map(session.plan.workerTasks.map((task, index) => [task.workerId, index]));
-  const workerCount = Math.max(1, session.plan.parallelism ?? queue.length ?? 1);
-  const concurrency = Math.min(workerCount, Math.max(1, queue.length));
+  const concurrency = calculateWorkerConcurrency(session.plan.workerTasks.length, session.plan.parallelism);
   const results = [];
   reportSolveProgress(session, {
     type: "session-started",
     parallelism: session.plan.parallelism,
-    workerCount: queue.length
+    workerCount: session.plan.workerTasks.length
   });
 
   try {
@@ -41,13 +40,16 @@ export async function runSolveOrchestrator(session) {
   const execution = {
     attempts: results.flatMap((result) => result.attempts),
     candidates: results.map((result) => result.candidate),
+    workerSummaries: results.map((result) => result.workerSummary),
     stopReason: control.stopReason || null,
-    passingCandidateId: control.passingCandidateId
+    passingCandidateId: control.passingCandidateId,
+    failedWorkerCount: results.filter((result) => !result.candidate.finalCheck.passed).length
   };
   reportSolveProgress(session, {
     type: "session-finished",
     attemptCount: execution.attempts.length,
     candidateCount: execution.candidates.length,
+    failedWorkerCount: execution.failedWorkerCount,
     stopReason: execution.stopReason,
     selectedCandidateId: execution.passingCandidateId ?? null
   });
@@ -56,13 +58,13 @@ export async function runSolveOrchestrator(session) {
 }
 
 async function runWorkerLoop(session, queue, control, workers, results) {
-  while (queue.length > 0) {
+  while (!queue.isEmpty()) {
     const preflightStopReason = getStopReason(session, control);
     if (preflightStopReason) {
       return;
     }
 
-    const task = queue.shift();
+    const task = queue.takeNext();
     if (!task) {
       return;
     }
@@ -82,6 +84,7 @@ async function runWorkerTask(session, task, control, workerState) {
   const attempts = [];
   let lastExplanation = "";
   let stopReason = "";
+  let finalState = "idle";
   reportSolveProgress(session, {
     type: "worker-started",
     workerId: task.workerId,
@@ -92,10 +95,13 @@ async function runWorkerTask(session, task, control, workerState) {
     const preflightStopReason = getStopReason(session, control);
     if (preflightStopReason) {
       stopReason = preflightStopReason;
+      reportWorkerState(session, task, "stopped");
+      finalState = "stopped";
       break;
     }
 
     workerState.phase = "planning";
+    reportWorkerState(session, task, "planning");
     const engineResult = await session.engine.generateCommand({
       problem: session.problem.problemText,
       attempts,
@@ -114,6 +120,8 @@ async function runWorkerTask(session, task, control, workerState) {
 
     const safety = isSafeCommand(engineResult.command, session.commandPolicy);
     if (!safety.safe) {
+      reportWorkerState(session, task, "stopped");
+      finalState = "stopped";
       const attempt = {
         attemptId: `${task.workerId}-attempt-${iteration + 1}`,
         workerId: task.workerId,
@@ -148,6 +156,8 @@ async function runWorkerTask(session, task, control, workerState) {
     const remainingBudgetMs = getRemainingBudgetMs(session);
     if (remainingBudgetMs != null && remainingBudgetMs <= 0) {
       stopReason = getStopReason(session, control);
+      reportWorkerState(session, task, "stopped");
+      finalState = "stopped";
       break;
     }
 
@@ -155,6 +165,7 @@ async function runWorkerTask(session, task, control, workerState) {
       workerState.phase = "running";
       workerState.iteration = iteration + 1;
       workerState.command = engineResult.command;
+      reportWorkerState(session, task, "running");
 
       const runResult = await session.runner.run(engineResult.command, {
         cwd: session.workdir,
@@ -166,6 +177,8 @@ async function runWorkerTask(session, task, control, workerState) {
 
       if (runResult.aborted) {
         const abortedReason = getStopReason(session, control) || "Execution was stopped.";
+        reportWorkerState(session, task, "stopped");
+        finalState = "stopped";
         const attempt = {
           attemptId: `${task.workerId}-attempt-${iteration + 1}`,
           workerId: task.workerId,
@@ -174,10 +187,13 @@ async function runWorkerTask(session, task, control, workerState) {
           stderr: runResult.stderr,
           exitCode: runResult.exitCode,
           timedOut: runResult.timedOut,
+          aborted: runResult.aborted ?? false,
           passed: false,
           explanation: engineResult.explanation,
           failureReason: abortedReason,
           durationMs: runResult.durationMs,
+          runnerFailure: runResult.failure ?? null,
+          runnerCleanup: runResult.cleanup ?? null,
           score: {
             value: 0,
             breakdown: {
@@ -203,6 +219,7 @@ async function runWorkerTask(session, task, control, workerState) {
       }
 
       workerState.phase = "judging";
+      reportWorkerState(session, task, "judging");
       const decision = await session.judge.judge(buildJudgeInput(engineResult.command, runResult, session.problem));
       const attempt = {
         attemptId: `${task.workerId}-attempt-${iteration + 1}`,
@@ -212,11 +229,14 @@ async function runWorkerTask(session, task, control, workerState) {
         stderr: runResult.stderr,
         exitCode: runResult.exitCode,
         timedOut: runResult.timedOut,
+        aborted: runResult.aborted ?? false,
         passed: decision.passed,
         explanation: engineResult.explanation,
         failureReason: decision.reason,
         durationMs: runResult.durationMs,
-        score: decision.score
+        score: decision.score,
+        runnerFailure: runResult.failure ?? null,
+        runnerCleanup: runResult.cleanup ?? null
       };
 
       attempts.push(attempt);
@@ -240,10 +260,13 @@ async function runWorkerTask(session, task, control, workerState) {
         } else {
           control.passingCandidateId ??= task.workerId;
         }
+        finalState = "idle";
         break;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      reportWorkerState(session, task, "stopped");
+      finalState = "stopped";
       const attempt = {
         attemptId: `${task.workerId}-attempt-${iteration + 1}`,
         workerId: task.workerId,
@@ -317,7 +340,15 @@ async function runWorkerTask(session, task, control, workerState) {
 
   return {
     attempts,
-    candidate
+    candidate,
+    workerSummary: {
+      workerId: task.workerId,
+      strategy: task.strategy,
+      attemptCount: attempts.length,
+      passed: finalCheck.passed,
+      state: finalState,
+      reason: finalCheck.reason
+    }
   };
 }
 
@@ -356,6 +387,38 @@ function createWorkerState(task) {
     command: "",
     abortController: new AbortController()
   };
+}
+
+export function calculateWorkerConcurrency(workerTaskCount, requestedParallelism) {
+  const availableTasks = Math.max(0, workerTaskCount);
+  const requestedWorkers = Math.max(1, requestedParallelism ?? 1);
+
+  return Math.min(requestedWorkers, Math.max(1, availableTasks));
+}
+
+export function createWorkerTaskQueue(workerTasks) {
+  const queue = [...workerTasks];
+
+  return {
+    takeNext() {
+      return queue.shift() ?? null;
+    },
+    isEmpty() {
+      return queue.length === 0;
+    },
+    size() {
+      return queue.length;
+    }
+  };
+}
+
+function reportWorkerState(session, task, state) {
+  reportSolveProgress(session, {
+    type: "worker-state",
+    workerId: task.workerId,
+    strategy: task.strategy,
+    state
+  });
 }
 
 function requestStop(control, options) {

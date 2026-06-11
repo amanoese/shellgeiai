@@ -16,6 +16,19 @@
  */
 
 /**
+ * @typedef {Object} RunnerFailure
+ * @property {string} type
+ * @property {string} message
+ */
+
+/**
+ * @typedef {Object} RunnerCleanup
+ * @property {boolean} attempted
+ * @property {number|null} exitCode
+ * @property {string} stderr
+ */
+
+/**
  * @typedef {Object} RunResult
  * @property {string} stdout
  * @property {string} stderr
@@ -23,6 +36,10 @@
  * @property {boolean} timedOut
  * @property {boolean} [aborted]
  * @property {number} [durationMs]
+ * @property {RunnerFailure | null} [failure]
+ * @property {RunnerCleanup | null} [cleanup]
+ * @property {string} [image]
+ * @property {string} [containerName]
  */
 
 /**

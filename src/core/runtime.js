@@ -4,6 +4,8 @@ import { SimpleJudge } from "../judge/simpleJudge.js";
 import { DockerRunner } from "../runner/dockerRunner.js";
 import { LocalRunner } from "../runner/localRunner.js";
 
+const DEFAULT_RUNNER = "docker";
+
 function createEngine(name, options) {
   switch (name) {
     case "openai":
@@ -17,9 +19,8 @@ function createEngine(name, options) {
 }
 
 function createRunner(name) {
-  switch (name) {
+  switch (name ?? DEFAULT_RUNNER) {
     case "local":
-    case undefined:
       return new LocalRunner();
     case "docker":
       return new DockerRunner();

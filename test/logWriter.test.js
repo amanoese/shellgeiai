@@ -1,8 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeCheckSessionLog } from "../src/logs/writer.js";
+import { solveProblem } from "../src/core/solve.js";
+import { SimpleJudge } from "../src/judge/simpleJudge.js";
+import { LocalRunner } from "../src/runner/localRunner.js";
 
 const tempDirs = [];
 
@@ -49,5 +52,49 @@ describe("writeCheckSessionLog", () => {
     expect(path.basename(second.logPath)).toBe("check-2026-06-12T00-00-00-000Z-2.json");
     expect(first.logId).toBe("2026-06-12T00-00-00-000Z");
     expect(second.logId).toBe("2026-06-12T00-00-00-000Z-2");
+  });
+});
+
+describe("writeSolveSessionLog", () => {
+  it("persists selector details for best-score selection", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(requestedWorkdir);
+
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "test-engine",
+        async generateCommand(context) {
+          if (context.workerId === "worker-1") {
+            return {
+              command: "printf 'ok\\n'",
+              explanation: "First candidate."
+            };
+          }
+
+          return {
+            command: "sleep 0.01; printf 'ok\\n'",
+            explanation: "Second candidate."
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir,
+      parallelism: 2,
+      selector: "best-score-wins"
+    });
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+
+    expect(logContent.selector).toEqual({
+      name: "best-score-wins",
+      reason: result.selector.reason,
+      selectedCandidateId: result.selector.selectedCandidateId,
+      score: result.selector.score,
+      metrics: result.selector.metrics
+    });
+    expect(logContent.selectedCandidateId).toBe(result.selector.selectedCandidateId);
   });
 });

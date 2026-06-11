@@ -3,7 +3,6 @@ import { createExecutionPlan } from "../src/core/planner.js";
 import { createSolveRuntime } from "../src/core/runtime.js";
 import { OpenAIEngine } from "../src/engines/openaiEngine.js";
 import { DockerRunner } from "../src/runner/dockerRunner.js";
-import { LocalRunner } from "../src/runner/localRunner.js";
 
 describe("createExecutionPlan", () => {
   it("returns a workerTask contract that matches the requested parallelism", () => {
@@ -38,7 +37,7 @@ describe("createExecutionPlan", () => {
 });
 
 describe("createSolveRuntime", () => {
-  it("creates an OpenAI engine and local runner by default", () => {
+  it("creates an OpenAI engine and docker runner by default", () => {
     const runtime = createSolveRuntime({
       engine: "openai",
       openai: {
@@ -51,7 +50,7 @@ describe("createSolveRuntime", () => {
     });
 
     expect(runtime.engine).toBeInstanceOf(OpenAIEngine);
-    expect(runtime.runner).toBeInstanceOf(LocalRunner);
+    expect(runtime.runner).toBeInstanceOf(DockerRunner);
   });
 
   it("creates a docker runner when requested", () => {

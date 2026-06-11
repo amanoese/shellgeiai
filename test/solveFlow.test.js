@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { solveProblem } from "../src/core/solve.js";
 import { SimpleJudge } from "../src/judge/simpleJudge.js";
+import { DockerRunner } from "../src/runner/dockerRunner.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
 
 const tempDirs = [];
@@ -88,6 +89,16 @@ describe("solveProblem", () => {
       ]
     });
     expect(result.candidates).toHaveLength(1);
+    expect(result.workerSummaries).toEqual([
+      {
+        workerId: "worker-1",
+        strategy: "default",
+        attemptCount: 1,
+        passed: true,
+        state: "idle",
+        reason: "Basic checks passed."
+      }
+    ]);
 
     const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
     expect(logContent.problem).toBe("print 123");
@@ -96,6 +107,7 @@ describe("solveProblem", () => {
     expect(logContent.workdir).toBe(requestedWorkdir);
     expect(logContent.attempts).toHaveLength(1);
     expect(logContent.candidates).toHaveLength(1);
+    expect(logContent.workerSummaries).toEqual(result.workerSummaries);
     expect(logContent.runner.limits.wallClockMs).toBe(5_000);
     expect(logContent.runner.limits.memoryMaxBytes).toBe(256 * 1024 * 1024);
     expect(logContent.runner.name).toBe("local");
@@ -134,9 +146,54 @@ describe("solveProblem", () => {
     expect(result.candidates.map((candidate) => candidate.workerId)).toEqual(["worker-1", "worker-2"]);
     expect(result.selector.name).toBe("best-score-wins");
     expect(result.selector.selectedCandidateId).toBeTypeOf("string");
-    expect(result.selector.reason).toContain("total=");
+    expect(result.selector.reason).toContain("best passing candidate");
+    expect(result.selector.reason).toContain("total duration");
     expect(result.selector.metrics?.totalScore).toBeGreaterThanOrEqual(110);
     expect(result.candidates.every((candidate) => candidate.finalCheck.score?.value === 100)).toBe(true);
+  });
+
+  it("re-judges the selected best-score candidate in the parent", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    let judgeCalls = 0;
+
+    const judge = {
+      async judge(input) {
+        judgeCalls += 1;
+        return await new SimpleJudge().judge(input);
+      }
+    };
+
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "test-engine",
+        async generateCommand(context) {
+          if (context.workerId === "worker-1") {
+            return {
+              command: "sleep 0.05; printf 'ok\\n'",
+              explanation: "Slower candidate."
+            };
+          }
+
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Faster candidate."
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge,
+      maxIterations: 1,
+      requestedWorkdir,
+      parallelism: 2,
+      selector: "best-score-wins"
+    });
+
+    expect(judgeCalls).toBe(3);
+    expect(result.selector.name).toBe("best-score-wins");
+    expect(result.finalCheck.passed).toBe(true);
+    expect(result.finalCheck.reason).toBe("Basic checks passed.");
   });
 
   it("passes expected output parsed from the problem spec through to the judge and saved log", async () => {
@@ -221,6 +278,24 @@ ok を出力してください`,
     expect(callsByWorker.get("worker-2")).toBe(1);
     expect(result.stopReason).toBe("Stopped after the first passing candidate was produced.");
     expect(result.candidates[1].finalCheck.reason).toContain("worker-1");
+    expect(result.workerSummaries).toEqual([
+      {
+        workerId: "worker-1",
+        strategy: "default",
+        attemptCount: 1,
+        passed: true,
+        state: "idle",
+        reason: "Basic checks passed."
+      },
+      {
+        workerId: "worker-2",
+        strategy: "awk-first",
+        attemptCount: 1,
+        passed: false,
+        state: "stopped",
+        reason: "Stopped because worker-1 already produced a passing candidate."
+      }
+    ]);
   });
 
   it("aborts in-flight worker commands after the first passing candidate is selected", async () => {
@@ -288,6 +363,16 @@ ok を出力してください`,
     expect(result.attempts).toHaveLength(1);
     expect(callCount).toBe(1);
     expect(result.stopReason).toBe("Stopped because the overall time budget was exhausted.");
+    expect(result.workerSummaries).toEqual([
+      {
+        workerId: "worker-1",
+        strategy: "default",
+        attemptCount: 1,
+        passed: false,
+        state: "stopped",
+        reason: "Stopped because the overall time budget was exhausted."
+      }
+    ]);
   });
 
   it("emits progress events that external callers can display", async () => {
@@ -319,7 +404,10 @@ ok を出力してください`,
     expect(progressEvents.map((event) => event.type)).toEqual([
       "session-started",
       "worker-started",
+      "worker-state",
       "attempt-started",
+      "worker-state",
+      "worker-state",
       "attempt-finished",
       "worker-finished",
       "session-finished"
@@ -330,12 +418,27 @@ ok を出力してください`,
       workerCount: 1
     });
     expect(progressEvents[2]).toMatchObject({
+      type: "worker-state",
+      workerId: "worker-1",
+      state: "planning"
+    });
+    expect(progressEvents[3]).toMatchObject({
       type: "attempt-started",
       workerId: "worker-1",
       iteration: 1,
       command: "printf 'ok\\n'"
     });
-    expect(progressEvents[3]).toMatchObject({
+    expect(progressEvents[4]).toMatchObject({
+      type: "worker-state",
+      workerId: "worker-1",
+      state: "running"
+    });
+    expect(progressEvents[5]).toMatchObject({
+      type: "worker-state",
+      workerId: "worker-1",
+      state: "judging"
+    });
+    expect(progressEvents[6]).toMatchObject({
       type: "attempt-finished",
       workerId: "worker-1",
       passed: true,
@@ -345,8 +448,80 @@ ok を出力してください`,
       type: "session-finished",
       attemptCount: 1,
       candidateCount: 1,
+      failedWorkerCount: 0,
       stopReason: "Stopped after the first passing candidate was produced.",
       selectedCandidateId: "worker-1"
     });
+  });
+
+  it("records docker runner metadata and failures in solve logs", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    const dockerRunner = new DockerRunner({
+      image: "shellgeiai:test"
+    });
+    const originalRun = dockerRunner.run.bind(dockerRunner);
+    dockerRunner.run = async () => ({
+      stdout: "",
+      stderr: "docker: Error response from daemon: failed to remove container\n",
+      exitCode: 125,
+      timedOut: false,
+      aborted: false,
+      durationMs: 12,
+      failure: {
+        type: "container-cleanup-failed",
+        message: "docker: Error response from daemon: failed to remove container"
+      },
+      cleanup: {
+        attempted: true,
+        exitCode: 1,
+        stderr: "docker: Error response from daemon: failed to remove container\n"
+      },
+      image: "shellgeiai:test"
+    });
+
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Print ok."
+          };
+        }
+      },
+      runner: dockerRunner,
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir
+    });
+
+    expect(result.runner.name).toBe("docker");
+    expect(result.runner.image).toBe("shellgeiai:test");
+    expect(result.attempts[0].runnerFailure).toEqual({
+      type: "container-cleanup-failed",
+      message: "docker: Error response from daemon: failed to remove container"
+    });
+    expect(result.attempts[0].runnerCleanup).toEqual({
+      attempted: true,
+      exitCode: 1,
+      stderr: "docker: Error response from daemon: failed to remove container\n"
+    });
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe("shellgeiai:test");
+    expect(logContent.attempts[0].runnerFailure).toEqual({
+      type: "container-cleanup-failed",
+      message: "docker: Error response from daemon: failed to remove container"
+    });
+    expect(logContent.attempts[0].runnerCleanup).toEqual({
+      attempted: true,
+      exitCode: 1,
+      stderr: "docker: Error response from daemon: failed to remove container\n"
+    });
+
+    dockerRunner.run = originalRun;
   });
 });

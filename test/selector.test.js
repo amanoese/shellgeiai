@@ -98,9 +98,8 @@ describe("selectSolveOutcome", () => {
     );
 
     expect(result.selectedCandidate?.candidateId).toBe("worker-2");
-    expect(result.reason).toBe(
-      "Selected the passing candidate with the best score; total=115, judge=100, stdout-consistency=10, output-consensus=5, judge-breakdown=(correctness=60, stdout=15, stderr=10, expected=15)."
-    );
+    expect(result.reason).toContain("Selected worker-2 as the best passing candidate");
+    expect(result.reason).toContain("judge score (100 > 80)");
     expect(result.metrics).toEqual({
       totalScore: 115,
       judgeScore: 100,
@@ -188,6 +187,7 @@ describe("selectSolveOutcome", () => {
 
     expect(result.selectedCandidate?.candidateId).toBe("worker-1");
     expect(result.metrics?.outputConsensus).toBe(5);
+    expect(result.reason).toContain("Selected worker-1 as the best passing candidate");
   });
 
   it("penalizes candidates whose stdout changed across attempts", () => {
@@ -246,6 +246,7 @@ describe("selectSolveOutcome", () => {
 
     expect(result.selectedCandidate?.candidateId).toBe("worker-2");
     expect(result.metrics?.stdoutConsistency).toBe(10);
+    expect(result.reason).toContain("stdout consistency (10 > 5)");
   });
 
   it("prefers the candidate with the higher externally supplied judge score even without consensus advantages", () => {
@@ -310,6 +311,62 @@ describe("selectSolveOutcome", () => {
       commandLength: "printf 'alpha\\n'".length,
       explanationLength: "Higher judge score from an external weighting policy.".length
     });
+    expect(result.reason).toContain("judge score (97 > 88)");
+  });
+
+  it("prefers judge score over total score when the judge score conflicts with bonuses", () => {
+    const result = selectSolveOutcome(
+      [
+        {
+          candidateId: "worker-1",
+          output: "alpha",
+          command: "printf 'alpha\\n'",
+          attempts: [{ durationMs: 1, stdout: "alpha\n" }],
+          explanation: "Higher judge score with fewer bonus points.",
+          finalCheck: {
+            passed: true,
+            iterations: 1,
+            engine: "mock",
+            reason: "passed",
+            score: {
+              value: 90,
+              breakdown: {
+                correctness: 60,
+                stdoutQuality: 15,
+                stderrQuality: 10,
+                expectedOutput: 5
+              }
+            }
+          }
+        },
+        {
+          candidateId: "worker-2",
+          output: "beta",
+          command: "printf 'beta\\n'",
+          attempts: [{ durationMs: 1, stdout: "beta\n" }],
+          explanation: "Lower judge score with more bonus points.",
+          finalCheck: {
+            passed: true,
+            iterations: 1,
+            engine: "mock",
+            reason: "passed",
+            score: {
+              value: 88,
+              breakdown: {
+                correctness: 60,
+                stdoutQuality: 15,
+                stderrQuality: 10,
+                expectedOutput: 3
+              }
+            }
+          }
+        }
+      ],
+      "best-score-wins"
+    );
+
+    expect(result.selectedCandidate?.candidateId).toBe("worker-1");
+    expect(result.reason).toContain("judge score (90 > 88)");
   });
 
   it("falls back to the highest-scoring non-passing candidate when no candidate passed", () => {
@@ -364,9 +421,8 @@ describe("selectSolveOutcome", () => {
     );
 
     expect(result.selectedCandidate?.candidateId).toBe("worker-1");
-    expect(result.reason).toBe(
-      "No passing candidate was found; selected the candidate with the best fallback score; total=50, judge=40, stdout-consistency=10, output-consensus=0, judge-breakdown=(correctness=0, stdout=15, stderr=10, expected=15)."
-    );
+    expect(result.reason).toContain("No passing candidate was found; selected worker-1 as the best fallback candidate");
+    expect(result.reason).toContain("judge score (40 > 15)");
   });
 
   it("reports score details without a breakdown when the judge score came from an external scorer", () => {
@@ -392,9 +448,7 @@ describe("selectSolveOutcome", () => {
       "best-score-wins"
     );
 
-    expect(result.reason).toBe(
-      "Selected the passing candidate with the best score; total=101, judge=91, stdout-consistency=10, output-consensus=0."
-    );
+    expect(result.reason).toContain("Selected worker-1 as the best passing candidate");
     expect(result.score).toEqual({ value: 91 });
   });
 });

@@ -70,6 +70,8 @@ describe("buildDockerRunArgs", () => {
     expect(args).toEqual([
       "run",
       "--rm",
+      "--name",
+      expect.stringMatching(/^shellgeiai-\d+-[0-9a-f]{8}$/),
       "--workdir",
       "/workspace",
       "--volume",
@@ -105,5 +107,24 @@ describe("buildDockerRunArgs", () => {
     });
 
     expect(args).not.toContain("--network");
+  });
+
+  it("uses an explicit image override when provided", () => {
+    const args = buildDockerRunArgs(
+      "echo ok",
+      {
+        cwd: "/tmp/example",
+        limits: createDefaultRunnerLimits(),
+        sandboxPolicy: {
+          networkAccess: "off",
+          filesystemScope: "workdir-only"
+        }
+      },
+      {
+        image: "shellgeiai:test"
+      }
+    );
+
+    expect(args[args.indexOf("/bin/bash") - 1]).toBe("shellgeiai:test");
   });
 });

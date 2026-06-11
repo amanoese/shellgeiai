@@ -108,8 +108,65 @@ describe("checkCommand", () => {
 
     const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
     expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe("shellgeiai:test");
     expect(logContent.runner.limits).toEqual(runnerLimits);
     expect(logContent.runner.sandboxPolicy).toEqual(sandboxPolicy);
+
+    runSpy.mockRestore();
+  });
+
+  it("records docker runner failures in the check log", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-check-"));
+    tempDirs.push(requestedWorkdir);
+    const dockerRunner = new DockerRunner({
+      image: "shellgeiai:test"
+    });
+    const runSpy = vi.spyOn(dockerRunner, "run").mockResolvedValue({
+      stdout: "",
+      stderr: "docker: Error response from daemon: failed to remove container\n",
+      exitCode: 125,
+      timedOut: false,
+      aborted: false,
+      durationMs: 8,
+      failure: {
+        type: "container-cleanup-failed",
+        message: "docker: Error response from daemon: failed to remove container"
+      },
+      cleanup: {
+        attempted: true,
+        exitCode: 1,
+        stderr: "docker: Error response from daemon: failed to remove container\n"
+      },
+      image: "shellgeiai:test"
+    });
+
+    const result = await checkCommand({
+      command: "printf 'ok\\n'",
+      requestedWorkdir,
+      runner: dockerRunner,
+      judge: new SimpleJudge()
+    });
+
+    expect(result.attempts[0].runnerFailure).toEqual({
+      type: "container-cleanup-failed",
+      message: "docker: Error response from daemon: failed to remove container"
+    });
+    expect(result.attempts[0].runnerCleanup).toEqual({
+      attempted: true,
+      exitCode: 1,
+      stderr: "docker: Error response from daemon: failed to remove container\n"
+    });
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(logContent.attempts[0].runnerFailure).toEqual({
+      type: "container-cleanup-failed",
+      message: "docker: Error response from daemon: failed to remove container"
+    });
+    expect(logContent.attempts[0].runnerCleanup).toEqual({
+      attempted: true,
+      exitCode: 1,
+      stderr: "docker: Error response from daemon: failed to remove container\n"
+    });
 
     runSpy.mockRestore();
   });
@@ -344,6 +401,7 @@ describe("replaySolveLog", () => {
     const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
     expect(logContent.mode).toBe("replay");
     expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe("shellgeiai:test");
     expect(logContent.runner.limits).toEqual(runnerLimits);
     expect(logContent.runner.sandboxPolicy).toEqual(sandboxPolicy);
 

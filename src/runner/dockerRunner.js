@@ -1,9 +1,89 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { commandExists } from "../util/exec.js";
 
 const DEFAULT_IMAGE =
   process.env.SHELLGEIAI_DOCKER_IMAGE ?? "theoldmoon0602/shellgeibot";
 const CONTAINER_WORKDIR = "/workspace";
+
+function createContainerName() {
+  return `shellgeiai-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+}
+
+function summarizeStderr(stderr) {
+  return stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) ?? "";
+}
+
+function classifyDockerFailure({ stderr, exitCode, timedOut, aborted, cleanup }) {
+  if (cleanup?.attempted && cleanup.exitCode !== 0) {
+    return {
+      type: "container-cleanup-failed",
+      message: summarizeStderr(cleanup.stderr) || "Docker cleanup failed without stderr output."
+    };
+  }
+
+  if (timedOut || aborted || exitCode == null || exitCode === 0) {
+    return null;
+  }
+
+  const message = summarizeStderr(stderr);
+  if (!message) {
+    return null;
+  }
+
+  if (exitCode === 125) {
+    if (/(failed to remove|error removing|cleanup|cannot remove container)/i.test(message)) {
+      return {
+        type: "container-cleanup-failed",
+        message
+      };
+    }
+
+    return {
+      type: "docker-cli-error",
+      message
+    };
+  }
+
+  return null;
+}
+
+async function forceCleanupContainer(containerName) {
+  return await new Promise((resolve) => {
+    const child = spawn("docker", ["rm", "-f", containerName], {
+      env: {
+        PATH: process.env.PATH ?? "",
+        LANG: process.env.LANG ?? "C.UTF-8"
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stderr = "";
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      resolve({
+        attempted: true,
+        exitCode: null,
+        stderr: error instanceof Error ? error.message : String(error)
+      });
+    });
+
+    child.on("close", (code) => {
+      resolve({
+        attempted: true,
+        exitCode: code,
+        stderr
+      });
+    });
+  });
+}
 
 function bytesToDockerMemory(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -30,9 +110,12 @@ export function buildDockerRunArgs(command, options, config = {}) {
   const limits = options.limits ?? {};
   const sandboxPolicy = options.sandboxPolicy ?? {};
   const image = config.image ?? DEFAULT_IMAGE;
+  const containerName = config.containerName ?? createContainerName();
   const args = [
     "run",
     "--rm",
+    "--name",
+    containerName,
     "--workdir",
     CONTAINER_WORKDIR,
     "--volume",
@@ -83,6 +166,8 @@ export class DockerRunner {
       const timeoutMs = options.timeoutMs ?? options.limits?.wallClockMs ?? 5_000;
       const stdoutMaxBytes = options.limits?.stdoutMaxBytes;
       const stderrMaxBytes = options.limits?.stderrMaxBytes;
+      const containerNameIndex = args.indexOf("--name");
+      const containerName = containerNameIndex >= 0 ? args[containerNameIndex + 1] : createContainerName();
       const child = spawn("docker", args, {
         env: {
           PATH: process.env.PATH ?? "",
@@ -96,6 +181,7 @@ export class DockerRunner {
       let timedOut = false;
       let aborted = false;
       let settled = false;
+      let cleanupRequested = false;
 
       const cleanup = () => {
         clearTimeout(timer);
@@ -116,11 +202,13 @@ export class DockerRunner {
 
       const timer = setTimeout(() => {
         timedOut = true;
+        cleanupRequested = true;
         child.kill("SIGKILL");
       }, timeoutMs);
 
       const handleAbort = () => {
         aborted = true;
+        cleanupRequested = true;
         child.kill("SIGKILL");
       };
 
@@ -143,14 +231,33 @@ export class DockerRunner {
       });
 
       child.on("close", (code) => {
-        settle(() => resolve({
-          stdout,
-          stderr,
-          exitCode: code,
-          timedOut,
-          aborted,
-          durationMs: Date.now() - startedAt
-        }));
+        void (async () => {
+          const cleanupResult = cleanupRequested
+            ? await forceCleanupContainer(containerName)
+            : null;
+          const failure = classifyDockerFailure({
+            stderr,
+            exitCode: code,
+            timedOut,
+            aborted,
+            cleanup: cleanupResult
+          });
+
+          settle(() => resolve({
+            stdout,
+            stderr,
+            exitCode: code,
+            timedOut,
+            aborted,
+            durationMs: Date.now() - startedAt,
+            failure,
+            cleanup: cleanupResult,
+            image: this.image,
+            containerName
+          }));
+        })().catch((error) => {
+          settle(() => reject(error));
+        });
       });
     });
   }

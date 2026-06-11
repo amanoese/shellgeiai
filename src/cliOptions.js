@@ -4,6 +4,7 @@ import { z } from "zod";
 const supportedModes = ["single", "parallel"];
 const supportedSelectors = ["first-pass-wins", "best-score-wins"];
 const supportedProgressModes = ["off", "plain", "jsonl"];
+const defaultRunner = "docker";
 
 const modeOption = new Option("--mode <mode>", "execution mode: single or parallel");
 const parallelismOption = new Option("--parallelism <number>", "number of workers to plan");
@@ -140,7 +141,7 @@ export function parseCliOptions(argv) {
       command: "solve",
       problem: problemParts.join(" "),
       engine: options.engine,
-      runner: options.runner ?? "local",
+      runner: options.runner ?? defaultRunner,
       maxIter: Number(options.maxIter),
       workdir: options.workdir,
       mode: options.mode ?? "single",
@@ -157,7 +158,7 @@ export function parseCliOptions(argv) {
     parsedOptions = {
       command: "check",
       shellCommand: commandParts.join(" "),
-      runner: options.runner ?? "local",
+      runner: options.runner ?? defaultRunner,
       workdir: options.workdir,
       problem: options.problem,
       expectedOutput: options.expectedOutput,
@@ -173,7 +174,7 @@ export function parseCliOptions(argv) {
       logPath: options.log,
       candidateId: options.candidateId,
       attemptId: options.attemptId,
-      runner: options.runner ?? "local",
+      runner: options.runner ?? defaultRunner,
       workdir: options.workdir,
       expectedOutput: options.expectedOutput,
       timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),

@@ -4,6 +4,8 @@ function formatPlainProgressEvent(event) {
       return `[progress] session started: workers=${event.workerCount ?? 0}, parallelism=${event.parallelism ?? 1}`;
     case "worker-started":
       return `[progress] ${event.workerId} started with strategy=${event.strategy ?? "default"}`;
+    case "worker-state":
+      return `[progress] ${event.workerId} state=${event.state ?? "idle"}`;
     case "attempt-started":
       return `[progress] ${event.workerId} attempt ${event.iteration} started: ${event.command}`;
     case "attempt-finished":
@@ -11,7 +13,7 @@ function formatPlainProgressEvent(event) {
     case "worker-finished":
       return `[progress] ${event.workerId} finished after ${event.attemptCount ?? 0} attempt(s): ${event.passed ? "passed" : "failed"} (${event.reason ?? "(no reason)"})`;
     case "session-finished":
-      return `[progress] session finished: attempts=${event.attemptCount ?? 0}, candidates=${event.candidateCount ?? 0}, stop=${event.stopReason ?? "(none)"}`;
+      return `[progress] session finished: attempts=${event.attemptCount ?? 0}, candidates=${event.candidateCount ?? 0}, failed-workers=${event.failedWorkerCount ?? 0}, stop=${event.stopReason ?? "(none)"}`;
     default:
       return `[progress] ${event.type}`;
   }

@@ -28,7 +28,7 @@ async function writeSessionLog(logsDir, prefix, startedAt, payload) {
   }
 }
 
-export async function writeSolveSessionLog({ logsDir, session, summary, attempts, candidates, finalCheck }) {
+export async function writeSolveSessionLog({ logsDir, session, summary, attempts, candidates, workerSummaries, finalCheck }) {
   return await writeSessionLog(logsDir, "solve", summary.finishedAt, {
     sessionId: session.sessionId,
     problem: session.problem.problemText,
@@ -38,16 +38,33 @@ export async function writeSolveSessionLog({ logsDir, session, summary, attempts
     iterations: attempts.length,
     attempts,
     candidates,
+    workerSummaries: workerSummaries ?? [],
     finalCheck,
     selectedCandidateId: summary.selectedCandidateId,
     stopReason: summary.stopReason ?? null,
-    selector: session.selectorName,
+    selector:
+      summary.selectedCandidateId == null
+        ? {
+            name: session.selectorName,
+            reason: "No candidate was selected.",
+            selectedCandidateId: null,
+            score: null,
+            metrics: null
+          }
+        : {
+            name: session.selectorName,
+            reason: summary.selectorReason ?? "Selector details were not captured.",
+            selectedCandidateId: summary.selectedCandidateId,
+            score: summary.selectorScore ?? null,
+            metrics: summary.selectorMetrics ?? null
+          },
     startedAt: session.startedAt,
     finishedAt: summary.finishedAt,
     workdir: session.workdir,
     planner: session.plan,
     runner: {
       name: session.runner.name ?? "local",
+      image: "image" in session.runner ? session.runner.image : undefined,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy
     }
@@ -79,6 +96,7 @@ export async function writeCheckSessionLog({ logsDir, session, result }) {
     workdir: session.workdir,
     runner: {
       name: session.runner.name ?? "local",
+      image: "image" in session.runner ? session.runner.image : undefined,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy
     }
@@ -105,6 +123,7 @@ export async function writeReplaySessionLog({ logsDir, session, result }) {
     workdir: session.workdir,
     runner: {
       name: session.runner.name ?? "local",
+      image: "image" in session.runner ? session.runner.image : undefined,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy
     }

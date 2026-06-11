@@ -12,6 +12,8 @@
  * @property {string} [failureReason]
  * @property {number} [durationMs]
  * @property {import("../judge/Judge.js").JudgeScore} [score]
+ * @property {import("../runner/Runner.js").RunnerFailure | null} [runnerFailure]
+ * @property {import("../runner/Runner.js").RunnerCleanup | null} [runnerCleanup]
  */
 
 /**
@@ -79,6 +81,7 @@
  * @property {string} explanation
  * @property {SolveAttempt[]} attempts
  * @property {SolveCandidate[]} candidates
+ * @property {{workerId: string, strategy: string, attemptCount: number, passed: boolean, state: "planning" | "running" | "judging" | "stopped" | "idle", reason: string}[]} [workerSummaries]
  * @property {FinalCheck} finalCheck
  * @property {{name: string, reason: string, selectedCandidateId?: string|null, score?: import("../judge/Judge.js").JudgeScore|null, metrics?: {totalScore: number, judgeScore: number, stdoutConsistency: number, outputConsensus: number, totalDurationMs: number, iterationCount: number, commandLength: number, explanationLength: number}|null}} selector
  * @property {{name: string, limits: import("../runner/Runner.js").RunnerLimits, sandboxPolicy: import("../runner/Runner.js").SandboxPolicy}} runner
@@ -111,13 +114,15 @@
 
 /**
  * @typedef {Object} SolveProgressEvent
- * @property {"session-started" | "worker-started" | "attempt-started" | "attempt-finished" | "worker-finished" | "session-finished"} type
+ * @property {"session-started" | "worker-started" | "worker-state" | "attempt-started" | "attempt-finished" | "worker-finished" | "session-finished"} type
  * @property {string} sessionId
  * @property {string} [workerId]
  * @property {string} [strategy]
+ * @property {"planning" | "running" | "judging" | "stopped" | "idle"} [state]
  * @property {number} [iteration]
  * @property {number} [parallelism]
  * @property {number} [workerCount]
+ * @property {number} [failedWorkerCount]
  * @property {number} [candidateCount]
  * @property {number} [attemptCount]
  * @property {string} [command]

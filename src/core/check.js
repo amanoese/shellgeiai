@@ -24,7 +24,9 @@ export async function checkCommand(options) {
     stderr: "",
     exitCode: null,
     timedOut: false,
-    durationMs: 0
+    aborted: false,
+    durationMs: 0,
+    failure: null
   };
   let finalCheck;
 
@@ -79,10 +81,13 @@ export async function checkCommand(options) {
     exitCode: runResult.exitCode,
     passed: finalCheck.passed,
     timedOut: runResult.timedOut,
+    aborted: runResult.aborted ?? false,
     explanation: "Checked an explicit command.",
     failureReason: finalCheck.passed ? undefined : finalCheck.reason,
     durationMs: runResult.durationMs,
-    score: finalCheck.score
+    score: finalCheck.score,
+    runnerFailure: runResult.failure ?? null,
+    runnerCleanup: runResult.cleanup ?? null
   };
   const candidate = {
     candidateId: "check-1",
@@ -136,6 +141,7 @@ export async function checkCommand(options) {
     },
     runner: {
       name: options.runner.name ?? "local",
+      image: "image" in options.runner ? options.runner.image : undefined,
       limits: runnerLimits,
       sandboxPolicy
     },

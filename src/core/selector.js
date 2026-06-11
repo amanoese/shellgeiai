@@ -2,6 +2,16 @@ function normalizeOutput(output) {
   return typeof output === "string" ? output.trim() : "";
 }
 
+const scoreComparisonOrder = [
+  { key: "judgeScore", label: "judge score", higherIsBetter: true, unit: "" },
+  { key: "stdoutConsistency", label: "stdout consistency", higherIsBetter: true, unit: "" },
+  { key: "outputConsensus", label: "output consensus", higherIsBetter: true, unit: "" },
+  { key: "totalDurationMs", label: "total duration", higherIsBetter: false, unit: "ms" },
+  { key: "iterationCount", label: "iteration count", higherIsBetter: false, unit: "" },
+  { key: "commandLength", label: "command length", higherIsBetter: false, unit: " chars" },
+  { key: "explanationLength", label: "explanation length", higherIsBetter: false, unit: " chars" }
+];
+
 function outputConsensusByValue(candidates) {
   const counts = new Map();
 
@@ -78,16 +88,57 @@ function candidateScore(candidate, consensusByValue) {
   };
 }
 
+function formatScoreValue(metric, value) {
+  return metric.unit ? `${value}${metric.unit}` : `${value}`;
+}
+
+function describeScoreWin(winnerScore, loserScore) {
+  for (const metric of scoreComparisonOrder) {
+    if (winnerScore[metric.key] === loserScore[metric.key]) {
+      continue;
+    }
+
+    const winnerValue = formatScoreValue(metric, winnerScore[metric.key]);
+    const loserValue = formatScoreValue(metric, loserScore[metric.key]);
+    const comparison = metric.higherIsBetter ? `${winnerValue} > ${loserValue}` : `${winnerValue} < ${loserValue}`;
+    return `${metric.label} (${comparison})`;
+  }
+
+  return "all score dimensions were equal";
+}
+
+function describeBestScoreReason(selected, runnerUp, consensusByValue, hasPassingCandidates) {
+  const prefix = hasPassingCandidates
+    ? `Selected ${selected.candidateId} as the best passing candidate`
+    : `No passing candidate was found; selected ${selected.candidateId} as the best fallback candidate`;
+
+  if (!runnerUp) {
+    return `${prefix}.`;
+  }
+
+  const selectedScore = candidateScore(selected, consensusByValue);
+  const runnerUpScore = candidateScore(runnerUp, consensusByValue);
+  return `${prefix} after comparing it with ${runnerUp.candidateId}; it won on ${describeScoreWin(
+    selectedScore,
+    runnerUpScore
+  )}.`;
+}
+
 function compareCandidateScore(left, right, consensusByValue) {
   const leftScore = candidateScore(left, consensusByValue);
   const rightScore = candidateScore(right, consensusByValue);
 
-  if (leftScore.totalScore !== rightScore.totalScore) {
-    return rightScore.totalScore - leftScore.totalScore;
-  }
-
+  // Judge score is the primary signal; stdout agreement and consensus are tie-breakers.
   if (leftScore.judgeScore !== rightScore.judgeScore) {
     return rightScore.judgeScore - leftScore.judgeScore;
+  }
+
+  if (leftScore.stdoutConsistency !== rightScore.stdoutConsistency) {
+    return rightScore.stdoutConsistency - leftScore.stdoutConsistency;
+  }
+
+  if (leftScore.outputConsensus !== rightScore.outputConsensus) {
+    return rightScore.outputConsensus - leftScore.outputConsensus;
   }
 
   if (leftScore.totalDurationMs !== rightScore.totalDurationMs) {
@@ -105,17 +156,6 @@ function compareCandidateScore(left, right, consensusByValue) {
   return leftScore.explanationLength - rightScore.explanationLength;
 }
 
-function describeSelectedScore(candidate, consensusByValue) {
-  const score = candidateScore(candidate, consensusByValue);
-  const breakdown = candidate.finalCheck?.score?.breakdown;
-
-  if (!breakdown) {
-    return `total=${score.totalScore}, judge=${score.judgeScore}, stdout-consistency=${score.stdoutConsistency}, output-consensus=${score.outputConsensus}`;
-  }
-
-  return `total=${score.totalScore}, judge=${score.judgeScore}, stdout-consistency=${score.stdoutConsistency}, output-consensus=${score.outputConsensus}, judge-breakdown=(correctness=${breakdown.correctness}, stdout=${breakdown.stdoutQuality}, stderr=${breakdown.stderrQuality}, expected=${breakdown.expectedOutput})`;
-}
-
 export function selectSolveOutcome(candidates, selectorName = "first-pass-wins") {
   const passingCandidates = candidates.filter((candidate) => candidate.finalCheck.passed);
   const consensusByValue = outputConsensusByValue(candidates);
@@ -125,15 +165,20 @@ export function selectSolveOutcome(candidates, selectorName = "first-pass-wins")
 
   switch (selectorName) {
     case "best-score-wins":
-      selected =
-        passingCandidates.slice().sort((left, right) => compareCandidateScore(left, right, consensusByValue))[0] ??
-        candidates.slice().sort((left, right) => compareCandidateScore(left, right, consensusByValue))[0] ??
-        null;
-      metrics = selected ? candidateScore(selected, consensusByValue) : null;
-      reason = selected?.finalCheck.passed
-        ? `Selected the passing candidate with the best score; ${describeSelectedScore(selected, consensusByValue)}.`
-        : `No passing candidate was found; selected the candidate with the best fallback score; ${describeSelectedScore(selected, consensusByValue)}.`;
-      break;
+      {
+        const rankedPassingCandidates = passingCandidates.slice().sort((left, right) =>
+          compareCandidateScore(left, right, consensusByValue)
+        );
+        const rankedCandidates = candidates.slice().sort((left, right) => compareCandidateScore(left, right, consensusByValue));
+        selected = rankedPassingCandidates[0] ?? rankedCandidates[0] ?? null;
+        const competitionPool = rankedPassingCandidates[0] ? rankedPassingCandidates : rankedCandidates;
+        const runnerUp = competitionPool[1] ?? null;
+        metrics = selected ? candidateScore(selected, consensusByValue) : null;
+        reason = selected
+          ? describeBestScoreReason(selected, runnerUp, consensusByValue, Boolean(rankedPassingCandidates[0]))
+          : "No candidate was produced.";
+        break;
+      }
     case "first-pass-wins":
     default:
       selected = passingCandidates[0] ?? candidates.at(-1) ?? null;

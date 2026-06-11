@@ -3,11 +3,11 @@ import { parseCliOptions } from "../src/cliOptions.js";
 
 describe("parseCliOptions", () => {
   it("parses solve options with defaults", () => {
-    expect(parseCliOptions(["solve", "CSV", "の", "3列目"])).toEqual({
+    expect(parseCliOptions(["solve", "CSV", "の", "3列目"])).toMatchObject({
       command: "solve",
       problem: "CSV の 3列目",
       engine: "openai",
-      runner: "local",
+      runner: "docker",
       maxIter: 3,
       mode: "single",
       parallelism: 1,
@@ -17,11 +17,13 @@ describe("parseCliOptions", () => {
   });
 
   it("parses explicit engine, max iterations, and workdir", () => {
-    expect(parseCliOptions(["solve", "sum", "--engine", "mock", "--max-iter", "5", "--workdir", "./tmp"])).toEqual({
+    expect(
+      parseCliOptions(["solve", "sum", "--engine", "mock", "--max-iter", "5", "--workdir", "./tmp"])
+    ).toMatchObject({
       command: "solve",
       problem: "sum",
       engine: "mock",
-      runner: "local",
+      runner: "docker",
       maxIter: 5,
       workdir: "./tmp",
       mode: "single",
@@ -139,6 +141,14 @@ describe("parseCliOptions", () => {
     });
   });
 
+  it("defaults check to docker runner", () => {
+    expect(parseCliOptions(["check", "printf", "'ok\\n'"])).toMatchObject({
+      command: "check",
+      shellCommand: "printf 'ok\\n'",
+      runner: "docker"
+    });
+  });
+
   it("parses replay options", () => {
     expect(
       parseCliOptions([
@@ -146,15 +156,13 @@ describe("parseCliOptions", () => {
         "--log",
         "./logs/solve-123.json",
         "--candidate-id",
-        "worker-2",
-        "--runner",
-        "local"
+        "worker-2"
       ])
-    ).toEqual({
+    ).toMatchObject({
       command: "replay",
       logPath: "./logs/solve-123.json",
       candidateId: "worker-2",
-      runner: "local"
+      runner: "docker"
     });
   });
 

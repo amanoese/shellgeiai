@@ -13,7 +13,7 @@ async function finalizeSolve(session, execution) {
   const finishedAt = new Date().toISOString();
   const selection = selectSolveOutcome(execution.candidates, session.selectorName);
   const selectedCandidate = selection.selectedCandidate;
-  const finalCheck = selectedCandidate?.finalCheck ?? {
+  const finalCheck = await resolveFinalCheck(session, selectedCandidate) ?? {
     passed: false,
     iterations: execution.attempts.length,
     engine: session.engine.name,
@@ -26,10 +26,15 @@ async function finalizeSolve(session, execution) {
     summary: {
       finishedAt,
       selectedCandidateId: selectedCandidate?.candidateId ?? null,
-      stopReason: execution.stopReason
+      stopReason: execution.stopReason,
+      workerSummaries: execution.workerSummaries,
+      selectorReason: selection.reason,
+      selectorScore: selection.score,
+      selectorMetrics: selection.metrics
     },
     attempts: execution.attempts,
     candidates: execution.candidates,
+    workerSummaries: execution.workerSummaries,
     finalCheck
   });
 
@@ -39,6 +44,7 @@ async function finalizeSolve(session, execution) {
     explanation: selectedCandidate?.explanation ?? "No explanation provided.",
     attempts: execution.attempts,
     candidates: execution.candidates,
+    workerSummaries: execution.workerSummaries,
     finalCheck,
     selector: {
       name: selection.selector,
@@ -49,6 +55,7 @@ async function finalizeSolve(session, execution) {
     },
     runner: {
       name: session.runner.name ?? "local",
+      image: "image" in session.runner ? session.runner.image : undefined,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy
     },
@@ -57,5 +64,37 @@ async function finalizeSolve(session, execution) {
     workdir: session.workdir,
     problem: session.problem,
     logPath
+  };
+}
+
+async function resolveFinalCheck(session, selectedCandidate) {
+  if (!selectedCandidate) {
+    return null;
+  }
+
+  if (session.selectorName !== "best-score-wins") {
+    return selectedCandidate.finalCheck;
+  }
+
+  const finalAttempt = selectedCandidate.attempts.at(-1);
+  if (!finalAttempt) {
+    return selectedCandidate.finalCheck;
+  }
+
+  const decision = await session.judge.judge({
+    command: finalAttempt.command ?? selectedCandidate.command,
+    stdout: finalAttempt.stdout ?? "",
+    stderr: finalAttempt.stderr ?? "",
+    exitCode: finalAttempt.exitCode ?? null,
+    timedOut: finalAttempt.timedOut ?? false,
+    expectedOutput: session.problem.expectedOutput
+  });
+
+  return {
+    passed: decision.passed,
+    iterations: selectedCandidate.finalCheck.iterations ?? selectedCandidate.attempts.length,
+    engine: selectedCandidate.finalCheck.engine ?? session.engine.name,
+    reason: decision.reason,
+    score: decision.score
   };
 }

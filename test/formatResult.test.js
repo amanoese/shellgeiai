@@ -16,7 +16,7 @@ describe("formatResult", () => {
       selector: {
         name: "best-score-wins",
         selectedCandidateId: "worker-2",
-        reason: "Selected the passing candidate with the best score.",
+        reason: "Selected worker-2 as the best passing candidate after comparing it with worker-1; it won on judge score (100 > 95).",
         score: {
           value: 100,
           breakdown: {
@@ -78,6 +78,9 @@ describe("formatResult", () => {
     expect(output).toContain("score-breakdown: correctness=60, stdout=15, stderr=10, expected=15");
     expect(output).toContain(
       "selector-metrics: total=115, judge=100, stdout-consistency=10, output-consensus=5, duration-ms=8, iterations=1"
+    );
+    expect(output).toContain(
+      "selector-reason: Selected worker-2 as the best passing candidate after comparing it with worker-1; it won on judge score (100 > 95)."
     );
     expect(output).toContain("worker-1: passed | strategy: default | iterations: 1 | score: 95");
     expect(output).toContain("worker-2: passed | strategy: consensus | iterations: 1 | score: 100");

@@ -111,6 +111,66 @@ describeDocker("Docker integration", () => {
     expect(await readFile(path.join(requestedWorkdir, "proof.txt"), "utf8")).toBe("from-docker");
   }, 20_000);
 
+  it("reports timeouts from a real container run", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-timeout-"));
+    tempDirs.push(requestedWorkdir);
+    const runner = new DockerRunner({
+      image: dockerEnvironment.image
+    });
+
+    const result = await runner.run("sleep 5", {
+      cwd: requestedWorkdir,
+      timeoutMs: 50,
+      limits: createDefaultRunnerLimits(),
+      sandboxPolicy: {
+        networkAccess: "off",
+        filesystemScope: "workdir-only"
+      }
+    });
+
+    expect(result.timedOut).toBe(true);
+    expect(result.aborted).toBe(false);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.cleanup).toEqual({
+      attempted: true,
+      exitCode: 0,
+      stderr: ""
+    });
+  }, 20_000);
+
+  it("reports aborts from a real container run", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-abort-"));
+    tempDirs.push(requestedWorkdir);
+    const runner = new DockerRunner({
+      image: dockerEnvironment.image
+    });
+    const abortController = new AbortController();
+    const runPromise = runner.run("sleep 5", {
+      cwd: requestedWorkdir,
+      timeoutMs: 5_000,
+      limits: createDefaultRunnerLimits(),
+      sandboxPolicy: {
+        networkAccess: "off",
+        filesystemScope: "workdir-only"
+      },
+      signal: abortController.signal
+    });
+
+    setTimeout(() => {
+      abortController.abort();
+    }, 50);
+
+    const result = await runPromise;
+    expect(result.aborted).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.cleanup).toEqual({
+      attempted: true,
+      exitCode: 0,
+      stderr: ""
+    });
+  }, 20_000);
+
   it("checks an explicit command through DockerRunner and writes a docker-backed log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-check-"));
     tempDirs.push(requestedWorkdir);
@@ -133,6 +193,40 @@ describeDocker("Docker integration", () => {
     const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
     expect(logContent.mode).toBe("check");
     expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe(dockerEnvironment.image);
+    expect(logContent.finalCheck.passed).toBe(true);
+  }, 20_000);
+
+  it("solves through DockerRunner and writes a docker-backed solve log", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-solve-"));
+    tempDirs.push(requestedWorkdir);
+
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Print ok."
+          };
+        }
+      },
+      runner: new DockerRunner({
+        image: dockerEnvironment.image
+      }),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(result.output).toBe("ok");
+    expect(result.runner.name).toBe("docker");
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe(dockerEnvironment.image);
     expect(logContent.finalCheck.passed).toBe(true);
   }, 20_000);
 
@@ -173,6 +267,7 @@ describeDocker("Docker integration", () => {
     const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
     expect(logContent.mode).toBe("replay");
     expect(logContent.runner.name).toBe("docker");
+    expect(logContent.runner.image).toBe(dockerEnvironment.image);
     expect(logContent.finalCheck.passed).toBe(true);
   }, 20_000);
 });
