@@ -175,11 +175,11 @@
 
 **タスク分解**
 
-- [ ] replay log から `candidateId` / `attemptId` / source metadata を確実に引き回せるようにし、再実行対象の選択理由を明示する。対象: `src/core/replay.js`, `test/checkReplay.test.js`
-- [ ] ログ一覧と検索の出力項目を整理し、mode・pass/fail・problem・command で調べやすくする。対象: `src/core/logCatalog.js`, `src/core/logsShow.js`, `test/logCatalog.test.js`, `test/logsShow.test.js`
-- [ ] 保持期間 pruning を CLI から使えるようにし、dry-run を含めた運用テストを追加する。対象: `src/core/logCatalog.js`, `src/cli/commands/logsShow.js`, `test/logCatalog.test.js`
-- [ ] `policy test` 相当の補助コマンドを追加するか、既存 CLI に寄せるかを決めて最小導線を作る。対象候補: `src/cli/index.js`, `src/cli/commands/check.js`, `src/safety/checker.js`, `test/cliOptions.test.js`
-- [ ] corpus 連携で再利用したい最小メタデータを決め、現在の log schema に不足があれば追加する。対象: `src/logs/writer.js`, `src/core/replay.js`, `docs/ideal-cli-flow.md`
+- [x] replay log から `candidateId` / `attemptId` / source metadata を確実に引き回せるようにし、再実行対象の選択理由を明示する。対象: `src/core/replay.js`, `test/checkReplay.test.js`
+- [x] ログ一覧と検索の出力項目を整理し、mode・pass/fail・problem・command で調べやすくする。対象: `src/core/logCatalog.js`, `src/core/logsShow.js`, `test/logCatalog.test.js`, `test/logsShow.test.js`
+- [x] 保持期間 pruning を CLI から使えるようにし、dry-run を含めた運用テストを追加する。対象: `src/core/logCatalog.js`, `src/cli/index.js`, `src/cli/commands/logsPrune.js`, `test/logCatalog.test.js`
+- [x] `policy test` 相当の補助導線を既存 `check` に寄せ、運用時に使い方が追えるようにする。対象候補: `src/cli/index.js`, `src/cli/commands/check.js`, `src/safety/checker.js`, `README.md`, `test/cliOptions.test.js`
+- [x] corpus 連携で再利用したい最小メタデータを決め、現在の log schema に不足があれば追加する。対象: `src/logs/writer.js`, `src/core/replay.js`, `src/core/logCatalog.js`, `docs/ideal-cli-flow.md`
 
 ### 5. SubAgent / worker pool への移行
 
@@ -208,11 +208,11 @@
 
 **タスク分解**
 
-- [ ] planner が worker ごとに異なる strategy を明示的に配れるよう、`workerTasks` の設計を見直す。対象: `src/core/planner.js`, `src/core/types.js`, `test/runtimePlanner.test.js`
-- [ ] engine prompt に strategy と過去試行の扱いを明確に渡し、局所 retry ループの前提を固める。対象: `src/engines/openaiEngine.js`, `test/openaiEngine.test.js`
-- [ ] SubAgent 化の前段として、worker 内ループの責務を `generate -> run -> judge -> retry` の単位で切り出せる形に寄せる。対象: `src/core/orchestrator.js`, `src/core/solve.js`
-- [ ] provider 依存設定を `engine` 側へ寄せ、`core` がモデル名や API 都合を直接知らなくても済む境界を作る。対象: `src/engines/openaiEngine.js`, `src/engines/Engine.js`, `src/core/runtime.js`
-- [ ] 将来の `src/agents/` / `workerPool` 追加に備えて、移行時に残す責務と置き換える責務を docs に明記する。対象: `docs/ideal-architecture.md`, `docs/ideal-cli-flow.md`, `plan/current-gap-remediation-plan.md`
+- [x] planner が worker ごとに異なる strategy を明示的に配れるよう、`workerTasks` の設計を見直す。対象: `src/core/planner.js`, `src/core/types.js`, `test/runtimePlanner.test.js`
+- [x] engine prompt に strategy と過去試行の扱いを明確に渡し、局所 retry ループの前提を固める。対象: `src/engines/openaiEngine.js`, `test/openaiEngine.test.js`
+- [x] SubAgent 化の前段として、worker 内ループの責務を `generate -> run -> judge -> retry` の単位で切り出せる形に寄せる。対象: `src/core/orchestrator.js`, `src/core/workerTaskExecutor.js`, `src/core/solve.js`
+- [x] provider 依存設定を `engine` 側へ寄せ、`core` がモデル名や API 都合を直接知らなくても済む境界を作る。対象: `src/engines/openaiEngine.js`, `src/engines/Engine.js`, `src/core/runtime.js`
+- [x] 将来の `src/agents/` / `workerPool` 追加に備えて、移行時に残す責務と置き換える責務を docs に明記する。対象: `docs/ideal-architecture.md`, `docs/ideal-cli-flow.md`, `plan/current-gap-remediation-plan.md`
 
 ## 依存関係の見取り図
 

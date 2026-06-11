@@ -45,6 +45,15 @@ function summarizeLog(filename, logPath, payload, fileStat) {
     problem: payload.problem ?? payload.problemSpec?.problemText ?? "",
     command,
     selectedCandidateId: payload.selectedCandidateId ?? null,
+    sourceLogPath: payload.sourceLogPath ?? null,
+    sourceSelectedCandidateId: payload.sourceSelectedCandidateId ?? null,
+    replayTargetKind: payload.replayTarget?.kind ?? null,
+    replayTargetId: payload.replayTarget?.id ?? null,
+    replayTargetCandidateId: payload.replayTarget?.sourceCandidateId ?? null,
+    replayTargetAttemptId: payload.replayTarget?.sourceAttemptId ?? null,
+    replayTargetWorkerId: payload.replayTarget?.sourceWorkerId ?? null,
+    replayTargetStrategy: payload.replayTarget?.sourceStrategy ?? null,
+    replayTargetSelectionReason: payload.replayTarget?.selectionReason ?? null,
     passed: payload.finalCheck?.passed ?? null,
     mtimeMs: fileStat.mtimeMs
   };
@@ -111,7 +120,16 @@ export async function searchSavedLogs({ query, logsDir = getDefaultLogsDir(), mo
       summary.filename,
       summary.problem,
       summary.command,
-      summary.selectedCandidateId ?? ""
+      summary.selectedCandidateId ?? "",
+      summary.sourceLogPath ?? "",
+      summary.sourceSelectedCandidateId ?? "",
+      summary.replayTargetKind ?? "",
+      summary.replayTargetId ?? "",
+      summary.replayTargetCandidateId ?? "",
+      summary.replayTargetAttemptId ?? "",
+      summary.replayTargetWorkerId ?? "",
+      summary.replayTargetStrategy ?? "",
+      summary.replayTargetSelectionReason ?? ""
     ]
       .join("\n")
       .toLowerCase();

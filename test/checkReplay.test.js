@@ -203,11 +203,15 @@ describe("replaySolveLog", () => {
     expect(replayed.finalCheck.passed).toBe(true);
     expect(replayed.command).toBe("printf 'ok\\n'");
     expect(replayed.selector.name).toBe("replay");
+    expect(replayed.selector.reason).toContain("selected in the source log");
 
     const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
     expect(logContent.mode).toBe("replay");
     expect(logContent.sourceLogPath).toBe(solved.logPath);
     expect(logContent.replayTarget.command).toBe("printf 'ok\\n'");
+    expect(logContent.replayTarget.sourceCandidateId).toBe(solved.selector.selectedCandidateId);
+    expect(logContent.replayTarget.sourceSelectedCandidateId).toBe(solved.selector.selectedCandidateId);
+    expect(logContent.replayTarget.selectionReason).toContain("source log");
   });
 
   it("replays a specific attempt when attemptId is provided", async () => {
@@ -251,6 +255,11 @@ describe("replaySolveLog", () => {
     expect(replayed.output).toBe("");
     expect(replayed.finalCheck.passed).toBe(false);
     expect(replayed.stopReason).toContain(solved.attempts[0].attemptId);
+
+    const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
+    expect(logContent.replayTarget.kind).toBe("attempt");
+    expect(logContent.replayTarget.sourceAttemptId).toBe(solved.attempts[0].attemptId);
+    expect(logContent.replayTarget.selectionReason).toContain("attempt");
   });
 
   it("blocks an unsafe replay target before rerunning it", async () => {

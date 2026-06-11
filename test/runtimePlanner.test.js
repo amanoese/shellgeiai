@@ -19,16 +19,31 @@ describe("createExecutionPlan", () => {
         {
           workerId: "worker-1",
           strategy: "default",
+          strategyProfile: {
+            name: "balanced-search",
+            focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+            retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+          },
           maxAttempts: 2
         },
         {
           workerId: "worker-2",
           strategy: "awk-first",
+          strategyProfile: {
+            name: "awk-centric",
+            focus: "Prefer awk for column-oriented or record-oriented transformations.",
+            retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+          },
           maxAttempts: 2
         },
         {
           workerId: "worker-3",
           strategy: "text-filter",
+          strategyProfile: {
+            name: "filter-pipeline",
+            focus: "Prefer grep, sed, tr, and shell pipelines for text filtering and selection.",
+            retryHint: "Retry with a narrower pipeline when the first attempt is too broad."
+          },
           maxAttempts: 2
         }
       ]

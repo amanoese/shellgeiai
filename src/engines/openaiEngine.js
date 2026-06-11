@@ -10,14 +10,31 @@ function buildSystemPrompt() {
 }
 
 function buildUserPrompt(context) {
+  const workerTask = context.workerTask ?? null;
+  const attemptSummary =
+    context.attempts.length > 0
+      ? JSON.stringify(
+          context.attempts.map((attempt) => ({
+            command: attempt.command,
+            reason: attempt.failureReason ?? "",
+            passed: attempt.passed ?? false,
+            durationMs: attempt.durationMs ?? null
+          }))
+        )
+      : "[]";
+
   return [
     `Problem: ${context.problem}`,
     `Working directory: ${context.workdir}`,
     context.workerId ? `Worker: ${context.workerId}` : "",
     context.strategy ? `Strategy: ${context.strategy}` : "",
-    context.attempts.length > 0
-      ? `Previous attempts: ${JSON.stringify(context.attempts.map((attempt) => ({ command: attempt.command, reason: attempt.failureReason ?? "", passed: attempt.passed ?? false })))}`
-      : "Previous attempts: []"
+    workerTask?.strategyProfile?.name ? `Worker role: ${workerTask.strategyProfile.name}` : "",
+    workerTask?.strategyProfile?.focus ? `Role focus: ${workerTask.strategyProfile.focus}` : "",
+    workerTask?.strategyProfile?.retryHint ? `Retry hint: ${workerTask.strategyProfile.retryHint}` : "",
+    workerTask?.maxAttempts != null ? `Retry budget: ${workerTask.maxAttempts}` : "",
+    `Completed attempts: ${context.attempts.length}`,
+    `Previous attempts: ${attemptSummary}`,
+    "You are one worker in a pool. Iterate locally, and improve only the parts that failed."
   ]
     .filter(Boolean)
     .join("\n");

@@ -58,7 +58,8 @@ function buildSelector(log, selectedCandidate, finalCheck, logPath) {
     log.mode === "check"
       ? "Loaded a saved explicit command check."
       : log.mode === "replay"
-        ? `Loaded a saved replay run from ${log.sourceLogPath ?? "an earlier log"}.`
+        ? log.replayTarget?.selectionReason ??
+          `Loaded a saved replay run from ${log.sourceLogPath ?? "an earlier log"}.`
         : "Loaded the saved solve result.";
 
   return {

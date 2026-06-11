@@ -1,5 +1,8 @@
 import { createCliProgram, parseCliOptions } from "../cliOptions.js";
 import { runCheckCommand } from "./commands/check.js";
+import { runLogsListCommand } from "./commands/logsList.js";
+import { runLogsPruneCommand } from "./commands/logsPrune.js";
+import { runLogsSearchCommand } from "./commands/logsSearch.js";
 import { runLogsShowCommand } from "./commands/logsShow.js";
 import { runReplayCommand } from "./commands/replay.js";
 import { runSolveCommand } from "./commands/solve.js";
@@ -24,6 +27,15 @@ export async function runCli(argv) {
         return;
       case "logs-show":
         await runLogsShowCommand(options);
+        return;
+      case "logs-list":
+        await runLogsListCommand(options);
+        return;
+      case "logs-search":
+        await runLogsSearchCommand(options);
+        return;
+      case "logs-prune":
+        await runLogsPruneCommand(options);
         return;
       default:
         throw new Error(`Unsupported command: ${String(options.command)}`);

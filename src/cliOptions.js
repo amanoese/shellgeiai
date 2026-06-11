@@ -61,6 +61,25 @@ const logsShowCliOptionsSchema = z.object({
   logRef: z.string().trim().min(1, "Missing <run-id> argument.")
 });
 
+const logsListCliOptionsSchema = z.object({
+  command: z.literal("logs-list"),
+  limit: z.number().int().positive().optional()
+});
+
+const logsSearchCliOptionsSchema = z.object({
+  command: z.literal("logs-search"),
+  query: z.string().trim().min(1, "Missing <query> argument."),
+  mode: z.enum(["solve", "check", "replay"]).optional(),
+  passed: z.boolean().optional(),
+  limit: z.number().int().positive().optional()
+});
+
+const logsPruneCliOptionsSchema = z.object({
+  command: z.literal("logs-prune"),
+  retainDays: z.number().int().nonnegative(),
+  dryRun: z.boolean()
+});
+
 export function createCliProgram() {
   const program = new Command()
     .name("shellgeiai")
@@ -114,12 +133,42 @@ export function createCliProgram() {
     .allowExcessArguments(false)
     .allowUnknownOption(false);
 
-  program
+  const logsCommand = program
     .command("logs")
     .description("Inspect saved session logs.")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  logsCommand
     .command("show")
     .description("Show a saved log by run id, filename, or path.")
     .argument("<run-id>", "saved run id, filename, or log path")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  logsCommand
+    .command("list")
+    .description("List saved logs newest-first.")
+    .option("--limit <number>", "limit the number of logs to display")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  logsCommand
+    .command("search")
+    .description("Search saved logs by text and filters.")
+    .argument("[query...]", "search text")
+    .option("--mode <mode>", "filter by mode: solve, check, or replay")
+    .option("--passed", "filter to passed logs")
+    .option("--failed", "filter to failed logs")
+    .option("--limit <number>", "limit the number of logs to display")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  logsCommand
+    .command("prune")
+    .description("Delete logs older than the retention window.")
+    .option("--retain-days <number>", "retain logs newer than this many days")
+    .option("--dry-run", "report what would be deleted without removing files")
     .allowExcessArguments(false)
     .allowUnknownOption(false);
 
@@ -135,6 +184,9 @@ export function parseCliOptions(argv) {
   const replayCommand = program.commands.find((command) => command.name() === "replay");
   const logsCommand = program.commands.find((command) => command.name() === "logs");
   const logsShowCommand = logsCommand?.commands.find((command) => command.name() === "show");
+  const logsListCommand = logsCommand?.commands.find((command) => command.name() === "list");
+  const logsSearchCommand = logsCommand?.commands.find((command) => command.name() === "search");
+  const logsPruneCommand = logsCommand?.commands.find((command) => command.name() === "prune");
 
   solveCommand?.action((problemParts, options) => {
     parsedOptions = {
@@ -190,6 +242,37 @@ export function parseCliOptions(argv) {
     };
   });
 
+  logsListCommand?.action((options) => {
+    parsedOptions = {
+      command: "logs-list",
+      limit: options.limit == null ? undefined : Number(options.limit)
+    };
+  });
+
+  logsSearchCommand?.action((queryParts, options) => {
+    const searchParts = Array.isArray(queryParts) ? queryParts : [];
+
+    if (options.passed && options.failed) {
+      throw new Error("Use either --passed or --failed, not both.");
+    }
+
+    parsedOptions = {
+      command: "logs-search",
+      query: searchParts.join(" "),
+      mode: options.mode,
+      passed: options.failed ? false : options.passed ? true : undefined,
+      limit: options.limit == null ? undefined : Number(options.limit)
+    };
+  });
+
+  logsPruneCommand?.action((options) => {
+    parsedOptions = {
+      command: "logs-prune",
+      retainDays: options.retainDays == null ? Number.NaN : Number(options.retainDays),
+      dryRun: Boolean(options.dryRun)
+    };
+  });
+
   try {
     program.exitOverride();
     program.parse(["node", "shellgeiai", ...argv]);
@@ -211,7 +294,13 @@ export function parseCliOptions(argv) {
         ? checkCliOptionsSchema.safeParse(parsedOptions)
         : parsedOptions.command === "replay"
           ? replayCliOptionsSchema.safeParse(parsedOptions)
-          : logsShowCliOptionsSchema.safeParse(parsedOptions);
+          : parsedOptions.command === "logs-list"
+            ? logsListCliOptionsSchema.safeParse(parsedOptions)
+            : parsedOptions.command === "logs-search"
+              ? logsSearchCliOptionsSchema.safeParse(parsedOptions)
+              : parsedOptions.command === "logs-prune"
+                ? logsPruneCliOptionsSchema.safeParse(parsedOptions)
+                : logsShowCliOptionsSchema.safeParse(parsedOptions);
 
   if (result.success) {
     return result.data;
@@ -241,6 +330,12 @@ export function parseCliOptions(argv) {
       throw new Error("Missing --log value.");
     case "logRef":
       throw new Error("Missing <run-id> argument.");
+    case "query":
+      throw new Error("Missing <query> argument.");
+    case "limit":
+      throw new Error("Invalid --limit value. Use a positive integer.");
+    case "retainDays":
+      throw new Error("Invalid --retain-days value. Use a non-negative integer.");
     case "commandPolicyPath":
       throw new Error("Missing value for --command-policy.");
     case "sandboxPolicyPath":

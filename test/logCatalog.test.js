@@ -76,9 +76,28 @@ describe("logCatalog", () => {
       finishedAt: "2026-06-12T00:00:01.000Z",
       finalCheck: { passed: false }
     });
+    await createLog(logsDir, "replay-2026-06-12T01-00-00-000Z.json", {
+      mode: "replay",
+      problem: "replay by attempt id",
+      sourceLogPath: "/tmp/source-solve.json",
+      sourceSelectedCandidateId: "worker-2",
+      replayTarget: {
+        kind: "attempt",
+        id: "attempt-1",
+        sourceCandidateId: "worker-2",
+        sourceAttemptId: "attempt-1",
+        sourceWorkerId: "worker-2",
+        sourceStrategy: "default",
+        selectionReason: "Selected attempt 'attempt-1' because --attempt-id was specified."
+      },
+      startedAt: "2026-06-12T01:00:00.000Z",
+      finishedAt: "2026-06-12T01:00:01.000Z",
+      finalCheck: { passed: true }
+    });
 
     const grepMatches = await searchSavedLogs({ logsDir, query: "grep" });
     const passedSolveMatches = await searchSavedLogs({ logsDir, query: "ok", mode: "solve", passed: true });
+    const attemptMatches = await searchSavedLogs({ logsDir, query: "attempt-1" });
 
     expect(grepMatches.map((log) => log.filename)).toEqual([
       "replay-2026-06-12T00-00-00-000Z.json",
@@ -86,6 +105,13 @@ describe("logCatalog", () => {
     ]);
     expect(passedSolveMatches).toHaveLength(1);
     expect(passedSolveMatches[0].filename).toBe("solve-2026-06-11T00-00-00-000Z.json");
+    expect(attemptMatches.map((log) => log.filename)).toContain("replay-2026-06-12T01-00-00-000Z.json");
+    expect(attemptMatches[0]).toMatchObject({
+      sourceLogPath: "/tmp/source-solve.json",
+      sourceSelectedCandidateId: "worker-2",
+      replayTargetKind: "attempt",
+      replayTargetAttemptId: "attempt-1"
+    });
   });
 
   it("prunes logs older than the retention window and supports dry runs", async () => {

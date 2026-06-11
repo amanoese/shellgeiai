@@ -176,4 +176,46 @@ describe("parseCliOptions", () => {
       logRef: "2026-06-12T12-00-00-000Z"
     });
   });
+
+  it("parses logs list, search, and prune options", () => {
+    expect(parseCliOptions(["logs", "list", "--limit", "5"])).toEqual({
+      command: "logs-list",
+      limit: 5
+    });
+
+    expect(
+      parseCliOptions([
+        "logs",
+        "search",
+        "replay",
+        "worker-1",
+        "--mode",
+        "replay",
+        "--passed",
+        "--limit",
+        "10"
+      ])
+    ).toEqual({
+      command: "logs-search",
+      query: "replay worker-1",
+      mode: "replay",
+      passed: true,
+      limit: 10
+    });
+
+    expect(
+      parseCliOptions(["logs", "prune", "--retain-days", "7", "--dry-run"])
+    ).toEqual({
+      command: "logs-prune",
+      retainDays: 7,
+      dryRun: true
+    });
+  });
+
+  it("rejects invalid logs subcommand inputs", () => {
+    expect(() => parseCliOptions(["logs", "search"])).toThrow("Missing <query> argument.");
+    expect(() => parseCliOptions(["logs", "prune"])).toThrow(
+      "Invalid --retain-days value. Use a non-negative integer."
+    );
+  });
 });

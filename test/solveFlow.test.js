@@ -84,6 +84,11 @@ describe("solveProblem", () => {
         {
           workerId: "worker-1",
           strategy: "default",
+          strategyProfile: {
+            name: "balanced-search",
+            focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+            retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+          },
           maxAttempts: 2
         }
       ]
@@ -93,6 +98,11 @@ describe("solveProblem", () => {
       {
         workerId: "worker-1",
         strategy: "default",
+        strategyProfile: {
+          name: "balanced-search",
+          focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+          retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+        },
         attemptCount: 1,
         passed: true,
         state: "idle",
@@ -282,6 +292,11 @@ ok を出力してください`,
       {
         workerId: "worker-1",
         strategy: "default",
+        strategyProfile: {
+          name: "balanced-search",
+          focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+          retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+        },
         attemptCount: 1,
         passed: true,
         state: "idle",
@@ -290,6 +305,11 @@ ok を出力してください`,
       {
         workerId: "worker-2",
         strategy: "awk-first",
+        strategyProfile: {
+          name: "awk-centric",
+          focus: "Prefer awk for column-oriented or record-oriented transformations.",
+          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+        },
         attemptCount: 1,
         passed: false,
         state: "stopped",
@@ -367,6 +387,11 @@ ok を出力してください`,
       {
         workerId: "worker-1",
         strategy: "default",
+        strategyProfile: {
+          name: "balanced-search",
+          focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+          retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+        },
         attemptCount: 1,
         passed: false,
         state: "stopped",

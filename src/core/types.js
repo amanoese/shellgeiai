@@ -23,6 +23,7 @@
  * @property {string} workdir
  * @property {string} [workerId]
  * @property {string} [strategy]
+ * @property {WorkerTask} [workerTask]
  */
 
 /**
@@ -52,6 +53,7 @@
  * @typedef {Object} WorkerTask
  * @property {string} workerId
  * @property {string} strategy
+ * @property {{name: string, focus: string, retryHint: string}} strategyProfile
  * @property {number} maxAttempts
  */
 
@@ -81,7 +83,7 @@
  * @property {string} explanation
  * @property {SolveAttempt[]} attempts
  * @property {SolveCandidate[]} candidates
- * @property {{workerId: string, strategy: string, attemptCount: number, passed: boolean, state: "planning" | "running" | "judging" | "stopped" | "idle", reason: string}[]} [workerSummaries]
+ * @property {{workerId: string, strategy: string, strategyProfile?: {name: string, focus: string, retryHint: string}, attemptCount: number, passed: boolean, state: "planning" | "running" | "judging" | "stopped" | "idle", reason: string}[]} [workerSummaries]
  * @property {FinalCheck} finalCheck
  * @property {{name: string, reason: string, selectedCandidateId?: string|null, score?: import("../judge/Judge.js").JudgeScore|null, metrics?: {totalScore: number, judgeScore: number, stdoutConsistency: number, outputConsensus: number, totalDurationMs: number, iterationCount: number, commandLength: number, explanationLength: number}|null}} selector
  * @property {{name: string, limits: import("../runner/Runner.js").RunnerLimits, sandboxPolicy: import("../runner/Runner.js").SandboxPolicy}} runner
@@ -138,7 +140,7 @@
 
 /**
  * @typedef {Object} CliOptions
- * @property {"solve" | "check" | "replay" | "logs-show"} command
+ * @property {"solve" | "check" | "replay" | "logs-show" | "logs-list" | "logs-search" | "logs-prune"} command
  */
 
 /**
@@ -189,6 +191,28 @@
  * @typedef {Object} LogsShowCliOptions
  * @property {"logs-show"} command
  * @property {string} logRef
+ */
+
+/**
+ * @typedef {Object} LogsListCliOptions
+ * @property {"logs-list"} command
+ * @property {number} [limit]
+ */
+
+/**
+ * @typedef {Object} LogsSearchCliOptions
+ * @property {"logs-search"} command
+ * @property {string} query
+ * @property {"solve" | "check" | "replay"} [mode]
+ * @property {boolean} [passed]
+ * @property {number} [limit]
+ */
+
+/**
+ * @typedef {Object} LogsPruneCliOptions
+ * @property {"logs-prune"} command
+ * @property {number} retainDays
+ * @property {boolean} dryRun
  */
 
 export {};

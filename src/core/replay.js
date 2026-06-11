@@ -18,17 +18,56 @@ function buildZeroScore() {
 }
 
 function resolveReplayTarget(log, options) {
+  function buildSelectionReason(id, sourceSelectedCandidateId) {
+    if (options.attemptId) {
+      return `Selected attempt '${options.attemptId}' because --attempt-id was specified.`;
+    }
+
+    if (options.candidateId) {
+      return `Selected candidate '${id}' because --candidate-id was specified.`;
+    }
+
+    if (sourceSelectedCandidateId != null) {
+      return `Selected candidate '${id}' because it was selected in the source log.`;
+    }
+
+    return `Selected candidate '${id}' because no selected candidate was recorded in the source log.`;
+  }
+
+  function findSourceCandidate(attempt) {
+    if (!attempt) {
+      return null;
+    }
+
+    return (
+      log.candidates?.find(
+        (candidate) =>
+          candidate.candidateId === attempt.workerId ||
+          candidate.workerId === attempt.workerId ||
+          candidate.attempts?.some((item) => item.attemptId === attempt.attemptId)
+      ) ?? null
+    );
+  }
+
   if (options.attemptId) {
     const attempt = log.attempts?.find((item) => item.attemptId === options.attemptId);
     if (!attempt) {
       throw new Error(`Replay log did not contain attempt '${options.attemptId}'.`);
     }
 
+    const sourceCandidate = findSourceCandidate(attempt);
+
     return {
       kind: "attempt",
       id: attempt.attemptId ?? options.attemptId,
       command: attempt.command,
-      explanation: attempt.explanation ?? "Replayed an attempt from the session log."
+      explanation: attempt.explanation ?? "Replayed an attempt from the session log.",
+      sourceCandidateId: sourceCandidate?.candidateId ?? attempt.workerId ?? null,
+      sourceAttemptId: attempt.attemptId ?? options.attemptId,
+      sourceWorkerId: attempt.workerId ?? null,
+      sourceStrategy: sourceCandidate?.strategy ?? null,
+      sourceSelectedCandidateId: log.selectedCandidateId ?? null,
+      selectionReason: buildSelectionReason(attempt.attemptId ?? options.attemptId, log.selectedCandidateId ?? null)
     };
   }
 
@@ -42,7 +81,13 @@ function resolveReplayTarget(log, options) {
     kind: "candidate",
     id: candidate.candidateId,
     command: candidate.command,
-    explanation: candidate.explanation ?? "Replayed a candidate from the session log."
+    explanation: candidate.explanation ?? "Replayed a candidate from the session log.",
+    sourceCandidateId: candidate.candidateId,
+    sourceAttemptId: candidate.attempts?.at(-1)?.attemptId ?? null,
+    sourceWorkerId: candidate.workerId ?? null,
+    sourceStrategy: candidate.strategy ?? null,
+    sourceSelectedCandidateId: log.selectedCandidateId ?? null,
+    selectionReason: buildSelectionReason(candidate.candidateId, log.selectedCandidateId ?? null)
   };
 }
 
@@ -180,7 +225,7 @@ export async function replaySolveLog(options) {
     finalCheck,
     selector: {
       name: "replay",
-      reason: `Replayed ${replayTarget.kind} '${replayTarget.id}' from ${options.logPath}.`,
+      reason: replayTarget.selectionReason ?? `Replayed ${replayTarget.kind} '${replayTarget.id}' from ${options.logPath}.`,
       selectedCandidateId: candidate.candidateId,
       score: finalCheck.score,
       metrics: null

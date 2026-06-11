@@ -22,12 +22,23 @@ describe("OpenAIEngine", () => {
         {
           command: "printf '0\\n'",
           passed: false,
-          failureReason: "wrong output"
+          failureReason: "wrong output",
+          durationMs: 12
         }
       ],
       workdir: "/tmp/workdir",
       workerId: "worker-2",
-      strategy: "awk-first"
+      strategy: "awk-first",
+      workerTask: {
+        workerId: "worker-2",
+        strategy: "awk-first",
+        strategyProfile: {
+          name: "awk-centric",
+          focus: "Prefer awk for column-oriented or record-oriented transformations.",
+          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+        },
+        maxAttempts: 3
+      }
     });
 
     expect(result).toEqual({
@@ -40,6 +51,8 @@ describe("OpenAIEngine", () => {
     });
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("worker-2");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("wrong output");
+    expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("awk-centric");
+    expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("Retry budget: 3");
   });
 
   it("fails with a clear message when the API key is missing", async () => {
@@ -218,12 +231,23 @@ describe("openaiEngine test utils", () => {
         {
           command: "printf '0\\n'",
           passed: false,
-          failureReason: "wrong output"
+          failureReason: "wrong output",
+          durationMs: 12
         }
       ],
       workdir: "/tmp/workdir",
       workerId: "worker-1",
-      strategy: "awk-first"
+      strategy: "awk-first",
+      workerTask: {
+        workerId: "worker-1",
+        strategy: "awk-first",
+        strategyProfile: {
+          name: "awk-centric",
+          focus: "Prefer awk for column-oriented or record-oriented transformations.",
+          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+        },
+        maxAttempts: 2
+      }
     });
     const sortPrompt = buildUserPrompt({
       problem: "print 123",
@@ -240,6 +264,11 @@ describe("openaiEngine test utils", () => {
     });
 
     expect(awkPrompt).toContain("Strategy: awk-first");
+    expect(awkPrompt).toContain("Worker role: awk-centric");
+    expect(awkPrompt).toContain("Role focus: Prefer awk for column-oriented or record-oriented transformations.");
+    expect(awkPrompt).toContain("Retry hint: Retry by refining field separators, filters, or print formatting before changing tools.");
+    expect(awkPrompt).toContain("Retry budget: 2");
+    expect(awkPrompt).toContain("Completed attempts: 1");
     expect(sortPrompt).toContain("Strategy: sort-first");
     expect(awkPrompt).not.toEqual(sortPrompt);
     expect(awkPrompt).toContain("Worker: worker-1");
@@ -257,6 +286,7 @@ describe("openaiEngine test utils", () => {
 
     expect(prompt).toContain("Problem: print 123");
     expect(prompt).toContain("Working directory: /tmp/workdir");
+    expect(prompt).toContain("Completed attempts: 0");
     expect(prompt).toContain("Previous attempts: []");
     expect(prompt).not.toContain("Strategy:");
     expect(prompt).not.toContain("Worker:");
