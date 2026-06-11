@@ -212,7 +212,7 @@
 - [x] engine prompt に strategy と過去試行の扱いを明確に渡し、局所 retry ループの前提を固める。対象: `src/engines/openaiEngine.js`, `test/openaiEngine.test.js`
 - [x] SubAgent 化の前段として、worker 内ループの責務を `generate -> run -> judge -> retry` の単位で切り出せる形に寄せる。対象: `src/core/orchestrator.js`, `src/core/workerTaskExecutor.js`, `src/core/solve.js`
 - [x] provider 依存設定を `engine` 側へ寄せ、`core` がモデル名や API 都合を直接知らなくても済む境界を作る。対象: `src/engines/openaiEngine.js`, `src/engines/Engine.js`, `src/core/runtime.js`
-- [x] 将来の `src/agents/` / `workerPool` 追加に備えて、移行時に残す責務と置き換える責務を docs に明記する。対象: `docs/ideal-architecture.md`, `docs/ideal-cli-flow.md`, `plan/current-gap-remediation-plan.md`
+- [x] 将来の `src/agents/` / `workerPool` 追加に備えて、移行時に残す責務と置き換える責務を docs に明記する。対象: `docs/ideal-architecture.md`, `docs/ideal-cli-flow.md`, `plan/archive/2026-06-12-current-gap-remediation-plan.md`
 
 ## 依存関係の見取り図
 

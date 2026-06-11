@@ -80,7 +80,8 @@ shellgeiai/
     problem-format.md
   plan/
     README.md
-    current-gap-remediation-plan.md
+      archive/
+        2026-06-12-current-gap-remediation-plan.md
   src/
     cli/
       index.js

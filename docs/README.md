@@ -12,4 +12,4 @@
 
 現在の通常実行経路は `DockerRunner` が既定で、`solve` / `check` / `replay` は Docker を前提に動作します。`replay` ログには source candidate / attempt のメタデータも保存され、`logs list` / `logs search` / `logs prune` の運用導線は `README.md` を参照してください。
 
-- `../plan/current-gap-remediation-plan.md`: 現状実装から理想像へ寄せる修正計画
+- `../plan/archive/2026-06-12-current-gap-remediation-plan.md`: 現状実装から理想像へ寄せる修正計画のアーカイブ

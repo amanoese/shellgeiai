@@ -82,7 +82,7 @@ ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI Su
 
 - [docs/ideal-cli-flow.md](/home/amanoese/repos/shellgeiai/docs/ideal-cli-flow.md)
 - [docs/ideal-architecture.md](/home/amanoese/repos/shellgeiai/docs/ideal-architecture.md)
-- [plan/current-gap-remediation-plan.md](/home/amanoese/repos/shellgeiai/plan/current-gap-remediation-plan.md)
+- [plan/archive/2026-06-12-current-gap-remediation-plan.md](/home/amanoese/repos/shellgeiai/plan/archive/2026-06-12-current-gap-remediation-plan.md)
 
 ## 近い将来の優先項目
 
