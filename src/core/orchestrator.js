@@ -1,4 +1,5 @@
 import { isSafeCommand } from "../safety/checker.js";
+import { reportSolveProgress } from "./progress.js";
 
 function buildJudgeInput(command, runResult, problem) {
   return {
@@ -19,6 +20,11 @@ export async function runSolveOrchestrator(session) {
   const workerCount = Math.max(1, session.plan.parallelism ?? queue.length ?? 1);
   const concurrency = Math.min(workerCount, Math.max(1, queue.length));
   const results = [];
+  reportSolveProgress(session, {
+    type: "session-started",
+    parallelism: session.plan.parallelism,
+    workerCount: queue.length
+  });
 
   try {
     await Promise.all(Array.from({ length: concurrency }, () => runWorkerLoop(session, queue, control, workers, results)));
@@ -32,12 +38,21 @@ export async function runSolveOrchestrator(session) {
     return leftOrder - rightOrder;
   });
 
-  return {
+  const execution = {
     attempts: results.flatMap((result) => result.attempts),
     candidates: results.map((result) => result.candidate),
     stopReason: control.stopReason || null,
     passingCandidateId: control.passingCandidateId
   };
+  reportSolveProgress(session, {
+    type: "session-finished",
+    attemptCount: execution.attempts.length,
+    candidateCount: execution.candidates.length,
+    stopReason: execution.stopReason,
+    selectedCandidateId: execution.passingCandidateId ?? null
+  });
+
+  return execution;
 }
 
 async function runWorkerLoop(session, queue, control, workers, results) {
@@ -67,6 +82,11 @@ async function runWorkerTask(session, task, control, workerState) {
   const attempts = [];
   let lastExplanation = "";
   let stopReason = "";
+  reportSolveProgress(session, {
+    type: "worker-started",
+    workerId: task.workerId,
+    strategy: task.strategy
+  });
 
   for (let iteration = 0; iteration < task.maxAttempts; iteration += 1) {
     const preflightStopReason = getStopReason(session, control);
@@ -84,10 +104,17 @@ async function runWorkerTask(session, task, control, workerState) {
       strategy: task.strategy
     });
     lastExplanation = engineResult.explanation ?? lastExplanation;
+    reportSolveProgress(session, {
+      type: "attempt-started",
+      workerId: task.workerId,
+      strategy: task.strategy,
+      iteration: iteration + 1,
+      command: engineResult.command
+    });
 
     const safety = isSafeCommand(engineResult.command, session.commandPolicy);
     if (!safety.safe) {
-      attempts.push({
+      const attempt = {
         attemptId: `${task.workerId}-attempt-${iteration + 1}`,
         workerId: task.workerId,
         command: engineResult.command,
@@ -103,6 +130,16 @@ async function runWorkerTask(session, task, control, workerState) {
             expectedOutput: 0
           }
         }
+      };
+      attempts.push(attempt);
+      reportSolveProgress(session, {
+        type: "attempt-finished",
+        workerId: task.workerId,
+        strategy: task.strategy,
+        iteration: iteration + 1,
+        command: engineResult.command,
+        passed: false,
+        reason: safety.reason
       });
       stopReason = safety.reason;
       break;
@@ -129,7 +166,7 @@ async function runWorkerTask(session, task, control, workerState) {
 
       if (runResult.aborted) {
         const abortedReason = getStopReason(session, control) || "Execution was stopped.";
-        attempts.push({
+        const attempt = {
           attemptId: `${task.workerId}-attempt-${iteration + 1}`,
           workerId: task.workerId,
           command: engineResult.command,
@@ -150,6 +187,16 @@ async function runWorkerTask(session, task, control, workerState) {
               expectedOutput: 0
             }
           }
+        };
+        attempts.push(attempt);
+        reportSolveProgress(session, {
+          type: "attempt-finished",
+          workerId: task.workerId,
+          strategy: task.strategy,
+          iteration: iteration + 1,
+          command: engineResult.command,
+          passed: false,
+          reason: abortedReason
         });
         stopReason = abortedReason;
         break;
@@ -173,6 +220,15 @@ async function runWorkerTask(session, task, control, workerState) {
       };
 
       attempts.push(attempt);
+      reportSolveProgress(session, {
+        type: "attempt-finished",
+        workerId: task.workerId,
+        strategy: task.strategy,
+        iteration: iteration + 1,
+        command: engineResult.command,
+        passed: decision.passed,
+        reason: decision.reason
+      });
       if (decision.passed) {
         if (session.selectorName === "first-pass-wins") {
           requestStop(control, {
@@ -188,7 +244,7 @@ async function runWorkerTask(session, task, control, workerState) {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      attempts.push({
+      const attempt = {
         attemptId: `${task.workerId}-attempt-${iteration + 1}`,
         workerId: task.workerId,
         command: engineResult.command,
@@ -204,6 +260,16 @@ async function runWorkerTask(session, task, control, workerState) {
             expectedOutput: 0
           }
         }
+      };
+      attempts.push(attempt);
+      reportSolveProgress(session, {
+        type: "attempt-finished",
+        workerId: task.workerId,
+        strategy: task.strategy,
+        iteration: iteration + 1,
+        command: engineResult.command,
+        passed: false,
+        reason: message
       });
       stopReason = message;
       break;
@@ -240,6 +306,14 @@ async function runWorkerTask(session, task, control, workerState) {
     attempts,
     finalCheck
   };
+  reportSolveProgress(session, {
+    type: "worker-finished",
+    workerId: task.workerId,
+    strategy: task.strategy,
+    attemptCount: attempts.length,
+    passed: finalCheck.passed,
+    reason: finalCheck.reason
+  });
 
   return {
     attempts,

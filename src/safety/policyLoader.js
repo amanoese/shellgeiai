@@ -4,23 +4,27 @@ import { defaultCommandPolicy } from "./commandPolicy.js";
 import { createDefaultSandboxPolicy } from "./sandboxPolicy.js";
 import { readJson } from "../util/fs.js";
 
-const commandPolicyFileSchema = z.object({
-  extendDefault: z.boolean().optional(),
-  blockedPatterns: z
-    .array(
-      z.object({
-        pattern: z.string().min(1, "Blocked pattern must not be empty."),
-        flags: z.string().optional(),
-        reason: z.string().trim().min(1, "Blocked pattern reason must not be empty.")
-      })
-    )
-    .default([])
-});
+const commandPolicyPatternSchema = z
+  .object({
+    pattern: z.string().min(1, "Blocked pattern must not be empty."),
+    flags: z.string().optional(),
+    reason: z.string().trim().min(1, "Blocked pattern reason must not be empty.")
+  })
+  .strict();
 
-const sandboxPolicyFileSchema = z.object({
-  networkAccess: z.enum(["off", "on"]).optional(),
-  filesystemScope: z.string().trim().min(1).optional()
-});
+const commandPolicyFileSchema = z
+  .object({
+    extendDefault: z.boolean().optional(),
+    blockedPatterns: z.array(commandPolicyPatternSchema).default([])
+  })
+  .strict();
+
+const sandboxPolicyFileSchema = z
+  .object({
+    networkAccess: z.enum(["off", "on"]).optional(),
+    filesystemScope: z.string().trim().min(1).optional()
+  })
+  .strict();
 
 function resolvePolicyPath(policyPath) {
   return path.resolve(process.cwd(), policyPath);

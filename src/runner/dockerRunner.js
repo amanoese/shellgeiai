@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { commandExists } from "../util/exec.js";
 
-const DEFAULT_IMAGE = process.env.SHELLGEIAI_DOCKER_IMAGE ?? "ubuntu:24.04";
+const DEFAULT_IMAGE =
+  process.env.SHELLGEIAI_DOCKER_IMAGE ?? "theoldmoon0602/shellgeibot";
 const CONTAINER_WORKDIR = "/workspace";
 
 function bytesToDockerMemory(bytes) {

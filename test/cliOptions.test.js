@@ -11,7 +11,8 @@ describe("parseCliOptions", () => {
       maxIter: 3,
       mode: "single",
       parallelism: 1,
-      selector: "first-pass-wins"
+      selector: "first-pass-wins",
+      progress: "off"
     });
   });
 
@@ -25,11 +26,12 @@ describe("parseCliOptions", () => {
       workdir: "./tmp",
       mode: "single",
       parallelism: 1,
-      selector: "first-pass-wins"
+      selector: "first-pass-wins",
+      progress: "off"
     });
   });
 
-  it("parses hidden future-facing options for runtime wiring", () => {
+  it("parses runtime wiring and progress options", () => {
     expect(
       parseCliOptions([
         "solve",
@@ -47,7 +49,9 @@ describe("parseCliOptions", () => {
         "--command-policy",
         "./config/command-policy.json",
         "--sandbox-policy",
-        "./config/sandbox-policy.json"
+        "./config/sandbox-policy.json",
+        "--progress",
+        "jsonl"
       ])
     ).toEqual({
       command: "solve",
@@ -60,7 +64,8 @@ describe("parseCliOptions", () => {
       selector: "best-score-wins",
       timeBudgetMs: 1500,
       commandPolicyPath: "./config/command-policy.json",
-      sandboxPolicyPath: "./config/sandbox-policy.json"
+      sandboxPolicyPath: "./config/sandbox-policy.json",
+      progress: "jsonl"
     });
   });
 
@@ -98,5 +103,69 @@ describe("parseCliOptions", () => {
     expect(() => parseCliOptions(["solve", "sum", "--mode", "worker-pool"])).toThrow(
       "Invalid --mode value. Use single or parallel."
     );
+  });
+
+  it("rejects an unsupported progress mode", () => {
+    expect(() => parseCliOptions(["solve", "sum", "--progress", "verbose"])).toThrow(
+      "Invalid --progress value. Use off, plain, or jsonl."
+    );
+  });
+
+  it("parses check options", () => {
+    expect(
+      parseCliOptions([
+        "check",
+        "printf",
+        "'ok\\n'",
+        "--runner",
+        "docker",
+        "--workdir",
+        "./tmp",
+        "--time-budget",
+        "1200",
+        "--problem",
+        "print ok",
+        "--expected-output",
+        "ok"
+      ])
+    ).toEqual({
+      command: "check",
+      shellCommand: "printf 'ok\\n'",
+      runner: "docker",
+      workdir: "./tmp",
+      problem: "print ok",
+      expectedOutput: "ok",
+      timeBudgetMs: 1200
+    });
+  });
+
+  it("parses replay options", () => {
+    expect(
+      parseCliOptions([
+        "replay",
+        "--log",
+        "./logs/solve-123.json",
+        "--candidate-id",
+        "worker-2",
+        "--runner",
+        "local"
+      ])
+    ).toEqual({
+      command: "replay",
+      logPath: "./logs/solve-123.json",
+      candidateId: "worker-2",
+      runner: "local"
+    });
+  });
+
+  it("rejects replay without a log path", () => {
+    expect(() => parseCliOptions(["replay"])).toThrow("Missing --log value.");
+  });
+
+  it("parses logs show options", () => {
+    expect(parseCliOptions(["logs", "show", "2026-06-12T12-00-00-000Z"])).toEqual({
+      command: "logs-show",
+      logRef: "2026-06-12T12-00-00-000Z"
+    });
   });
 });

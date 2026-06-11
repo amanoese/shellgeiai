@@ -32,7 +32,8 @@ export async function createSolveSession(options) {
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
     commandPolicy,
-    sandboxPolicy
+    sandboxPolicy,
+    onProgress: options.onProgress
   };
 
   return {

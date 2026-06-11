@@ -1,0 +1,30 @@
+import { createProgressReporter } from "../../formatter/progressReporter.js";
+import { formatResult } from "../../formatter/formatResult.js";
+import { createSolveRuntime } from "../../core/runtime.js";
+import { solveProblem } from "../../core/solve.js";
+
+export async function runSolveCommand(options) {
+  const onProgress = createProgressReporter(options.progress);
+  const runtime = createSolveRuntime({
+    engine: options.engine,
+    runner: options.runner
+  });
+  const result = await solveProblem({
+    problemInput: options.problem,
+    engine: runtime.engine,
+    runner: runtime.runner,
+    judge: runtime.judge,
+    maxIterations: options.maxIter,
+    requestedWorkdir: options.workdir,
+    mode: options.mode,
+    parallelism: options.parallelism,
+    selector: options.selector,
+    timeBudgetMs: options.timeBudgetMs,
+    commandPolicyPath: options.commandPolicyPath,
+    sandboxPolicyPath: options.sandboxPolicyPath,
+    onProgress
+  });
+
+  process.stdout.write(`${formatResult(result)}\n`);
+  process.exitCode = result.finalCheck.passed ? 0 : 1;
+}

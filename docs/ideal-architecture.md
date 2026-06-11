@@ -72,10 +72,14 @@ shellgeiai/
   AGENTS.md
   package.json
   docs/
+    README.md
     ideal-cli-flow.md
     ideal-architecture.md
     policies.md
     problem-format.md
+  plan/
+    README.md
+    current-gap-remediation-plan.md
   src/
     cli/
       index.js

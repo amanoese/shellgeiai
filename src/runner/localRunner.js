@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { findCommandPath } from "../util/exec.js";
+
+let cachedShellPath;
 
 function appendLimitedText(current, chunk, maxBytes) {
   const next = current + chunk.toString();
@@ -13,16 +16,32 @@ function appendLimitedText(current, chunk, maxBytes) {
   return next.slice(0, maxBytes);
 }
 
+async function resolveShell() {
+  if (cachedShellPath) {
+    return cachedShellPath;
+  }
+
+  cachedShellPath = (await findCommandPath("bash")) ?? (await findCommandPath("sh"));
+  if (!cachedShellPath) {
+    throw new Error("Local runner requires a POSIX shell, but neither 'bash' nor 'sh' was found in PATH.");
+  }
+
+  return cachedShellPath;
+}
+
 export class LocalRunner {
   name = "local";
 
   async run(command, options) {
+    const shellPath = await resolveShell();
+    const shellArgs = shellPath.endsWith("/bash") ? ["--noprofile", "--norc", "-lc", command] : ["-lc", command];
+
     return await new Promise((resolve, reject) => {
       const startedAt = Date.now();
       const timeoutMs = options.timeoutMs ?? options.limits?.wallClockMs ?? 5_000;
       const stdoutMaxBytes = options.limits?.stdoutMaxBytes;
       const stderrMaxBytes = options.limits?.stderrMaxBytes;
-      const child = spawn("/bin/bash", ["--noprofile", "--norc", "-lc", command], {
+      const child = spawn(shellPath, shellArgs, {
         cwd: options.cwd,
         env: {
           PATH: process.env.PATH ?? "",

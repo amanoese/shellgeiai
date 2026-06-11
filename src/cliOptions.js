@@ -3,14 +3,16 @@ import { z } from "zod";
 
 const supportedModes = ["single", "parallel"];
 const supportedSelectors = ["first-pass-wins", "best-score-wins"];
+const supportedProgressModes = ["off", "plain", "jsonl"];
 
-const hiddenModeOption = new Option("--mode <mode>").hideHelp();
-const hiddenParallelismOption = new Option("--parallelism <number>").hideHelp();
-const hiddenSelectorOption = new Option("--selector <name>").hideHelp();
-const hiddenTimeBudgetOption = new Option("--time-budget <ms>").hideHelp();
-const hiddenCommandPolicyOption = new Option("--command-policy <path>").hideHelp();
-const hiddenSandboxPolicyOption = new Option("--sandbox-policy <path>").hideHelp();
-const hiddenRunnerOption = new Option("--runner <runner>").hideHelp();
+const modeOption = new Option("--mode <mode>", "execution mode: single or parallel");
+const parallelismOption = new Option("--parallelism <number>", "number of workers to plan");
+const selectorOption = new Option("--selector <name>", "selector to use: first-pass-wins or best-score-wins");
+const timeBudgetOption = new Option("--time-budget <ms>", "overall session time budget in milliseconds");
+const commandPolicyOption = new Option("--command-policy <path>", "path to a command policy JSON file");
+const sandboxPolicyOption = new Option("--sandbox-policy <path>", "path to a sandbox policy JSON file");
+const runnerOption = new Option("--runner <runner>", "runner to use: local or docker");
+const progressOption = new Option("--progress <mode>", "progress output: off, plain, or jsonl");
 
 const cliOptionsSchema = z.object({
   command: z.literal("solve"),
@@ -24,7 +26,38 @@ const cliOptionsSchema = z.object({
   selector: z.enum(supportedSelectors),
   timeBudgetMs: z.number().int().positive().optional(),
   commandPolicyPath: z.string().trim().min(1).optional(),
+  sandboxPolicyPath: z.string().trim().min(1).optional(),
+  progress: z.enum(supportedProgressModes)
+});
+
+const checkCliOptionsSchema = z.object({
+  command: z.literal("check"),
+  shellCommand: z.string().trim().min(1, "Missing <command> argument."),
+  runner: z.enum(["local", "docker"]),
+  workdir: z.string().trim().min(1).optional(),
+  problem: z.string().trim().min(1).optional(),
+  expectedOutput: z.string().optional(),
+  timeBudgetMs: z.number().int().positive().optional(),
+  commandPolicyPath: z.string().trim().min(1).optional(),
   sandboxPolicyPath: z.string().trim().min(1).optional()
+});
+
+const replayCliOptionsSchema = z.object({
+  command: z.literal("replay"),
+  logPath: z.string().trim().min(1, "Missing --log value."),
+  candidateId: z.string().trim().min(1).optional(),
+  attemptId: z.string().trim().min(1).optional(),
+  runner: z.enum(["local", "docker"]),
+  workdir: z.string().trim().min(1).optional(),
+  expectedOutput: z.string().optional(),
+  timeBudgetMs: z.number().int().positive().optional(),
+  commandPolicyPath: z.string().trim().min(1).optional(),
+  sandboxPolicyPath: z.string().trim().min(1).optional()
+});
+
+const logsShowCliOptionsSchema = z.object({
+  command: z.literal("logs-show"),
+  logRef: z.string().trim().min(1, "Missing <run-id> argument.")
 });
 
 export function createCliProgram() {
@@ -40,13 +73,52 @@ export function createCliProgram() {
     .option("--engine <engine>", "engine to use: openai or mock", "openai")
     .option("--max-iter <number>", "maximum solve iterations", "3")
     .option("--workdir <path>", "working directory to reuse")
-    .addOption(hiddenRunnerOption)
-    .addOption(hiddenModeOption)
-    .addOption(hiddenParallelismOption)
-    .addOption(hiddenSelectorOption)
-    .addOption(hiddenTimeBudgetOption)
-    .addOption(hiddenCommandPolicyOption)
-    .addOption(hiddenSandboxPolicyOption)
+    .addOption(runnerOption)
+    .addOption(modeOption)
+    .addOption(parallelismOption)
+    .addOption(selectorOption)
+    .addOption(timeBudgetOption)
+    .addOption(commandPolicyOption)
+    .addOption(sandboxPolicyOption)
+    .addOption(progressOption)
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  program
+    .command("check")
+    .description("Run and judge an explicit shell command.")
+    .argument("<command...>", "shell command to execute")
+    .option("--workdir <path>", "working directory to reuse")
+    .addOption(runnerOption)
+    .addOption(timeBudgetOption)
+    .addOption(commandPolicyOption)
+    .addOption(sandboxPolicyOption)
+    .option("--problem <text>", "problem text to store alongside this check")
+    .option("--expected-output <text>", "expected stdout to compare against")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  program
+    .command("replay")
+    .description("Replay a candidate or attempt from a saved session log.")
+    .option("--log <path>", "path to a saved solve/check/replay log")
+    .option("--candidate-id <id>", "candidate id to replay")
+    .option("--attempt-id <id>", "attempt id to replay")
+    .option("--workdir <path>", "working directory to reuse")
+    .addOption(runnerOption)
+    .addOption(timeBudgetOption)
+    .addOption(commandPolicyOption)
+    .addOption(sandboxPolicyOption)
+    .option("--expected-output <text>", "override expected stdout during replay")
+    .allowExcessArguments(false)
+    .allowUnknownOption(false);
+
+  program
+    .command("logs")
+    .description("Inspect saved session logs.")
+    .command("show")
+    .description("Show a saved log by run id, filename, or path.")
+    .argument("<run-id>", "saved run id, filename, or log path")
     .allowExcessArguments(false)
     .allowUnknownOption(false);
 
@@ -55,10 +127,15 @@ export function createCliProgram() {
 
 export function parseCliOptions(argv) {
   const program = createCliProgram();
-  const solveCommand = program.commands[0];
   let parsedOptions;
 
-  solveCommand.action((problemParts, options) => {
+  const solveCommand = program.commands.find((command) => command.name() === "solve");
+  const checkCommand = program.commands.find((command) => command.name() === "check");
+  const replayCommand = program.commands.find((command) => command.name() === "replay");
+  const logsCommand = program.commands.find((command) => command.name() === "logs");
+  const logsShowCommand = logsCommand?.commands.find((command) => command.name() === "show");
+
+  solveCommand?.action((problemParts, options) => {
     parsedOptions = {
       command: "solve",
       problem: problemParts.join(" "),
@@ -71,7 +148,44 @@ export function parseCliOptions(argv) {
       selector: options.selector ?? "first-pass-wins",
       timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
       commandPolicyPath: options.commandPolicy,
+      sandboxPolicyPath: options.sandboxPolicy,
+      progress: options.progress ?? "off"
+    };
+  });
+
+  checkCommand?.action((commandParts, options) => {
+    parsedOptions = {
+      command: "check",
+      shellCommand: commandParts.join(" "),
+      runner: options.runner ?? "local",
+      workdir: options.workdir,
+      problem: options.problem,
+      expectedOutput: options.expectedOutput,
+      timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
+      commandPolicyPath: options.commandPolicy,
       sandboxPolicyPath: options.sandboxPolicy
+    };
+  });
+
+  replayCommand?.action((options) => {
+    parsedOptions = {
+      command: "replay",
+      logPath: options.log,
+      candidateId: options.candidateId,
+      attemptId: options.attemptId,
+      runner: options.runner ?? "local",
+      workdir: options.workdir,
+      expectedOutput: options.expectedOutput,
+      timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
+      commandPolicyPath: options.commandPolicy,
+      sandboxPolicyPath: options.sandboxPolicy
+    };
+  });
+
+  logsShowCommand?.action((logRef) => {
+    parsedOptions = {
+      command: "logs-show",
+      logRef
     };
   });
 
@@ -86,10 +200,18 @@ export function parseCliOptions(argv) {
   }
 
   if (!parsedOptions) {
-    throw new Error("Only the 'solve' command is currently supported.");
+    throw new Error("A supported subcommand is required: solve, check, replay, or logs show.");
   }
 
-  const result = cliOptionsSchema.safeParse(parsedOptions);
+  const result =
+    parsedOptions.command === "solve"
+      ? cliOptionsSchema.safeParse(parsedOptions)
+      : parsedOptions.command === "check"
+        ? checkCliOptionsSchema.safeParse(parsedOptions)
+        : parsedOptions.command === "replay"
+          ? replayCliOptionsSchema.safeParse(parsedOptions)
+          : logsShowCliOptionsSchema.safeParse(parsedOptions);
+
   if (result.success) {
     return result.data;
   }
@@ -112,10 +234,18 @@ export function parseCliOptions(argv) {
       throw new Error("Invalid --mode value. Use single or parallel.");
     case "selector":
       throw new Error("Invalid --selector value. Use first-pass-wins or best-score-wins.");
+    case "shellCommand":
+      throw new Error("Missing <command> argument.");
+    case "logPath":
+      throw new Error("Missing --log value.");
+    case "logRef":
+      throw new Error("Missing <run-id> argument.");
     case "commandPolicyPath":
       throw new Error("Missing value for --command-policy.");
     case "sandboxPolicyPath":
       throw new Error("Missing value for --sandbox-policy.");
+    case "progress":
+      throw new Error("Invalid --progress value. Use off, plain, or jsonl.");
     case "problem":
       throw new Error("Missing <problem> argument.");
     default:

@@ -139,6 +139,49 @@ describe("solveProblem", () => {
     expect(result.candidates.every((candidate) => candidate.finalCheck.score?.value === 100)).toBe(true);
   });
 
+  it("passes expected output parsed from the problem spec through to the judge and saved log", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+
+    const result = await solveProblem({
+      problemInput: `expected_output:
+ok
+---
+ok を出力してください`,
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Prints the expected output."
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(result.finalCheck.reason).toBe("Output matched expected output.");
+    expect(result.problem).toEqual({
+      raw: `expected_output:
+ok
+---
+ok を出力してください`,
+      problemText: "ok を出力してください",
+      expectedOutput: "ok",
+      metadata: {
+        format: "plain-text+expected-output"
+      }
+    });
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(logContent.problemSpec.expectedOutput).toBe("ok");
+    expect(logContent.problemSpec.problemText).toBe("ok を出力してください");
+  });
+
   it("stops additional worker iterations after the first passing candidate when first-pass-wins is used", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
@@ -245,5 +288,65 @@ describe("solveProblem", () => {
     expect(result.attempts).toHaveLength(1);
     expect(callCount).toBe(1);
     expect(result.stopReason).toBe("Stopped because the overall time budget was exhausted.");
+  });
+
+  it("emits progress events that external callers can display", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    const progressEvents = [];
+
+    const result = await solveProblem({
+      problemInput: "print once",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Prints a passing value."
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir,
+      onProgress(event) {
+        progressEvents.push(event);
+      }
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(progressEvents.map((event) => event.type)).toEqual([
+      "session-started",
+      "worker-started",
+      "attempt-started",
+      "attempt-finished",
+      "worker-finished",
+      "session-finished"
+    ]);
+    expect(progressEvents[0]).toMatchObject({
+      type: "session-started",
+      parallelism: 1,
+      workerCount: 1
+    });
+    expect(progressEvents[2]).toMatchObject({
+      type: "attempt-started",
+      workerId: "worker-1",
+      iteration: 1,
+      command: "printf 'ok\\n'"
+    });
+    expect(progressEvents[3]).toMatchObject({
+      type: "attempt-finished",
+      workerId: "worker-1",
+      passed: true,
+      reason: "Basic checks passed."
+    });
+    expect(progressEvents.at(-1)).toMatchObject({
+      type: "session-finished",
+      attemptCount: 1,
+      candidateCount: 1,
+      stopReason: "Stopped after the first passing candidate was produced.",
+      selectedCandidateId: "worker-1"
+    });
   });
 });

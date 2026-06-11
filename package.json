@@ -12,6 +12,7 @@
     "start": "node src/cli.js",
     "lint": "echo \"TODO: add lint\"",
     "test": "vitest run",
+    "test:docker": "vitest run test/dockerIntegration.test.js",
     "test:watch": "vitest"
   },
   "keywords": [

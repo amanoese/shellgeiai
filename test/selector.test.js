@@ -247,4 +247,154 @@ describe("selectSolveOutcome", () => {
     expect(result.selectedCandidate?.candidateId).toBe("worker-2");
     expect(result.metrics?.stdoutConsistency).toBe(10);
   });
+
+  it("prefers the candidate with the higher externally supplied judge score even without consensus advantages", () => {
+    const result = selectSolveOutcome(
+      [
+        {
+          candidateId: "worker-1",
+          output: "alpha",
+          command: "printf 'alpha\\n'",
+          attempts: [{ durationMs: 2, stdout: "alpha\n" }],
+          explanation: "Higher judge score from an external weighting policy.",
+          finalCheck: {
+            passed: true,
+            iterations: 1,
+            engine: "mock",
+            reason: "passed",
+            score: {
+              value: 97,
+              breakdown: {
+                correctness: 60,
+                stdoutQuality: 12,
+                stderrQuality: 10,
+                expectedOutput: 15
+              }
+            }
+          }
+        },
+        {
+          candidateId: "worker-2",
+          output: "beta",
+          command: "printf 'beta\\n'",
+          attempts: [{ durationMs: 1, stdout: "beta\n" }],
+          explanation: "Lower judge score despite being slightly faster.",
+          finalCheck: {
+            passed: true,
+            iterations: 1,
+            engine: "mock",
+            reason: "passed",
+            score: {
+              value: 88,
+              breakdown: {
+                correctness: 60,
+                stdoutQuality: 8,
+                stderrQuality: 10,
+                expectedOutput: 10
+              }
+            }
+          }
+        }
+      ],
+      "best-score-wins"
+    );
+
+    expect(result.selectedCandidate?.candidateId).toBe("worker-1");
+    expect(result.metrics).toEqual({
+      totalScore: 107,
+      judgeScore: 97,
+      stdoutConsistency: 10,
+      outputConsensus: 0,
+      totalDurationMs: 2,
+      iterationCount: 1,
+      commandLength: "printf 'alpha\\n'".length,
+      explanationLength: "Higher judge score from an external weighting policy.".length
+    });
+  });
+
+  it("falls back to the highest-scoring non-passing candidate when no candidate passed", () => {
+    const result = selectSolveOutcome(
+      [
+        {
+          candidateId: "worker-1",
+          output: "partial",
+          command: "printf 'partial\\n'",
+          attempts: [{ durationMs: 4, stdout: "partial\n" }],
+          explanation: "Higher partial score.",
+          finalCheck: {
+            passed: false,
+            iterations: 1,
+            engine: "mock",
+            reason: "wrong output",
+            score: {
+              value: 40,
+              breakdown: {
+                correctness: 0,
+                stdoutQuality: 15,
+                stderrQuality: 10,
+                expectedOutput: 15
+              }
+            }
+          }
+        },
+        {
+          candidateId: "worker-2",
+          output: "empty",
+          command: "printf ''",
+          attempts: [{ durationMs: 1, stdout: "" }],
+          explanation: "Lower fallback score.",
+          finalCheck: {
+            passed: false,
+            iterations: 1,
+            engine: "mock",
+            reason: "stdout was empty",
+            score: {
+              value: 15,
+              breakdown: {
+                correctness: 0,
+                stdoutQuality: 0,
+                stderrQuality: 0,
+                expectedOutput: 15
+              }
+            }
+          }
+        }
+      ],
+      "best-score-wins"
+    );
+
+    expect(result.selectedCandidate?.candidateId).toBe("worker-1");
+    expect(result.reason).toBe(
+      "No passing candidate was found; selected the candidate with the best fallback score; total=50, judge=40, stdout-consistency=10, output-consensus=0, judge-breakdown=(correctness=0, stdout=15, stderr=10, expected=15)."
+    );
+  });
+
+  it("reports score details without a breakdown when the judge score came from an external scorer", () => {
+    const result = selectSolveOutcome(
+      [
+        {
+          candidateId: "worker-1",
+          output: "42",
+          command: "printf '42\\n'",
+          attempts: [{ durationMs: 3, stdout: "42\n" }],
+          explanation: "External scorer omitted a breakdown.",
+          finalCheck: {
+            passed: true,
+            iterations: 1,
+            engine: "mock",
+            reason: "passed",
+            score: {
+              value: 91
+            }
+          }
+        }
+      ],
+      "best-score-wins"
+    );
+
+    expect(result.reason).toBe(
+      "Selected the passing candidate with the best score; total=101, judge=91, stdout-consistency=10, output-consensus=0."
+    );
+    expect(result.score).toEqual({ value: 91 });
+  });
 });

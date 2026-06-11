@@ -106,6 +106,25 @@
  * @property {string} [commandPolicyPath]
  * @property {import("../runner/Runner.js").SandboxPolicy} [sandboxPolicy]
  * @property {string} [sandboxPolicyPath]
+ * @property {(event: SolveProgressEvent) => void} [onProgress]
+ */
+
+/**
+ * @typedef {Object} SolveProgressEvent
+ * @property {"session-started" | "worker-started" | "attempt-started" | "attempt-finished" | "worker-finished" | "session-finished"} type
+ * @property {string} sessionId
+ * @property {string} [workerId]
+ * @property {string} [strategy]
+ * @property {number} [iteration]
+ * @property {number} [parallelism]
+ * @property {number} [workerCount]
+ * @property {number} [candidateCount]
+ * @property {number} [attemptCount]
+ * @property {string} [command]
+ * @property {boolean} [passed]
+ * @property {string | null} [reason]
+ * @property {string | null} [stopReason]
+ * @property {string | null} [selectedCandidateId]
  */
 
 /**
@@ -114,6 +133,11 @@
 
 /**
  * @typedef {Object} CliOptions
+ * @property {"solve" | "check" | "replay" | "logs-show"} command
+ */
+
+/**
+ * @typedef {Object} SolveCliOptions
  * @property {"solve"} command
  * @property {string} problem
  * @property {EngineName} engine
@@ -126,6 +150,40 @@
  * @property {number} [timeBudgetMs]
  * @property {string} [commandPolicyPath]
  * @property {string} [sandboxPolicyPath]
+ * @property {"off" | "plain" | "jsonl"} [progress]
+ */
+
+/**
+ * @typedef {Object} CheckCliOptions
+ * @property {"check"} command
+ * @property {string} shellCommand
+ * @property {"local" | "docker"} [runner]
+ * @property {string} [workdir]
+ * @property {string} [problem]
+ * @property {string} [expectedOutput]
+ * @property {number} [timeBudgetMs]
+ * @property {string} [commandPolicyPath]
+ * @property {string} [sandboxPolicyPath]
+ */
+
+/**
+ * @typedef {Object} ReplayCliOptions
+ * @property {"replay"} command
+ * @property {string} logPath
+ * @property {string} [candidateId]
+ * @property {string} [attemptId]
+ * @property {"local" | "docker"} [runner]
+ * @property {string} [workdir]
+ * @property {string} [expectedOutput]
+ * @property {number} [timeBudgetMs]
+ * @property {string} [commandPolicyPath]
+ * @property {string} [sandboxPolicyPath]
+ */
+
+/**
+ * @typedef {Object} LogsShowCliOptions
+ * @property {"logs-show"} command
+ * @property {string} logRef
  */
 
 export {};
