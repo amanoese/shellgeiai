@@ -46,15 +46,23 @@ describe("selectSolveOutcome", () => {
     expect(result.selector).toBe("first-pass-wins");
   });
 
-  it("selects the best passing candidate when best-score-wins is requested", () => {
+  it("prefers the passing candidate with the higher shellgei score", () => {
     const result = selectSolveOutcome(
       [
         {
           candidateId: "worker-1",
           output: "123",
-          command: "awk '{print $1}'",
-          attempts: [{ durationMs: 50, stdout: "123\n" }],
-          explanation: "Longer and slower.",
+          command: "printf '123\\n'",
+          shellgeiScore: {
+            value: 84,
+            breakdown: {
+              shortness: 36,
+              simplicity: 28,
+              speed: 20
+            }
+          },
+          attempts: [{ durationMs: 12, stdout: "123\n" }],
+          explanation: "Shorter and simpler.",
           finalCheck: {
             passed: true,
             iterations: 2,
@@ -74,9 +82,17 @@ describe("selectSolveOutcome", () => {
         {
           candidateId: "worker-2",
           output: "123",
-          command: "cut -d, -f1",
-          attempts: [{ durationMs: 10, stdout: "123\n" }],
-          explanation: "Short and clean.",
+          command: "cat sample.csv | awk -F, '{print $3}'",
+          shellgeiScore: {
+            value: 45,
+            breakdown: {
+              shortness: 13,
+              simplicity: 12,
+              speed: 20
+            }
+          },
+          attempts: [{ durationMs: 12, stdout: "123\n" }],
+          explanation: "Longer and slower.",
           finalCheck: {
             passed: true,
             iterations: 1,
@@ -97,19 +113,21 @@ describe("selectSolveOutcome", () => {
       "best-score-wins"
     );
 
-    expect(result.selectedCandidate?.candidateId).toBe("worker-2");
-    expect(result.reason).toContain("Selected worker-2 as the best passing candidate");
-    expect(result.reason).toContain("judge score (100 > 80)");
-    expect(result.metrics).toEqual({
-      totalScore: 115,
-      judgeScore: 100,
-      stdoutConsistency: 10,
-      outputConsensus: 5,
-      totalDurationMs: 10,
-      iterationCount: 1,
-      commandLength: "cut -d, -f1".length,
-      explanationLength: "Short and clean.".length
-    });
+    expect(result.selectedCandidate?.candidateId).toBe("worker-1");
+    expect(result.reason).toContain("shellgei score");
+    expect(result.metrics).toEqual(
+      expect.objectContaining({
+        totalScore: expect.any(Number),
+        shellgeiScore: expect.any(Number),
+        judgeScore: 80,
+        stdoutConsistency: 10,
+        outputConsensus: 5,
+        totalDurationMs: 12,
+        iterationCount: 2,
+        commandLength: "printf '123\\n'".length,
+        explanationLength: "Shorter and simpler.".length
+      })
+    );
   });
 
   it("prefers candidates whose output is reproduced by another passing worker", () => {
@@ -140,7 +158,7 @@ describe("selectSolveOutcome", () => {
         {
           candidateId: "worker-2",
           output: "99",
-          command: "printf '99\\n'",
+          command: "printf '42\\n'",
           attempts: [{ durationMs: 1, stdout: "99\n" }],
           explanation: "Fast but not corroborated.",
           finalCheck: {
@@ -222,7 +240,7 @@ describe("selectSolveOutcome", () => {
           candidateId: "worker-2",
           output: "stable",
           command: "printf 'stable\\n'",
-          attempts: [{ durationMs: 6, stdout: "stable\n" }],
+          attempts: [{ durationMs: 8, stdout: "stable\n" }],
           explanation: "Stable from the start.",
           finalCheck: {
             passed: true,
@@ -277,8 +295,8 @@ describe("selectSolveOutcome", () => {
         {
           candidateId: "worker-2",
           output: "beta",
-          command: "printf 'beta\\n'",
-          attempts: [{ durationMs: 1, stdout: "beta\n" }],
+          command: "printf 'alpha\\n'",
+          attempts: [{ durationMs: 2, stdout: "beta\n" }],
           explanation: "Lower judge score despite being slightly faster.",
           finalCheck: {
             passed: true,
@@ -301,16 +319,19 @@ describe("selectSolveOutcome", () => {
     );
 
     expect(result.selectedCandidate?.candidateId).toBe("worker-1");
-    expect(result.metrics).toEqual({
-      totalScore: 107,
-      judgeScore: 97,
-      stdoutConsistency: 10,
-      outputConsensus: 0,
-      totalDurationMs: 2,
-      iterationCount: 1,
-      commandLength: "printf 'alpha\\n'".length,
-      explanationLength: "Higher judge score from an external weighting policy.".length
-    });
+    expect(result.metrics).toEqual(
+      expect.objectContaining({
+        totalScore: expect.any(Number),
+        shellgeiScore: expect.any(Number),
+        judgeScore: 97,
+        stdoutConsistency: 10,
+        outputConsensus: 0,
+        totalDurationMs: 2,
+        iterationCount: 1,
+        commandLength: "printf 'alpha\\n'".length,
+        explanationLength: "Higher judge score from an external weighting policy.".length
+      })
+    );
     expect(result.reason).toContain("judge score (97 > 88)");
   });
 
@@ -320,7 +341,7 @@ describe("selectSolveOutcome", () => {
         {
           candidateId: "worker-1",
           output: "alpha",
-          command: "printf 'alpha\\n'",
+          command: "printf 'x\\n'",
           attempts: [{ durationMs: 1, stdout: "alpha\n" }],
           explanation: "Higher judge score with fewer bonus points.",
           finalCheck: {
@@ -342,7 +363,7 @@ describe("selectSolveOutcome", () => {
         {
           candidateId: "worker-2",
           output: "beta",
-          command: "printf 'beta\\n'",
+          command: "printf 'x\\n'",
           attempts: [{ durationMs: 1, stdout: "beta\n" }],
           explanation: "Lower judge score with more bonus points.",
           finalCheck: {

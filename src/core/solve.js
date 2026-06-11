@@ -1,4 +1,5 @@
 import { runSolveOrchestrator } from "./orchestrator.js";
+import { scoreShellgeiCandidate } from "./shellgeiScorer.js";
 import { selectSolveOutcome } from "./selector.js";
 import { createSolveSession } from "./solveSession.js";
 import { writeSolveSessionLog } from "../logs/writer.js";
@@ -11,7 +12,15 @@ export async function solveProblem(options) {
 
 async function finalizeSolve(session, execution) {
   const finishedAt = new Date().toISOString();
-  const selection = selectSolveOutcome(execution.candidates, session.selectorName);
+  const candidates = execution.candidates.map((candidate) =>
+    candidate.finalCheck?.passed
+      ? {
+          ...candidate,
+          shellgeiScore: scoreShellgeiCandidate(candidate)
+        }
+      : candidate
+  );
+  const selection = selectSolveOutcome(candidates, session.selectorName);
   const selectedCandidate = selection.selectedCandidate;
   const finalCheck = await resolveFinalCheck(session, selectedCandidate) ?? {
     passed: false,
@@ -33,7 +42,7 @@ async function finalizeSolve(session, execution) {
       selectorMetrics: selection.metrics
     },
     attempts: execution.attempts,
-    candidates: execution.candidates,
+    candidates,
     workerSummaries: execution.workerSummaries,
     finalCheck
   });
@@ -43,7 +52,7 @@ async function finalizeSolve(session, execution) {
     output: selectedCandidate?.output ?? "",
     explanation: selectedCandidate?.explanation ?? "No explanation provided.",
     attempts: execution.attempts,
-    candidates: execution.candidates,
+    candidates,
     workerSummaries: execution.workerSummaries,
     finalCheck,
     selector: {

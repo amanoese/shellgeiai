@@ -50,6 +50,12 @@
  */
 
 /**
+ * @typedef {Object} ShellgeiScore
+ * @property {number} value
+ * @property {{shortness: number, simplicity: number, speed: number}} breakdown
+ */
+
+/**
  * @typedef {Object} WorkerTask
  * @property {string} workerId
  * @property {string} strategy
@@ -74,6 +80,7 @@
  * @property {string} explanation
  * @property {SolveAttempt[]} attempts
  * @property {FinalCheck} finalCheck
+ * @property {ShellgeiScore | null} [shellgeiScore]
  */
 
 /**
@@ -85,7 +92,7 @@
  * @property {SolveCandidate[]} candidates
  * @property {{workerId: string, strategy: string, strategyProfile?: {name: string, focus: string, retryHint: string}, attemptCount: number, passed: boolean, state: "planning" | "running" | "judging" | "stopped" | "idle", reason: string}[]} [workerSummaries]
  * @property {FinalCheck} finalCheck
- * @property {{name: string, reason: string, selectedCandidateId?: string|null, score?: import("../judge/Judge.js").JudgeScore|null, metrics?: {totalScore: number, judgeScore: number, stdoutConsistency: number, outputConsensus: number, totalDurationMs: number, iterationCount: number, commandLength: number, explanationLength: number}|null}} selector
+ * @property {{name: string, reason: string, selectedCandidateId?: string|null, score?: import("../judge/Judge.js").JudgeScore|null, metrics?: {totalScore: number, shellgeiScore: number, judgeScore: number, stdoutConsistency: number, outputConsensus: number, totalDurationMs: number, iterationCount: number, commandLength: number, explanationLength: number}|null}} selector
  * @property {{name: string, limits: import("../runner/Runner.js").RunnerLimits, sandboxPolicy: import("../runner/Runner.js").SandboxPolicy}} runner
  * @property {string|null} [stopReason]
  * @property {string} workdir

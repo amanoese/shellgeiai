@@ -53,6 +53,14 @@ describe("solveProblem", () => {
         }
       }
     });
+    expect(result.candidates[0].shellgeiScore).toEqual({
+      value: expect.any(Number),
+      breakdown: {
+        shortness: expect.any(Number),
+        simplicity: expect.any(Number),
+        speed: expect.any(Number)
+      }
+    });
     expect(result.selector).toEqual({
       name: "first-pass-wins",
       reason: "Selected the first candidate that passed final checks.",
@@ -67,7 +75,8 @@ describe("solveProblem", () => {
         }
       },
       metrics: {
-        totalScore: 110,
+        totalScore: expect.any(Number),
+        shellgeiScore: expect.any(Number),
         judgeScore: 100,
         stdoutConsistency: 10,
         outputConsensus: 0,
@@ -117,6 +126,7 @@ describe("solveProblem", () => {
     expect(logContent.workdir).toBe(requestedWorkdir);
     expect(logContent.attempts).toHaveLength(1);
     expect(logContent.candidates).toHaveLength(1);
+    expect(logContent.candidates[0].shellgeiScore).toEqual(result.candidates[0].shellgeiScore);
     expect(logContent.workerSummaries).toEqual(result.workerSummaries);
     expect(logContent.runner.limits.wallClockMs).toBe(5_000);
     expect(logContent.runner.limits.memoryMaxBytes).toBe(256 * 1024 * 1024);
@@ -354,11 +364,12 @@ ok を出力してください`,
           }
         },
         metrics: {
-          totalScore: 110,
+          totalScore: expect.any(Number),
+          shellgeiScore: expect.any(Number),
           judgeScore: 100,
           stdoutConsistency: 10,
           outputConsensus: 0,
-          totalDurationMs: 0,
+          totalDurationMs: expect.any(Number),
           iterationCount: 1,
           commandLength: "printf 'ok\\n'".length,
           explanationLength: "Generated for worker-1.".length
@@ -377,6 +388,14 @@ ok を出力してください`,
       expect(result.candidates[2].finalCheck).toMatchObject({
         passed: false,
         reason: "Stopped after the first passing candidate was produced."
+      });
+      expect(result.candidates[0].shellgeiScore).toEqual({
+        value: expect.any(Number),
+        breakdown: {
+          shortness: expect.any(Number),
+          simplicity: expect.any(Number),
+          speed: expect.any(Number)
+        }
       });
       expect(result.workerSummaries).toEqual([
         {

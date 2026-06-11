@@ -27,7 +27,8 @@ describe("formatResult", () => {
           }
         },
         metrics: {
-          totalScore: 115,
+          totalScore: 215,
+          shellgeiScore: 100,
           judgeScore: 100,
           stdoutConsistency: 10,
           outputConsensus: 5,
@@ -50,6 +51,15 @@ describe("formatResult", () => {
         {
           candidateId: "worker-1",
           strategy: "default",
+          command: "printf '42\\n'",
+          shellgeiScore: {
+            value: 95,
+            breakdown: {
+              shortness: 35,
+              simplicity: 40,
+              speed: 20
+            }
+          },
           finalCheck: {
             passed: true,
             iterations: 1,
@@ -62,6 +72,15 @@ describe("formatResult", () => {
         {
           candidateId: "worker-2",
           strategy: "consensus",
+          command: "printf '42\\n'",
+          shellgeiScore: {
+            value: 100,
+            breakdown: {
+              shortness: 38,
+              simplicity: 42,
+              speed: 20
+            }
+          },
           finalCheck: {
             passed: true,
             iterations: 1,
@@ -77,12 +96,20 @@ describe("formatResult", () => {
     expect(output).toContain("selected-score: 100");
     expect(output).toContain("score-breakdown: correctness=60, stdout=15, stderr=10, expected=15");
     expect(output).toContain(
-      "selector-metrics: total=115, judge=100, stdout-consistency=10, output-consensus=5, duration-ms=8, iterations=1"
+      "selected-shellgei-score: 100"
+    );
+    expect(output).toContain(
+      "shellgei-breakdown: shortness=38, simplicity=42, speed=20"
+    );
+    expect(output).toContain(
+      "selector-metrics: total=215, shellgei=100, judge=100, stdout-consistency=10, output-consensus=5, duration-ms=8, iterations=1"
     );
     expect(output).toContain(
       "selector-reason: Selected worker-2 as the best passing candidate after comparing it with worker-1; it won on judge score (100 > 95)."
     );
-    expect(output).toContain("worker-1: passed | strategy: default | iterations: 1 | score: 95");
-    expect(output).toContain("worker-2: passed | strategy: consensus | iterations: 1 | score: 100");
+    expect(output).toContain("PASSING COMMANDS:");
+    expect(output).toContain("worker-1 | score: 95 | command: printf '42\\n'");
+    expect(output).toContain("worker-2 | score: 100 | command: printf '42\\n'");
+    expect(output).not.toContain("OUTPUT:");
   });
 });

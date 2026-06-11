@@ -3,6 +3,7 @@ function normalizeOutput(output) {
 }
 
 const scoreComparisonOrder = [
+  { key: "shellgeiScore", label: "shellgei score", higherIsBetter: true, unit: "" },
   { key: "judgeScore", label: "judge score", higherIsBetter: true, unit: "" },
   { key: "stdoutConsistency", label: "stdout consistency", higherIsBetter: true, unit: "" },
   { key: "outputConsensus", label: "output consensus", higherIsBetter: true, unit: "" },
@@ -72,12 +73,14 @@ function candidateScore(candidate, consensusByValue) {
   const totalDurationMs = attempts.reduce((sum, attempt) => sum + (attempt.durationMs ?? 0), 0);
   const commandLength = candidate.command?.length ?? Number.MAX_SAFE_INTEGER;
   const explanationLength = candidate.explanation?.length ?? Number.MAX_SAFE_INTEGER;
+  const shellgeiScore = candidate.shellgeiScore?.value ?? 0;
   const judgeScore = candidate.finalCheck?.score?.value ?? 0;
   const stdoutConsistency = stdoutConsistencyScore(candidate);
   const outputConsensus = outputConsensusScore(candidate, consensusByValue);
 
   return {
-    totalScore: judgeScore + stdoutConsistency + outputConsensus,
+    totalScore: shellgeiScore + judgeScore + stdoutConsistency + outputConsensus,
+    shellgeiScore,
     judgeScore,
     stdoutConsistency,
     outputConsensus,
@@ -128,7 +131,11 @@ function compareCandidateScore(left, right, consensusByValue) {
   const leftScore = candidateScore(left, consensusByValue);
   const rightScore = candidateScore(right, consensusByValue);
 
-  // Judge score is the primary signal; stdout agreement and consensus are tie-breakers.
+  // ShellGei score is the primary signal; other measures are tie-breakers.
+  if (leftScore.shellgeiScore !== rightScore.shellgeiScore) {
+    return rightScore.shellgeiScore - leftScore.shellgeiScore;
+  }
+
   if (leftScore.judgeScore !== rightScore.judgeScore) {
     return rightScore.judgeScore - leftScore.judgeScore;
   }
