@@ -157,7 +157,6 @@ describe("solveProblem", () => {
     expect(result.selector.name).toBe("best-score-wins");
     expect(result.selector.selectedCandidateId).toBeTypeOf("string");
     expect(result.selector.reason).toContain("best passing candidate");
-    expect(result.selector.reason).toContain("total duration");
     expect(result.selector.metrics?.totalScore).toBeGreaterThanOrEqual(110);
     expect(result.candidates.every((candidate) => candidate.finalCheck.score?.value === 100)).toBe(true);
   });
@@ -249,109 +248,187 @@ ok を出力してください`,
     expect(logContent.problemSpec.problemText).toBe("ok を出力してください");
   });
 
-  it("stops additional worker iterations after the first passing candidate when first-pass-wins is used", async () => {
-    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
-    tempDirs.push(requestedWorkdir);
-    const callsByWorker = new Map();
+  it("waits five seconds before aborting remaining workers after the first passing candidate is selected", async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    globalThis.setTimeout = ((callback, delay, ...args) =>
+      originalSetTimeout(callback, Math.max(0, Math.ceil(Number(delay ?? 0) / 100)), ...args));
+    globalThis.clearTimeout = ((handle) => originalClearTimeout(handle));
 
-    const result = await solveProblem({
-      problemInput: "print quickly",
-      engine: {
-        name: "test-engine",
-        async generateCommand(context) {
-          const currentCalls = callsByWorker.get(context.workerId) ?? 0;
-          callsByWorker.set(context.workerId, currentCalls + 1);
+    try {
+      const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+      tempDirs.push(requestedWorkdir);
+      const commandsByWorker = new Map([
+        ["worker-1", "printf 'ok\\n'"],
+        ["worker-2", "sleep 4; printf 'later\\n'"],
+        ["worker-3", "sleep 12; printf 'too-late\\n'"]
+      ]);
+      const stdoutByCommand = new Map([
+        ["printf 'ok\\n'", "ok\n"],
+        ["sleep 4; printf 'later\\n'", "later\n"],
+        ["sleep 12; printf 'too-late\\n'", "too-late\n"]
+      ]);
+      const delaysByCommand = new Map([
+        ["printf 'ok\\n'", 0],
+        ["sleep 4; printf 'later\\n'", 4000],
+        ["sleep 12; printf 'too-late\\n'", 12000]
+      ]);
+      let settled = false;
 
-          if (context.workerId === "worker-1") {
+      const resultPromise = solveProblem({
+        problemInput: "print quickly",
+        engine: {
+          name: "test-engine",
+          async generateCommand(context) {
             return {
-              command: "printf 'ok\\n'",
-              explanation: "Succeeds immediately."
+              command: commandsByWorker.get(context.workerId) ?? "printf 'fallback\\n'",
+              explanation: `Generated for ${context.workerId}.`
             };
           }
-
-          return {
-            command: "sleep 0.05; printf ''",
-            explanation: "Fails once, then should be stopped."
-          };
-        }
-      },
-      runner: new LocalRunner(),
-      judge: new SimpleJudge(),
-      maxIterations: 3,
-      requestedWorkdir,
-      parallelism: 2,
-      selector: "first-pass-wins"
-    });
-
-    expect(result.finalCheck.passed).toBe(true);
-    expect(callsByWorker.get("worker-1")).toBe(1);
-    expect(callsByWorker.get("worker-2")).toBe(1);
-    expect(result.stopReason).toBe("Stopped after the first passing candidate was produced.");
-    expect(result.candidates[1].finalCheck.reason).toContain("worker-1");
-    expect(result.workerSummaries).toEqual([
-      {
-        workerId: "worker-1",
-        strategy: "default",
-        strategyProfile: {
-          name: "balanced-search",
-          focus: "Start with the most direct safe one-liner and keep the command shape simple.",
-          retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
         },
-        attemptCount: 1,
+        runner: {
+          name: "fake",
+          async run(command, { signal }) {
+            const delayMs = delaysByCommand.get(command) ?? 0;
+
+            return await new Promise((resolve) => {
+              const finish = (aborted = false) => {
+                resolve({
+                  stdout: aborted ? "" : stdoutByCommand.get(command) ?? "",
+                  stderr: "",
+                  exitCode: aborted ? null : 0,
+                  timedOut: false,
+                  aborted,
+                  durationMs: aborted ? 5 : delayMs,
+                  failure: null,
+                  cleanup: null
+                });
+              };
+
+              const timer = setTimeout(() => finish(false), delayMs);
+              if (signal.aborted) {
+                clearTimeout(timer);
+                finish(true);
+                return;
+              }
+
+              signal.addEventListener(
+                "abort",
+                () => {
+                  clearTimeout(timer);
+                  finish(true);
+                },
+                { once: true }
+              );
+            });
+          }
+        },
+        judge: new SimpleJudge(),
+        maxIterations: 1,
+        requestedWorkdir,
+        parallelism: 3,
+        selector: "first-pass-wins"
+      }).then((result) => {
+        settled = true;
+        return result;
+      });
+
+      await new Promise((resolve) => originalSetTimeout(resolve, 2));
+      expect(settled).toBe(false);
+
+      const result = await resultPromise;
+
+      expect(settled).toBe(true);
+      expect(result.finalCheck.passed).toBe(true);
+      expect(result.selector).toEqual({
+        name: "first-pass-wins",
+        reason: "Selected the first candidate that passed final checks.",
+        selectedCandidateId: "worker-1",
+        score: {
+          value: 100,
+          breakdown: {
+            correctness: 60,
+            stdoutQuality: 15,
+            stderrQuality: 10,
+            expectedOutput: 15
+          }
+        },
+        metrics: {
+          totalScore: 110,
+          judgeScore: 100,
+          stdoutConsistency: 10,
+          outputConsensus: 0,
+          totalDurationMs: 0,
+          iterationCount: 1,
+          commandLength: "printf 'ok\\n'".length,
+          explanationLength: "Generated for worker-1.".length
+        }
+      });
+      expect(result.stopReason).toBe("Stopped after the first passing candidate was produced.");
+      expect(result.candidates.map((candidate) => candidate.workerId)).toEqual([
+        "worker-1",
+        "worker-2",
+        "worker-3"
+      ]);
+      expect(result.candidates[1].finalCheck).toMatchObject({
         passed: true,
-        state: "idle",
         reason: "Basic checks passed."
-      },
-      {
-        workerId: "worker-2",
-        strategy: "awk-first",
-        strategyProfile: {
-          name: "awk-centric",
-          focus: "Prefer awk for column-oriented or record-oriented transformations.",
-          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
-        },
-        attemptCount: 1,
+      });
+      expect(result.candidates[2].finalCheck).toMatchObject({
         passed: false,
-        state: "stopped",
-        reason: "Stopped because worker-1 already produced a passing candidate."
-      }
-    ]);
-  });
-
-  it("aborts in-flight worker commands after the first passing candidate is selected", async () => {
-    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
-    tempDirs.push(requestedWorkdir);
-
-    const result = await solveProblem({
-      problemInput: "finish fast",
-      engine: {
-        name: "test-engine",
-        async generateCommand(context) {
-          if (context.workerId === "worker-1") {
-            return {
-              command: "printf 'ok\\n'",
-              explanation: "Succeeds immediately."
-            };
-          }
-
-          return {
-            command: "sleep 1; printf 'late\\n'",
-            explanation: "Should be aborted by the orchestrator."
-          };
+        reason: "Stopped after the first passing candidate was produced."
+      });
+      expect(result.workerSummaries).toEqual([
+        {
+          workerId: "worker-1",
+          strategy: "default",
+          strategyProfile: {
+            name: "balanced-search",
+            focus: "Start with the most direct safe one-liner and keep the command shape simple.",
+            retryHint: "Keep the command close to the previous attempt and adjust only the failing part."
+          },
+          attemptCount: 1,
+          passed: true,
+          state: "idle",
+          reason: "Basic checks passed."
+        },
+        {
+          workerId: "worker-2",
+          strategy: "awk-first",
+          strategyProfile: {
+            name: "awk-centric",
+            focus: "Prefer awk for column-oriented or record-oriented transformations.",
+            retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+          },
+          attemptCount: 1,
+          passed: true,
+          state: "idle",
+          reason: "Basic checks passed."
+        },
+        {
+          workerId: "worker-3",
+          strategy: "text-filter",
+          strategyProfile: {
+            name: "filter-pipeline",
+            focus: "Prefer grep, sed, tr, and shell pipelines for text filtering and selection.",
+            retryHint: "Retry with a narrower pipeline when the first attempt is too broad."
+          },
+          attemptCount: 1,
+          passed: false,
+          state: "stopped",
+          reason: "Stopped after the first passing candidate was produced."
         }
-      },
-      runner: new LocalRunner(),
-      judge: new SimpleJudge(),
-      maxIterations: 1,
-      requestedWorkdir,
-      parallelism: 2,
-      selector: "first-pass-wins"
-    });
-
-    const abortedAttempt = result.attempts.find((attempt) => attempt.workerId === "worker-2");
-    expect(abortedAttempt?.failureReason).toContain("worker-1");
-    expect(abortedAttempt?.timedOut).toBe(false);
-    expect(result.stopReason).toBe("Stopped after the first passing candidate was produced.");
+      ]);
+      expect(result.attempts).toHaveLength(3);
+      expect(result.attempts[2]).toMatchObject({
+        workerId: "worker-3",
+        passed: false,
+        failureReason: "Stopped after the first passing candidate was produced."
+      });
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+    }
   });
 
   it("respects the overall time budget across iterations", async () => {

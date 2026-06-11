@@ -360,10 +360,39 @@ function createExecutionControl(session, workers) {
     stopReason: "",
     passingCandidateId: null,
     deadlineTimer: null,
+    graceStopTimer: null,
     workers,
+    scheduleGraceStop(options, delayMs) {
+      if (control.stopRequested || control.graceStopTimer != null) {
+        return;
+      }
+
+      if (!control.stopReason) {
+        control.stopReason = options.reason;
+      }
+
+      if (options.passingCandidateId && control.passingCandidateId == null) {
+        control.passingCandidateId = options.passingCandidateId;
+      }
+
+      control.graceStopTimer = setTimeout(() => {
+        control.graceStopTimer = null;
+        if (control.stopRequested) {
+          return;
+        }
+
+        requestStop(control, options);
+      }, delayMs);
+    },
     dispose() {
       if (control.deadlineTimer) {
         clearTimeout(control.deadlineTimer);
+        control.deadlineTimer = null;
+      }
+
+      if (control.graceStopTimer) {
+        clearTimeout(control.graceStopTimer);
+        control.graceStopTimer = null;
       }
     }
   };
@@ -424,6 +453,11 @@ function reportWorkerState(session, task, state) {
 }
 
 function requestStop(control, options) {
+  if (control.graceStopTimer) {
+    clearTimeout(control.graceStopTimer);
+    control.graceStopTimer = null;
+  }
+
   if (options.passingCandidateId && control.passingCandidateId == null) {
     control.passingCandidateId = options.passingCandidateId;
   }
@@ -457,11 +491,15 @@ function getRemainingBudgetMs(session) {
 
 function getStopReason(session, control) {
   if (control.stopRequested) {
+    if (control.stopReason) {
+      return control.stopReason;
+    }
+
     if (control.passingCandidateId != null) {
       return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
     }
 
-    return control.stopReason || "Execution was stopped.";
+    return "Execution was stopped.";
   }
 
   if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {

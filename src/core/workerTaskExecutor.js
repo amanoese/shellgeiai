@@ -31,11 +31,15 @@ function getRemainingBudgetMs(session) {
 
 function getStopReason(session, control) {
   if (control.stopRequested) {
+    if (control.stopReason) {
+      return control.stopReason;
+    }
+
     if (control.passingCandidateId != null) {
       return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
     }
 
-    return control.stopReason || "Execution was stopped.";
+    return "Execution was stopped.";
   }
 
   if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
@@ -218,12 +222,12 @@ export async function executeWorkerTask(session, task, control, workerState, req
       });
       if (decision.passed) {
         if (session.selectorName === "first-pass-wins") {
-          requestStop(control, {
+          control.scheduleGraceStop({
             reason: "Stopped after the first passing candidate was produced.",
             passingCandidateId: task.workerId,
             exceptWorkerId: task.workerId,
             force: true
-          });
+          }, 5_000);
         } else {
           control.passingCandidateId ??= task.workerId;
         }
