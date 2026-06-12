@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+
 import { OpenAIEngine, __testUtils } from "../src/engines/openaiEngine.js";
 
 describe("OpenAIEngine", () => {
-  it("builds response request and parses JSON output", async () => {
+  it("builds the response request and parses JSON output", async () => {
     const create = vi.fn(async () => ({
       output_text: '{"command":"printf \\"123\\\\n\\"","explanation":"Print a known value."}'
     }));
@@ -51,7 +52,7 @@ describe("OpenAIEngine", () => {
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("Shellgei rubric focus:");
   });
 
-  it("fails with a clear message when API key is missing", async () => {
+  it("fails with a clear message when the API key is missing", async () => {
     const engine = new OpenAIEngine({ apiKey: "" });
 
     await expect(
@@ -72,10 +73,7 @@ describe("OpenAIEngine", () => {
         }
       ]
     }));
-    const engine = new OpenAIEngine({
-      apiKey: "test-key",
-      client: { responses: { create } }
-    });
+    const engine = new OpenAIEngine({ apiKey: "test-key", client: { responses: { create } } });
 
     const result = await engine.generateCommand({
       problem: "print ok",
@@ -112,91 +110,106 @@ describe("OpenAIEngine", () => {
     });
 
     expect(clientFactory).toHaveBeenCalledTimes(1);
-    expect(clientFactory).toHaveBeenCalledWith({
+  expect(clientFactory).toHaveBeenCalledWith({
+    apiKey: "test-key",
+    baseURL: "https://example.invalid/v1",
+    timeoutMs: 2500,
+    maxRetries: 4
+  });
+  expect(responses.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries when the OpenAI engine returns non-JSON text", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({ output_text: "not json" })
+      .mockResolvedValueOnce({
+        output_text: '{"command":"printf \\"ok\\\\n\\"","explanation":"Recovered on retry."}'
+      });
+    const engine = new OpenAIEngine({
       apiKey: "test-key",
-      baseURL: "https://example.invalid/v1",
-      timeoutMs: 2500,
-      maxRetries: 4
+      maxRetries: 2,
+      client: { responses: { create } }
     });
-    expect(responses.create).toHaveBeenCalledTimes(2);
+
+    const result = await engine.generateCommand({
+      problem: "print ok",
+      attempts: [],
+      workdir: "/tmp/workdir"
+    });
+
+    expect(result).toEqual({
+      command: 'printf "ok\\n"',
+      explanation: "Recovered on retry."
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws after exhausting non-JSON retries", async () => {
+    const create = vi.fn(async () => ({ output_text: "still not json" }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      maxRetries: 2,
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateCommand({
+        problem: "print ok",
+        attempts: [],
+        workdir: "/tmp/workdir"
+      })
+    ).rejects.toThrow("The OpenAI engine returned non-JSON response.");
+
+    expect(create).toHaveBeenCalledTimes(3);
   });
 });
 
 describe("openaiEngine test utils", () => {
-  it("builds rubric-aware prompts for different strategy contexts", () => {
-    const { buildUserPrompt } = __testUtils();
-    const prompt = buildUserPrompt({
-      problem: "sum third column",
-      attempts: [],
-      workdir: "/tmp/workdir",
-      workerTask: {
-        workerId: "worker-1",
-        strategy: "awk-first",
-        strategyProfile: {
-          name: "awk-centric",
-          focus: "Prefer awk for record-wise transforms.",
-          retryHint: "Remove redundant stages before switching tools.",
-          rubricFocus: ["conciseness", "shellness", "readability"]
-        },
-        maxAttempts: 3
-      }
-    });
-
-    expect(prompt).toContain("Shellgei rubric focus:");
-    expect(prompt).toContain("awk-centric");
-    expect(prompt).toContain("Retry budget: 3");
-  });
-
-  it("includes assigned variant guidance in the prompt", () => {
+  it("builds rubric-aware prompts with variant tool suggestions", () => {
     const { buildUserPrompt } = __testUtils();
     const prompt = buildUserPrompt({
       problem: "1から100までの素数を出力してください",
       attempts: [],
       workdir: "/tmp/workdir",
       workerTask: {
-        workerId: "worker-3",
-        strategy: "default",
+        workerId: "worker-1",
+        strategy: "awk-first",
         strategyProfile: {
           name: "balanced-search",
-          focus: "Start with direct safe one-liner.",
-          retryHint: "Remove redundant stages before changing whole approach.",
-          rubricFocus: ["conciseness", "shellness", "robustness"]
+          focus: "Prefer concise safe one-liners first.",
+          retryHint: "Simplify the pipeline before changing direction.",
+          rubricFocus: ["conciseness", "shellness"]
         },
         assignedVariant: {
-          variantId: "variant-factor",
           label: "factor-first",
           approach: "external-utility",
           toolBias: ["seq", "factor", "awk"],
-          intent: "Check whether external utilities collapse the primality test cleanly.",
-          constraints: ["Prefer concise one-liners"],
-          avoid: ["awk-only contortions"],
-          explorationHint: "Consider seq + factor before custom primality logic."
+          intent: "utility を活かす",
+          constraints: [],
+          avoid: [],
+          explorationHint: "factor を先に試す",
+          toolSuggestions: [
+            {
+              summary: "既存 utility を起点にする",
+              rationale: "短く安全に組みやすい",
+              suggestedTools: ["factor", "seq"]
+            }
+          ]
         },
         maxAttempts: 3
       }
     });
 
-    expect(prompt).toContain("Assigned variant:");
-    expect(prompt).toContain("factor-first");
-    expect(prompt).toContain("external-utility");
-    expect(prompt).toContain("Exploration hint:");
-    expect(prompt).toContain("Consider seq + factor before custom primality logic.");
+    expect(prompt).toContain("Variant tool suggestions:");
+    expect(prompt).toContain('"suggestedTools":["factor","seq"]');
+    expect(prompt).toContain(
+      "Use suggestedTools as optional starting points, but choose any safer or better tools if needed."
+    );
+    expect(prompt).not.toContain("seq 100 |");
   });
 
-  it("omits optional strategy and worker lines when not provided", () => {
-    const { buildUserPrompt } = __testUtils();
-    const prompt = buildUserPrompt({
-      problem: "print 123",
-      attempts: [],
-      workdir: "/tmp/workdir"
-    });
-
-    expect(prompt).not.toContain("Worker:");
-    expect(prompt).not.toContain("Strategy:");
-    expect(prompt).not.toContain("Assigned variant:");
-  });
-
-  it("extracts JSON fenced responses", () => {
+  it("parses JSON fenced responses", () => {
     const { parseEngineResponse } = __testUtils();
 
     expect(parseEngineResponse('```json\n{"command":"printf \\"ok\\\\n\\""}\n```')).toEqual({

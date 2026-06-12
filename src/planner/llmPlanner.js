@@ -1,5 +1,10 @@
 import { zodTextFormat } from "openai/helpers/zod";
-import { buildPlannerSystemPrompt, buildPlannerUserPrompt, PLANNER_PROMPT_VERSION } from "./plannerPrompt.js";
+
+import {
+  buildPlannerSystemPrompt,
+  buildPlannerUserPrompt,
+  PLANNER_PROMPT_VERSION
+} from "./plannerPrompt.js";
 import { plannerResultSchema } from "./plannerSchema.js";
 
 async function createDefaultClient(options) {
@@ -23,7 +28,7 @@ export async function buildLlmPlan(session, options = {}) {
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY ?? "";
 
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set for the LLM planner.");
+    throw new Error("OPENAI_API_KEY is not set for LLM planner.");
   }
 
   const clientFactory = options.clientFactory ?? createDefaultClient;
@@ -37,7 +42,11 @@ export async function buildLlmPlan(session, options = {}) {
     }));
   const prompt = buildPlannerUserPrompt(session);
   const response = await client.responses.parse({
-    model: options.model ?? process.env.OPENAI_PLANNER_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+    model:
+      options.model ??
+      process.env.OPENAI_PLANNER_MODEL ??
+      process.env.OPENAI_MODEL ??
+      "gpt-5.4-mini",
     input: [
       {
         role: "system",
@@ -61,11 +70,13 @@ export async function buildLlmPlan(session, options = {}) {
     ...response.output_parsed,
     promptVersion: PLANNER_PROMPT_VERSION,
     prompt,
-    rawResponse: null
+    rawResponse: response.output_text ?? null
   };
 }
 
 export const llmPlanner = {
   name: "llm",
-  buildPlan: buildLlmPlan
+  async buildPlan(session) {
+    return buildLlmPlan(session);
+  }
 };

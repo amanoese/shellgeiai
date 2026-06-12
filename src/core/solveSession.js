@@ -4,21 +4,27 @@ import { createDefaultRunnerLimits } from "../runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../safety/policyLoader.js";
 import { createWorkingDirectory, ensureDirectory } from "../util/fs.js";
 import { createExecutionPlan } from "./planner.js";
+import { reportSessionPhase } from "./progress.js";
 
 export async function createSolveSession(options) {
   const startedAt = new Date().toISOString();
+  const sessionId = startedAt.replace(/[:.]/g, "-");
+  const progressSession = {
+    sessionId,
+    onProgress: options.onProgress
+  };
+
+  reportSessionPhase(progressSession, "initializing", "Preparing session.");
+  reportSessionPhase(progressSession, "problem-parsing", "Parsing problem input.");
+
   const problem = parseProblemInput(options.problemInput);
   const workdir = await createWorkingDirectory(options.requestedWorkdir);
   const logsDir = path.join(process.cwd(), "logs");
-
   await ensureDirectory(logsDir);
-
-  const commandPolicy =
-    options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
-  const sandboxPolicy =
-    options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
+  const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
   const session = {
-    sessionId: startedAt.replace(/[:.]/g, "-"),
+    sessionId,
     startedAt,
     startedAtMs: Date.now(),
     problem,
@@ -40,6 +46,8 @@ export async function createSolveSession(options) {
     onProgress: options.onProgress,
     plannerProvider: options.plannerProvider
   };
+
+  reportSessionPhase(session, "planning", "Building execution plan.");
   const plan = await createExecutionPlan(session);
 
   return { ...session, plan };

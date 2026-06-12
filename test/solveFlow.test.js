@@ -1,7 +1,9 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createProgressReporter } from "../src/formatter/progressReporter.js";
+import { formatResult } from "../src/formatter/formatResult.js";
 import { solveProblem } from "../src/core/solve.js";
 import { SimpleJudge } from "../src/judge/simpleJudge.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
@@ -14,7 +16,44 @@ afterEach(async () => {
 });
 
 describe("solveProblem", () => {
-  it("assigns rubric-aligned shellgei scores to passing candidates", async () => {
+  it("emits top-level session phases around solve lifecycle", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    const events = [];
+
+    const result = await solveProblem({
+      problemInput: "print 42",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "awk 'BEGIN{print 42}'",
+            explanation: "print 42"
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir,
+      onProgress: (event) => events.push(event)
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(
+      events.filter((event) => event.type === "session-phase").map((event) => event.phase)
+    ).toEqual([
+      "initializing",
+      "problem-parsing",
+      "planning",
+      "executing",
+      "selecting",
+      "logging",
+      "completed"
+    ]);
+  });
+
+  it("assigns rubric-aligned shellgei scores passing candidates", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
 
@@ -48,46 +87,50 @@ describe("solveProblem", () => {
     );
   });
 
-  it("keeps selector metrics and shellgei score data in the saved log", async () => {
+  it("keeps selector metrics shellgei score data in saved log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
     const commandsByWorker = new Map([
       ["worker-1", "awk 'BEGIN{print 111}'"],
-      ["worker-2", "printf '123\\n'"]
+      ["worker-2", "printf '111\\n'"]
     ]);
 
     const result = await solveProblem({
-      problemInput: "print 123",
+      problemInput: "print 111",
       engine: {
         name: "test-engine",
-        async generateCommand(context) {
+        async generateCommand({ workerId }) {
           return {
-            command: commandsByWorker.get(context.workerId) ?? "printf '0\\n'",
-            explanation: `Command for ${context.workerId ?? "worker"}.`
+            command: commandsByWorker.get(workerId) ?? "awk 'BEGIN{print 111}'",
+            explanation: `Generated for ${workerId}.`
           };
         }
       },
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
-      selector: "best-score-wins",
       maxIterations: 1,
       requestedWorkdir,
       parallelism: 2,
-      mode: "parallel"
+      mode: "parallel",
+      selector: "shellgei-score"
     });
 
     const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
 
-    expect(result.selector.name).toBe("best-score-wins");
+    expect(result.selector).toEqual(
+      expect.objectContaining({
+        reason: expect.any(String),
+        selectedCandidateId: expect.any(String),
+        score: expect.any(Object),
+        metrics: expect.any(Object)
+      })
+    );
     expect(logContent.selector).toEqual(
       expect.objectContaining({
-        name: "best-score-wins",
-        selectedCandidateId: expect.any(String),
-        metrics: expect.objectContaining({
-          totalScore: expect.any(Number),
-          shellgeiScore: expect.any(Number),
-          rubricBreakdown: expect.any(Object)
-        })
+        name: "shellgei-score",
+        reason: expect.any(String),
+        score: expect.any(Object),
+        metrics: expect.any(Object)
       })
     );
     expect(logContent.candidates[0].shellgeiScore).toEqual(
@@ -98,7 +141,7 @@ describe("solveProblem", () => {
     );
   });
 
-  it("preserves assigned variants in the solve result and log", async () => {
+  it("preserves assigned variants in solve result and log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
 
@@ -109,7 +152,7 @@ describe("solveProblem", () => {
         async generateCommand() {
           return {
             command: "printf '123\\n'",
-            explanation: "Return the expected output."
+            explanation: "Return expected output."
           };
         }
       },
@@ -136,5 +179,39 @@ describe("solveProblem", () => {
         approach: expect.any(String)
       })
     );
+  });
+
+  it("keeps final formatted output while reporting session phases", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    const stderrWrite = vi.fn();
+    const stdoutWrite = vi.fn();
+    const reporter = createProgressReporter("plain", stderrWrite);
+
+    const result = await solveProblem({
+      problemInput: "print 7",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "awk 'BEGIN{print 7}'",
+            explanation: "print 7"
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir,
+      onProgress: reporter
+    });
+
+    stdoutWrite(`${formatResult(result)}\n`);
+
+    expect(stderrWrite.mock.calls.map(([line]) => line)).toContain(
+      "[progress] phase 7/7 completed: Solve completed.\n"
+    );
+    expect(stdoutWrite.mock.calls[0][0]).toContain("COMMAND:");
+    expect(stdoutWrite.mock.calls[0][0]).toContain("awk");
   });
 });

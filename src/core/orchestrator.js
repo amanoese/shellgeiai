@@ -1,5 +1,5 @@
 import { isSafeCommand } from "../safety/checker.js";
-import { reportSolveProgress } from "./progress.js";
+import { reportSessionPhase, reportSolveProgress } from "./progress.js";
 import { executeWorkerTask } from "./workerTaskExecutor.js";
 
 function buildJudgeInput(command, runResult, problem) {
@@ -19,8 +19,9 @@ export async function runSolveOrchestrator(session) {
   const queue = createWorkerTaskQueue(session.plan.workerTasks);
   const taskOrder = new Map(session.plan.workerTasks.map((task, index) => [task.workerId, index]));
   const concurrency = calculateWorkerConcurrency(session.plan.workerTasks.length, session.plan.parallelism);
-  const results = [];
-  reportSolveProgress(session, {
+const results = [];
+reportSessionPhase(session, "executing", "Running worker tasks.");
+reportSolveProgress(session, {
     type: "session-started",
     parallelism: session.plan.parallelism,
     workerCount: session.plan.workerTasks.length

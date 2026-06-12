@@ -1,8 +1,9 @@
 import { getFallbackReason } from "../planner/plannerFallback.js";
 import { llmPlanner } from "../planner/llmPlanner.js";
-import { buildRuleBasedPlan } from "../planner/ruleBasedPlanner.js";
 import { normalizePlannerResult } from "../planner/plannerSchema.js";
+import { buildRuleBasedPlan } from "../planner/ruleBasedPlanner.js";
 import { buildPlannerTelemetry } from "../planner/plannerTelemetry.js";
+import { seedToolSuggestions } from "../planner/toolSuggestionSeeder.js";
 
 function withPlannerTelemetry(plan, telemetry) {
   return {
@@ -16,10 +17,16 @@ function withPlannerTelemetry(plan, telemetry) {
 
 export async function createExecutionPlan(session) {
   const primaryProvider = session.plannerProvider ?? llmPlanner;
+  const plannerSession = {
+    ...session,
+    plannerInputs: {
+      seededToolSuggestions: seedToolSuggestions(session.problem?.problemText ?? "")
+    }
+  };
 
   try {
-    const rawPlan = await primaryProvider.buildPlan(session);
-    const normalizedPlan = normalizePlannerResult(rawPlan, session, {
+    const rawPlan = await primaryProvider.buildPlan(plannerSession);
+    const normalizedPlan = normalizePlannerResult(rawPlan, plannerSession, {
       provider: primaryProvider.name ?? "llm",
       attemptedProvider: primaryProvider.name ?? "llm",
       promptVersion: rawPlan?.promptVersion ?? null,
@@ -32,7 +39,7 @@ export async function createExecutionPlan(session) {
       return normalizedPlan;
     }
 
-    return withPlannerTelemetry(buildRuleBasedPlan(session), {
+    return withPlannerTelemetry(buildRuleBasedPlan(plannerSession), {
       attemptedProvider: primaryProvider.name ?? "llm",
       fallbackReason,
       promptVersion: rawPlan?.promptVersion ?? null,
@@ -40,7 +47,7 @@ export async function createExecutionPlan(session) {
       rawResponse: rawPlan?.rawResponse ?? null
     });
   } catch (error) {
-    return withPlannerTelemetry(buildRuleBasedPlan(session), {
+    return withPlannerTelemetry(buildRuleBasedPlan(plannerSession), {
       attemptedProvider: primaryProvider.name ?? "llm",
       fallbackReason: getFallbackReason(null, error)
     });

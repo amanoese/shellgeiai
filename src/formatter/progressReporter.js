@@ -5,6 +5,8 @@ const BAR_COUNT_ORDER = ["running", "planning", "judging", "passed", "failed", "
 
 function formatPlainProgressEvent(event) {
   switch (event.type) {
+    case "session-phase":
+      return `[progress] phase ${event.phaseIndex ?? 0}/${event.phaseCount ?? 0} ${event.phase ?? "unknown"}: ${event.message ?? "(no message)"}`;
     case "session-started":
       return `[progress] session started: workers=${event.workerCount ?? 0}, parallelism=${event.parallelism ?? 1}`;
     case "worker-started":
@@ -44,53 +46,36 @@ function createPlainReporter(write) {
   });
 }
 
-function createBarReporter(write) {
-  const state = {
-    totalWorkers: 0,
-    selectedCandidateId: null,
-    stopReason: null,
-    workers: new Map()
-  };
-  const logUpdate = createLogUpdate(createProgressStream(write), {
-    showCursor: false
-  });
-
-  const reporter = (event) => {
-    updateBarState(state, event);
-    logUpdate(renderBarFrame(state));
-  };
-
-  reporter.cleanup = () => {
-    logUpdate.clear();
-    logUpdate.done();
-  };
-
-  return reporter;
-}
-
-function createProgressStream(write) {
+function createBarState() {
   return {
-    isTTY: true,
-    columns: process.stderr.columns,
-    rows: process.stderr.rows,
-    write(output) {
-      write(output);
-    }
+    totalWorkers: 0,
+    workers: new Map(),
+    stopReason: null,
+    selectedCandidateId: null,
+    sessionPhase: "initializing",
+    sessionPhaseIndex: 1,
+    sessionPhaseCount: 7,
+    sessionPhaseMessage: ""
   };
 }
 
 function updateBarState(state, event) {
   switch (event.type) {
+    case "session-phase":
+      state.sessionPhase = event.phase ?? state.sessionPhase;
+      state.sessionPhaseIndex = event.phaseIndex ?? state.sessionPhaseIndex;
+      state.sessionPhaseCount = event.phaseCount ?? state.sessionPhaseCount;
+      state.sessionPhaseMessage = event.message ?? "";
+      return;
     case "session-started":
       state.totalWorkers = event.workerCount ?? state.totalWorkers;
       return;
-    case "worker-started":
-      {
-        const worker = ensureWorkerState(state, event.workerId);
-        worker.strategy = event.strategy ?? "default";
-        worker.maxAttempts = Math.max(1, event.maxAttempts ?? worker.maxAttempts ?? 1);
-      }
+    case "worker-started": {
+      const worker = ensureWorkerState(state, event.workerId);
+      worker.strategy = event.strategy ?? "default";
+      worker.maxAttempts = Math.max(1, event.maxAttempts ?? worker.maxAttempts ?? 1);
       return;
+    }
     case "worker-state": {
       const worker = ensureWorkerState(state, event.workerId);
       worker.state = event.state ?? "idle";
@@ -149,29 +134,33 @@ function renderBarFrame(state) {
   const totalWorkers = Math.max(state.totalWorkers, workers.length);
   const completedWorkers = workers.filter((worker) => worker.outcome != null).length;
   const counts = buildStateCounts(workers);
-  const lines = [];
+  const lines = [
+    `Solve ${formatProgressBar(state.sessionPhaseIndex, state.sessionPhaseCount)} ${state.sessionPhaseIndex}/${state.sessionPhaseCount} ${state.sessionPhase}`
+  ];
 
-  lines.push(
-    `Workers ${formatProgressBar(completedWorkers, totalWorkers)} ${completedWorkers}/${totalWorkers} done | ${formatCounts(
-      counts
-    )}`
-  );
+  if (state.sessionPhaseMessage) {
+    lines.push(`message: ${state.sessionPhaseMessage}`);
+  }
 
-  const workerLines = workers
-    .slice()
-    .sort((left, right) => {
-      const priorityDiff = getWorkerDisplayPriority(left) - getWorkerDisplayPriority(right);
-      return priorityDiff !== 0 ? priorityDiff : left.workerId.localeCompare(right.workerId);
-    })
-    .map(formatWorkerLine)
-    .filter(Boolean);
-
-  lines.push(...workerLines);
+  if (state.sessionPhase === "executing") {
+    lines.push(
+      `Workers ${formatProgressBar(completedWorkers, totalWorkers)} ${completedWorkers}/${totalWorkers} done | ${formatCounts(counts)}`
+    );
+    lines.push(
+      ...workers
+        .slice()
+        .sort((left, right) => {
+          const priorityDiff = getWorkerDisplayPriority(left) - getWorkerDisplayPriority(right);
+          return priorityDiff !== 0 ? priorityDiff : left.workerId.localeCompare(right.workerId);
+        })
+        .map(formatWorkerLine)
+        .filter(Boolean)
+    );
+  }
 
   if (state.stopReason) {
     lines.push(`stop: ${state.stopReason}`);
   }
-
   if (state.selectedCandidateId) {
     lines.push(`selected: ${state.selectedCandidateId}`);
   }
@@ -180,12 +169,12 @@ function renderBarFrame(state) {
 }
 
 function buildStateCounts(workers) {
-  const counts = Object.fromEntries(BAR_COUNT_ORDER.map((state) => [state, 0]));
+  const counts = Object.fromEntries(BAR_COUNT_ORDER.map((status) => [status, 0]));
 
   for (const worker of workers) {
-    const state = worker.outcome ?? worker.state;
-    if (state in counts) {
-      counts[state] += 1;
+    const status = worker.outcome ?? worker.state;
+    if (status in counts) {
+      counts[status] += 1;
     }
   }
 
@@ -193,7 +182,7 @@ function buildStateCounts(workers) {
 }
 
 function formatCounts(counts) {
-  return BAR_COUNT_ORDER.map((state) => `${state}:${counts[state] ?? 0}`).join(" ");
+  return BAR_COUNT_ORDER.map((status) => `${status}:${counts[status] ?? 0}`).join(" ");
 }
 
 function getWorkerDisplayPriority(worker) {
@@ -216,44 +205,13 @@ function getWorkerDisplayPriority(worker) {
 }
 
 function formatWorkerLine(worker) {
-  const status = getWorkerStatus(worker);
   const attemptText = `attempt(${getWorkerAttemptCount(worker)}/${worker.maxAttempts ?? 1})`;
-  return `${worker.workerId} ${formatWorkerProgressBar(worker)} ${status}: ${attemptText}`;
-}
-
-function formatProgressBar(completedWorkers, totalWorkers) {
-  if (totalWorkers <= 0) {
-    return `[${".".repeat(BAR_WIDTH)}]`;
-  }
-
-  const filledCount = Math.min(BAR_WIDTH, Math.round((completedWorkers / totalWorkers) * BAR_WIDTH));
-  const emptyCount = Math.max(0, BAR_WIDTH - filledCount);
-  return `[${"#".repeat(filledCount)}${"-".repeat(emptyCount)}]`;
-}
-
-function formatWorkerProgressBar(worker) {
-  const maxAttempts = Math.max(1, worker.maxAttempts ?? 1);
-  const progressFraction =
-    worker.outcome != null
-      ? 1
-      : Math.min(1, Math.max(0, getWorkerAttemptCount(worker) / maxAttempts));
-  const filledCount = Math.min(BAR_WIDTH, Math.round(progressFraction * BAR_WIDTH));
-  const emptyCount = Math.max(0, BAR_WIDTH - filledCount);
-
-  return `[${"#".repeat(filledCount)}${"-".repeat(emptyCount)}]`;
+  return `${worker.workerId} ${formatWorkerProgressBar(worker)} ${getWorkerStatus(worker)}: ${attemptText}`;
 }
 
 function getWorkerStatus(worker) {
-  if (worker.outcome === "passed") {
-    return "passed";
-  }
-
-  if (worker.outcome === "failed") {
-    return "failed";
-  }
-
-  if (worker.outcome === "stopped") {
-    return "stopped";
+  if (worker.outcome != null) {
+    return worker.outcome;
   }
 
   return worker.state ?? "idle";
@@ -263,12 +221,61 @@ function getWorkerAttemptCount(worker) {
   if (worker.iteration > 0) {
     return worker.iteration;
   }
-
   if (worker.state === "planning") {
     return 1;
   }
 
   return 0;
+}
+
+function formatProgressBar(completed, total) {
+  if (total <= 0) {
+    return `[${".".repeat(BAR_WIDTH)}]`;
+  }
+
+  const filledCount = Math.min(BAR_WIDTH, Math.round((completed / total) * BAR_WIDTH));
+  const emptyCount = Math.max(0, BAR_WIDTH - filledCount);
+  return `[${"#".repeat(filledCount)}${"-".repeat(emptyCount)}]`;
+}
+
+function formatWorkerProgressBar(worker) {
+  const maxAttempts = Math.max(1, worker.maxAttempts ?? 1);
+  const progressFraction =
+    worker.outcome != null ? 1 : Math.min(1, Math.max(0, getWorkerAttemptCount(worker) / maxAttempts));
+  const filledCount = Math.min(BAR_WIDTH, Math.round(progressFraction * BAR_WIDTH));
+  const emptyCount = Math.max(0, BAR_WIDTH - filledCount);
+
+  return `[${"#".repeat(filledCount)}${"-".repeat(emptyCount)}]`;
+}
+
+function normalizeBarStream(write, options = {}) {
+  if (write && typeof write === "object" && typeof write.write === "function") {
+    return write;
+  }
+
+  const fallbackStream = options.stream ?? process.stderr;
+  const writeFn = typeof write === "function" ? write : fallbackStream.write.bind(fallbackStream);
+
+  return {
+    write: writeFn,
+    isTTY: options.isTTY ?? fallbackStream.isTTY,
+    columns: options.columns ?? fallbackStream.columns,
+    rows: options.rows ?? fallbackStream.rows
+  };
+}
+
+function createBarReporter(write, options = {}) {
+  const state = createBarState();
+  const logUpdate = createLogUpdate(normalizeBarStream(write, options), { showCursor: false });
+  const reporter = (event) => {
+    updateBarState(state, event);
+    logUpdate(renderBarFrame(state));
+  };
+  reporter.cleanup = () => {
+    logUpdate.clear();
+    logUpdate.done();
+  };
+  return reporter;
 }
 
 export function createProgressReporter(mode, write = process.stderr.write.bind(process.stderr), options = {}) {
@@ -282,9 +289,8 @@ export function createProgressReporter(mode, write = process.stderr.write.bind(p
   if (effectiveMode === "jsonl") {
     return createJsonlReporter(write);
   }
-
   if (effectiveMode === "bar") {
-    return createBarReporter(write);
+    return createBarReporter(write, options);
   }
 
   return createPlainReporter(write);

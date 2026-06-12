@@ -1,8 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
+
 import { buildLlmPlan } from "../src/planner/llmPlanner.js";
+import { buildPlannerUserPrompt } from "../src/planner/plannerPrompt.js";
 
 describe("buildLlmPlan", () => {
-  it("uses structured outputs and returns parsed variants", async () => {
+  it("includes rubric guidance and seeded tool suggestions in the prompt", () => {
+    const prompt = buildPlannerUserPrompt({
+      problem: {
+        raw: "1から100までの素数を出力してください",
+        problemText: "1から100までの素数を出力してください"
+      },
+      plannerInputs: {
+        seededToolSuggestions: [
+          {
+            summary: "既存 utility を先に検討する",
+            rationale: "短く安全な候補が見つかりやすい",
+            suggestedTools: ["factor", "seq"]
+          }
+        ]
+      },
+      mode: "parallel",
+      parallelism: 3,
+      maxIterations: 2
+    });
+
+    expect(prompt).toContain("Correctness and executability over surface cleverness");
+    expect(prompt).toContain("Prefer concise stdin/stdout-oriented Unix composition");
+    expect(prompt).toContain("Seeded tool suggestions:");
+    expect(prompt).toContain('"suggestedTools":["factor","seq"]');
+    expect(prompt).toContain("toolSuggestions");
+  });
+
+  it("uses structured outputs and returns parsed variants with tool suggestions", async () => {
     const parse = vi.fn(async () => ({
       output_parsed: {
         variants: [
@@ -11,10 +40,17 @@ describe("buildLlmPlan", () => {
             label: "factor-first",
             approach: "external-utility",
             toolBias: ["seq", "factor", "awk"],
-            intent: "Check whether factor expresses the predicate cleanly.",
+            intent: "Check whether a standard utility expresses the predicate cleanly.",
             constraints: ["Prefer concise one-liners"],
             avoid: ["double parsing"],
-            explorationHint: "Try seq + factor before custom logic."
+            explorationHint: "Try utility-oriented decomposition first.",
+            toolSuggestions: [
+              {
+                summary: "factor を起点に既存 utility を優先する",
+                rationale: "predicate を短く表現しやすい",
+                suggestedTools: ["factor", "seq", "awk"]
+              }
+            ]
           }
         ]
       }
@@ -26,14 +62,20 @@ describe("buildLlmPlan", () => {
           raw: "1から100までの素数を出力してください",
           problemText: "1から100までの素数を出力してください"
         },
+        plannerInputs: {
+          seededToolSuggestions: [
+            {
+              summary: "既存 utility を先に検討する",
+              rationale: "短く安全な候補が見つかりやすい",
+              suggestedTools: ["factor", "seq"]
+            }
+          ]
+        },
         mode: "parallel",
         parallelism: 3,
         maxIterations: 2
       },
-      {
-        apiKey: "test-key",
-        client: { responses: { parse } }
-      }
+      { apiKey: "test-key", client: { responses: { parse } } }
     );
 
     expect(parse).toHaveBeenCalledTimes(1);
@@ -42,6 +84,13 @@ describe("buildLlmPlan", () => {
       text: { format: expect.any(Object) }
     });
     expect(plan.variants[0].toolBias).toEqual(["seq", "factor", "awk"]);
+    expect(plan.variants[0].toolSuggestions).toEqual([
+      expect.objectContaining({
+        summary: expect.any(String),
+        rationale: expect.any(String),
+        suggestedTools: ["factor", "seq", "awk"]
+      })
+    ]);
     expect(plan.promptVersion).toBe("2026-06-13-llm-planner-v1");
     expect(plan.rawResponse).toBeNull();
   });
@@ -57,10 +106,7 @@ describe("buildLlmPlan", () => {
           parallelism: 1,
           maxIterations: 1
         },
-        {
-          apiKey: "test-key",
-          client: { responses: { parse } }
-        }
+        { apiKey: "test-key", client: { responses: { parse } } }
       )
     ).rejects.toThrow("The planner model returned no parsed structured output.");
   });

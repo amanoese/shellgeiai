@@ -1,28 +1,32 @@
 import { buildStrategyProfile, getStrategyName } from "./strategyCatalog.js";
+import { seedToolSuggestions } from "./toolSuggestionSeeder.js";
 
-function buildVariants(problemText) {
+function buildVariants(problemText, seededSuggestions) {
   const text = String(problemText ?? "");
   const lowerText = text.toLowerCase();
+  const sharedSuggestions = seededSuggestions.slice(0, 2);
   const variants = [
     {
       variantId: "variant-awk",
       label: "awk-first",
       approach: "awk-record-pass",
       toolBias: ["awk"],
-      intent: "Start with a compact one-pass transform before adding extra stages.",
+      intent: "Start with compact one-pass transform before adding extra stages.",
       constraints: ["Prefer concise one-liners", "Keep stdin/stdout flow natural"],
       avoid: ["multiple passes", "temporary files"],
-      explorationHint: "Try a single awk-driven pass before mixing more tools."
+      explorationHint: "Try single awk-driven pass before mixing more tools.",
+      toolSuggestions: sharedSuggestions
     },
     {
       variantId: "variant-pipeline",
       label: "pipeline-first",
       approach: "filter-pipeline",
       toolBias: ["grep", "sed", "tr", "paste"],
-      intent: "Decompose the task into a stream-oriented pipeline if that reads more clearly.",
+      intent: "Decompose the task into a stream-oriented pipeline if it reads more clearly.",
       constraints: ["Keep each stage purposeful", "Prefer standard text filters"],
       avoid: ["embedded scripts"],
-      explorationHint: "Prefer a natural stdin/stdout pipeline with small standard tools."
+      explorationHint: "Prefer a natural stdin/stdout pipeline with small standard tools.",
+      toolSuggestions: sharedSuggestions
     },
     {
       variantId: "variant-loop",
@@ -30,9 +34,10 @@ function buildVariants(problemText) {
       approach: "shell-loop-or-seq",
       toolBias: ["seq", "sh", "xargs"],
       intent: "Treat the problem as enumeration plus filtering when the domain is naturally generated.",
-      constraints: ["Generate only the data you need", "Keep the loop compact"],
+      constraints: ["Generate only data you need", "Keep the loop compact"],
       avoid: ["awk-only contortions"],
-      explorationHint: "Start from sequence generation and prune, rather than forcing one giant expression."
+      explorationHint: "Start with sequence generation, then prune, before forcing one giant expression.",
+      toolSuggestions: sharedSuggestions
     },
     {
       variantId: "variant-normalize",
@@ -42,7 +47,8 @@ function buildVariants(problemText) {
       intent: "Reshape the stream early when normalized records make later logic simpler.",
       constraints: ["Stabilize separators before complex logic", "Prefer reproducible text shaping"],
       avoid: ["late cleanup", "format drift"],
-      explorationHint: "Normalize separators or line shape first if the raw stream is noisy."
+      explorationHint: "Normalize separators or line shape first if the raw stream is noisy.",
+      toolSuggestions: sharedSuggestions
     }
   ];
 
@@ -55,7 +61,15 @@ function buildVariants(problemText) {
       intent: "Check whether existing Unix utilities express the predicate more cleanly than custom logic.",
       constraints: ["Lean on standard tools when they fit", "Keep the predicate transparent"],
       avoid: ["awk-only contortions", "double parsing"],
-      explorationHint: "Consider seq + factor before custom primality logic."
+      explorationHint: "Consider seq + factor before custom primality logic.",
+      toolSuggestions: [
+        {
+          summary: "既存 utility で判定を表現できるかを先に試す",
+          rationale: "標準コマンドがハマると短く shell-gei らしい解法になりやすい",
+          suggestedTools: ["factor", "seq", "awk"]
+        },
+        ...sharedSuggestions
+      ]
     });
   }
 
@@ -64,7 +78,10 @@ function buildVariants(problemText) {
 
 export function buildRuleBasedPlan(session) {
   const workerCount = Math.max(1, session.parallelism ?? 1);
-  const variants = buildVariants(session.problem?.problemText ?? "");
+  const seededSuggestions =
+    session.plannerInputs?.seededToolSuggestions ??
+    seedToolSuggestions(session.problem?.problemText ?? "");
+  const variants = buildVariants(session.problem?.problemText ?? "", seededSuggestions);
 
   return {
     mode: session.mode ?? "single",

@@ -17,6 +17,13 @@
  */
 
 /**
+ * @typedef {Object} ToolSuggestion
+ * @property {string} summary
+ * @property {string} rationale
+ * @property {string[]} suggestedTools
+ */
+
+/**
  * @typedef {Object} PlanVariant
  * @property {string} variantId
  * @property {string} label
@@ -26,6 +33,7 @@
  * @property {string[]} constraints
  * @property {string[]} avoid
  * @property {string} explorationHint
+ * @property {ToolSuggestion[]} [toolSuggestions]
  */
 
 /**
@@ -35,6 +43,11 @@
  * @property {{name: string, focus: string, retryHint: string, rubricFocus: string[]}} strategyProfile
  * @property {PlanVariant} [assignedVariant]
  * @property {number} maxAttempts
+ */
+
+/**
+ * @typedef {Object} PlannerInputs
+ * @property {ToolSuggestion[]} seededToolSuggestions
  */
 
 /**
@@ -59,16 +72,6 @@
  * @property {string} problemText
  * @property {string} [expectedOutput]
  * @property {{format: string}} [metadata]
- */
-
-/**
- * @typedef {Object} FinalCheck
- * @property {boolean} passed
- * @property {number} iterations
- * @property {string} engine
- * @property {string} reason
- * @property {import("../judge/Judge.js").JudgeScore} [score]
- * @property {{disqualified: boolean, stderrAllowed: boolean, expectedOutputMatched: boolean}} [gate]
  */
 
 /**
@@ -113,6 +116,7 @@
  * @property {string} [sandboxPolicyPath]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: unknown): Promise<unknown>}} [plannerProvider]
+ * @property {PlannerInputs} [plannerInputs]
  */
 
 /**

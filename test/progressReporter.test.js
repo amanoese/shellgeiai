@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const logUpdateMocks = vi.hoisted(() => {
   const logUpdate = vi.fn();
@@ -18,7 +18,14 @@ vi.mock("log-update", () => ({
 import { createProgressReporter } from "../src/formatter/progressReporter.js";
 
 describe("createProgressReporter", () => {
-  it("formats plain progress messages for stderr output", () => {
+  beforeEach(() => {
+    logUpdateMocks.createLogUpdate.mockClear();
+    logUpdateMocks.logUpdate.mockClear();
+    logUpdateMocks.logUpdate.clear.mockClear();
+    logUpdateMocks.logUpdate.done.mockClear();
+  });
+
+  it("formats plain progress messages stderr output", () => {
     const write = vi.fn();
     const reporter = createProgressReporter("plain", write);
 
@@ -30,6 +37,24 @@ describe("createProgressReporter", () => {
     });
 
     expect(write).toHaveBeenCalledWith("[progress] worker-2 state=running\n");
+  });
+
+  it("formats session-phase events in plain mode", () => {
+    const write = vi.fn();
+    const reporter = createProgressReporter("plain", write);
+
+    reporter({
+      type: "session-phase",
+      sessionId: "session-1",
+      phase: "planning",
+      phaseIndex: 3,
+      phaseCount: 7,
+      message: "Building execution plan."
+    });
+
+    expect(write).toHaveBeenCalledWith(
+      "[progress] phase 3/7 planning: Building execution plan.\n"
+    );
   });
 
   it("serializes jsonl progress messages", () => {
@@ -53,10 +78,87 @@ describe("createProgressReporter", () => {
     );
   });
 
-  it("renders bar progress snapshots and clears them on cleanup", () => {
+  it("renders main solve phase bar and only shows worker details during executing", () => {
     const write = vi.fn();
     const reporter = createProgressReporter("bar", write, { isTTY: true });
 
+    reporter({
+      type: "session-phase",
+      sessionId: "session-4",
+      phase: "planning",
+      phaseIndex: 3,
+      phaseCount: 7,
+      message: "Building execution plan."
+    });
+
+    let frame = logUpdateMocks.logUpdate.mock.calls.at(-1)[0];
+    expect(frame).toContain("Solve [");
+    expect(frame).toContain("3/7 planning");
+    expect(frame).toContain("message: Building execution plan.");
+    expect(frame).not.toContain("Workers [");
+
+    reporter({
+      type: "session-phase",
+      sessionId: "session-4",
+      phase: "executing",
+      phaseIndex: 4,
+      phaseCount: 7,
+      message: "Running worker tasks."
+    });
+    reporter({
+      type: "session-started",
+      sessionId: "session-4",
+      parallelism: 2,
+      workerCount: 4
+    });
+    reporter({
+      type: "worker-started",
+      sessionId: "session-4",
+      workerId: "worker-1",
+      strategy: "default",
+      maxAttempts: 5
+    });
+    reporter({
+      type: "worker-state",
+      sessionId: "session-4",
+      workerId: "worker-1",
+      state: "running"
+    });
+    reporter({
+      type: "attempt-started",
+      sessionId: "session-4",
+      workerId: "worker-1",
+      iteration: 1,
+      command: "awk 'BEGIN{print 1}'"
+    });
+
+    frame = logUpdateMocks.logUpdate.mock.calls.at(-1)[0];
+    expect(frame).toContain("4/7 executing");
+    expect(frame).toContain("Workers [");
+    expect(frame).toContain("worker-1 [");
+  });
+
+  it("uses a writable stream for bar mode even when write callback is omitted", () => {
+    createProgressReporter("bar", undefined, { isTTY: true });
+
+    expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ write: expect.any(Function) }),
+      expect.objectContaining({ showCursor: false })
+    );
+  });
+
+  it("renders bar progress snapshots clears them on cleanup", () => {
+    const write = vi.fn();
+    const reporter = createProgressReporter("bar", write, { isTTY: true });
+
+    reporter({
+      type: "session-phase",
+      sessionId: "session-4",
+      phase: "executing",
+      phaseIndex: 4,
+      phaseCount: 7,
+      message: "Running worker tasks."
+    });
     reporter({
       type: "session-started",
       sessionId: "session-4",
@@ -93,14 +195,8 @@ describe("createProgressReporter", () => {
       type: "worker-started",
       sessionId: "session-4",
       workerId: "worker-2",
-      strategy: "awk-first",
+      strategy: "default",
       maxAttempts: 5
-    });
-    reporter({
-      type: "worker-state",
-      sessionId: "session-4",
-      workerId: "worker-2",
-      state: "planning"
     });
     reporter({
       type: "attempt-started",
@@ -154,31 +250,22 @@ describe("createProgressReporter", () => {
       attemptCount: 1,
       candidateCount: 1,
       failedWorkerCount: 0,
-      stopReason: "Stopped after the first passing candidate was produced.",
+      stopReason: "Stopped after first passing candidate was produced.",
       selectedCandidateId: "worker-1"
     });
 
     expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledTimes(1);
     expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        isTTY: true
-      }),
-      expect.objectContaining({
-        showCursor: false
-      })
+      expect.objectContaining({ write }),
+      expect.objectContaining({ showCursor: false })
     );
     const lastFrame = logUpdateMocks.logUpdate.mock.calls.at(-1)[0];
+    expect(lastFrame).toContain("Solve [");
     expect(lastFrame).toContain("Workers [");
     expect(lastFrame).toContain("1/4 done");
     expect(lastFrame).toContain("running:1");
     expect(lastFrame).toContain("planning:1");
     expect(lastFrame).toContain("passed:1");
-    expect(lastFrame).toContain("worker-1 [");
-    expect(lastFrame).toContain("running: attempt(1/5)");
-    expect(lastFrame).toContain("worker-2 [");
-    expect(lastFrame).toContain("running: attempt(1/5)");
-    expect(lastFrame).toContain("worker-3 [");
-    expect(lastFrame).toContain("planning: attempt(1/5)");
     expect(lastFrame).toContain("worker-1 [############] passed: attempt(2/5)");
     expect(lastFrame).toContain("selected: worker-1");
 
@@ -188,7 +275,7 @@ describe("createProgressReporter", () => {
     expect(logUpdateMocks.logUpdate.done).toHaveBeenCalledTimes(1);
   });
 
-  it("falls back to plain output when bar mode is used without a TTY", () => {
+  it("falls back to plain output when bar mode is used without TTY", () => {
     const write = vi.fn();
     const reporter = createProgressReporter("bar", write, { isTTY: false });
 
@@ -202,7 +289,7 @@ describe("createProgressReporter", () => {
     expect(write).toHaveBeenCalledWith("[progress] worker-1 state=running\n");
   });
 
-  it("includes failed worker counts in the plain session summary", () => {
+  it("includes failed worker counts in plain session summary", () => {
     const write = vi.fn();
     const reporter = createProgressReporter("plain", write);
 
@@ -212,11 +299,11 @@ describe("createProgressReporter", () => {
       attemptCount: 4,
       candidateCount: 2,
       failedWorkerCount: 1,
-      stopReason: "Stopped after the first passing candidate was produced."
+      stopReason: "Stopped after first passing candidate produced."
     });
 
     expect(write).toHaveBeenCalledWith(
-      "[progress] session finished: attempts=4, candidates=2, failed-workers=1, stop=Stopped after the first passing candidate was produced.\n"
+      "[progress] session finished: attempts=4, candidates=2, failed-workers=1, stop=Stopped after first passing candidate produced.\n"
     );
   });
 

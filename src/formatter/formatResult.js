@@ -18,18 +18,24 @@ function formatWorkerVariantLines(result) {
     const candidate = candidates.find(
       (entry) => entry.workerId === task.workerId || entry.candidateId === task.workerId
     );
+    const score =
+      candidate?.shellgeiScore?.value ??
+      candidate?.finalCheck?.score?.value ??
+      candidate?.score?.value ??
+      0;
+    const toolBias = task.assignedVariant?.toolBias ?? [];
 
     return [
       task.workerId,
-      task.assignedVariant?.label ?? "(no-variant)",
-      task.assignedVariant?.approach ?? "(no-approach)",
+      `score: ${score}`,
+      `[${toolBias.join(",")}]`,
       candidate?.command ?? "(no-command)"
-    ].join(" | ");
+    ].join(" # ");
   });
 }
 
 export function formatResult(result) {
-  const status = result.finalCheck.passed ? "passed" : "failed";
+  const status = result.finalCheck?.passed ? "passed" : "failed";
   const selectedScore = result.selector?.score;
   const selectedCandidate = result.candidates?.find(
     (candidate) => candidate.candidateId === result.selector?.selectedCandidateId
@@ -49,22 +55,24 @@ export function formatResult(result) {
     "",
     "CHECK:",
     `status: ${status}`,
-    `iterations: ${result.finalCheck.iterations}`,
-    `engine: ${result.finalCheck.engine}`,
-    `workers: ${result.candidates?.length ?? 0}`,
+    `iterations: ${result.finalCheck?.iterations ?? 0}`,
+    `engine: ${result.finalCheck?.engine ?? "(unknown)"}`,
+    `workers: ${result.plan?.workerTasks?.length ?? 0}`,
     `stop-reason: ${result.stopReason ?? "(none)"}`,
-    `selector: ${result.selector?.name ?? "first-pass-wins"}`,
+    `selector: ${result.selector?.name ?? "(none)"}`,
     `selected-candidate: ${result.selector?.selectedCandidateId ?? "(none)"}`,
     `selected-score: ${selectedScore?.value ?? 0}`,
     `score-breakdown: ${formatJudgeBreakdown(selectedScore)}`,
     `selected-shellgei-score: ${selectedShellgeiScore?.value ?? 0}`,
     `shellgei-breakdown: ${formatShellgeiBreakdown(selectedShellgeiScore)}`,
-    `shellgei-notes: ${selectedShellgeiScore?.notes?.join("; ") || "(none)"}`,
-    `shellgei-penalties: ${selectedShellgeiScore?.penalties?.join("; ") || "(none)"}`,
+    `shellgei-notes: ${(selectedShellgeiScore?.notes ?? []).join(", ") || "(none)"}`,
+    `shellgei-penalties: ${(selectedShellgeiScore?.penalties ?? []).join(", ") || "(none)"}`,
     `selector-reason: ${result.selector?.reason ?? "(none)"}`,
-    `selector-metrics: total=${selectorMetrics?.totalScore ?? 0}, shellgei=${selectorMetrics?.shellgeiScore ?? 0}, judge=${selectorMetrics?.judgeScore ?? 0}, consensus=${selectorMetrics?.outputConsensus ?? 0}, stdout=${selectorMetrics?.stdoutConsistency ?? 0}, duration=${selectorMetrics?.totalDurationMs ?? 0}, iterations=${selectorMetrics?.iterationCount ?? 0}, command-length=${selectorMetrics?.commandLength ?? 0}, explanation-length=${selectorMetrics?.explanationLength ?? 0}`,
-    `planner-provider: ${plannerInfo?.provider ?? "(unknown)"}`,
-    `planner-attempted-provider: ${plannerInfo?.attemptedProvider ?? "(unknown)"}`,
+    selectorMetrics
+      ? `selector-metrics: total=${selectorMetrics.totalScore ?? 0}, shellgei=${selectorMetrics.shellgeiScore ?? 0}, judge=${selectorMetrics.judgeScore ?? 0}, consensus=${selectorMetrics.outputConsensus ?? 0}, stdout=${selectorMetrics.stdoutConsistency ?? 0}, duration=${selectorMetrics.totalDurationMs ?? 0}, iterations=${selectorMetrics.iterationCount ?? 0}, command-length=${selectorMetrics.commandLength ?? 0}, explanation-length=${selectorMetrics.explanationLength ?? 0}`
+      : "selector-metrics: (none)",
+    `planner-provider: ${plannerInfo?.provider ?? "(none)"}`,
+    `planner-attempted-provider: ${plannerInfo?.attemptedProvider ?? "(none)"}`,
     `planner-fallback-reason: ${plannerInfo?.fallbackReason ?? "(none)"}`,
     `passing-candidates: ${passingCandidates.length}`,
     "",
@@ -73,7 +81,7 @@ export function formatResult(result) {
     "",
     "RUNNER:",
     `name: ${result.runner?.name ?? "(unknown)"}`,
-    `sandbox: ${JSON.stringify(result.runner?.sandboxPolicy ?? {})}`,
+    `sandbox: ${JSON.stringify(result.runner?.sandboxPolicy ?? null)}`,
     "",
     "LOG:",
     result.logPath ?? "(none)"

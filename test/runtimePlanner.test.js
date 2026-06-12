@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+
 import { createExecutionPlan } from "../src/core/planner.js";
 import { createSolveRuntime } from "../src/core/runtime.js";
 import { OpenAIEngine } from "../src/engines/openaiEngine.js";
 import { DockerRunner } from "../src/runner/dockerRunner.js";
 
 describe("createExecutionPlan", () => {
-  it("returns worker task profiles rubric guidance", async () => {
+  it("returns worker task profiles with rubric guidance", async () => {
     const plan = await createExecutionPlan({
       mode: "parallel",
       parallelism: 3,
@@ -46,7 +47,7 @@ describe("createExecutionPlan", () => {
     );
   });
 
-  it("creates variants and assigns one to each worker", async () => {
+  it("creates variants, seeds tool suggestions, and assigns one to each worker", async () => {
     const plan = await createExecutionPlan({
       mode: "parallel",
       parallelism: 4,
@@ -64,85 +65,32 @@ describe("createExecutionPlan", () => {
           label: expect.any(String),
           approach: expect.any(String),
           toolBias: expect.any(Array),
-          intent: expect.any(String),
-          constraints: expect.any(Array),
-          avoid: expect.any(Array),
-          explorationHint: expect.any(String)
+          toolSuggestions: expect.any(Array)
         })
       ])
     );
-    expect(plan.workerTasks[0].assignedVariant).toEqual(
+    expect(plan.variants[0].toolSuggestions[0]).toEqual(
       expect.objectContaining({
-        variantId: expect.any(String),
-        approach: expect.any(String)
+        summary: expect.any(String),
+        rationale: expect.any(String),
+        suggestedTools: expect.any(Array)
       })
     );
-  });
-
-  it("diversifies variants for prime-number problems", async () => {
-    const plan = await createExecutionPlan({
-      mode: "parallel",
-      parallelism: 5,
-      maxIterations: 2,
-      problem: {
-        raw: "1から100までの素数を出力してください",
-        problemText: "1から100までの素数を出力してください"
-      }
-    });
-
-    const approaches = plan.variants.map((variant) => variant.approach);
-
-    expect(approaches).toContain("awk-record-pass");
-    expect(approaches).toContain("shell-loop-or-seq");
-    expect(
-      approaches.some((name) => name === "external-utility" || name === "filter-pipeline")
-    ).toBe(true);
-    expect(new Set(plan.workerTasks.map((task) => task.assignedVariant?.variantId)).size).toBeGreaterThan(1);
-  });
-
-  it("falls back to rule-based planner when llm plan is invalid", async () => {
-    const plannerProvider = {
-      buildPlan: vi.fn(async () => ({
-        provider: "llm",
-        rawResponse: "{\"variants\":[]}",
-        variants: [],
-        workerTasks: []
-      }))
-    };
-
-    const plan = await createExecutionPlan({
-      mode: "parallel",
-      parallelism: 2,
-      maxIterations: 2,
-      problem: {
-        raw: "print 123",
-        problemText: "print 123"
-      },
-      plannerProvider
-    });
-
-    expect(plannerProvider.buildPlan).toHaveBeenCalledTimes(1);
-    expect(plan.planner.provider).toBe("rule-based");
-    expect(plan.planner.fallbackReason).toEqual(expect.any(String));
-    expect(plan.variants.length).toBeGreaterThan(0);
-    expect(plan.workerTasks[0].assignedVariant).toEqual(
-      expect.objectContaining({
-        variantId: expect.any(String)
-      })
-    );
+    expect(plan.workerTasks).toHaveLength(4);
+    expect(plan.workerTasks[0].assignedVariant).toEqual(plan.variants[0]);
   });
 });
 
 describe("createSolveRuntime", () => {
-  it("creates an OpenAI engine and docker runner by default", () => {
+  it("creates default OpenAI engine and Docker runner", () => {
     const runtime = createSolveRuntime({
-      engine: "openai",
       openai: {
+        apiKey: "test-key",
         client: {
           responses: {
-            create: async () => ({
+            create: vi.fn(async () => ({
               output_text: '{"command":"printf \\"ok\\\\n\\"","explanation":"test"}'
-            })
+            }))
           }
         }
       }

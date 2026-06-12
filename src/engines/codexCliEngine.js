@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+
 import { commandExists } from "../util/exec.js";
 
 const execFileAsync = promisify(execFile);
@@ -35,8 +36,14 @@ function buildPrompt(context) {
     workerTask?.assignedVariant?.explorationHint
       ? `Exploration hint: ${workerTask.assignedVariant.explorationHint}`
       : "",
+    workerTask?.assignedVariant?.toolSuggestions?.length
+      ? `Variant tool suggestions: ${JSON.stringify(workerTask.assignedVariant.toolSuggestions)}`
+      : "",
     workerTask?.assignedVariant
-      ? "Use the assigned variant as a soft exploration axis rather than a rigid first step."
+      ? "Use assigned variant as a soft exploration axis, not a rigid first step."
+      : "",
+    workerTask?.assignedVariant?.toolSuggestions?.length
+      ? "Use suggestedTools as optional starting points, but choose any safer or better tools if needed."
       : "",
     "Problem:",
     context.problem,
@@ -64,8 +71,8 @@ export class CodexCliEngine {
       cwd: context.workdir,
       env: process.env
     });
-    const command = String(stdout ?? "").trim();
 
+    const command = String(stdout ?? "").trim();
     if (!command) {
       throw new Error("The Codex CLI engine returned an empty command.");
     }

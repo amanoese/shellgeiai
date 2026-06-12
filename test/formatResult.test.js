@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import { formatResult } from "../src/formatter/formatResult.js";
 
 describe("formatResult", () => {
@@ -48,7 +49,10 @@ describe("formatResult", () => {
       },
       runner: {
         name: "local",
-        sandboxPolicy: { networkAccess: "off", filesystemScope: "workspace-write" }
+        sandboxPolicy: {
+          networkAccess: "off",
+          filesystemScope: "workspace-write"
+        }
       },
       stopReason: null,
       logPath: "/tmp/solve.json",
@@ -64,7 +68,8 @@ describe("formatResult", () => {
             assignedVariant: {
               variantId: "variant-awk",
               label: "awk-first",
-              approach: "awk-record-pass"
+              approach: "awk-record-pass",
+              toolBias: ["awk"]
             }
           },
           {
@@ -72,7 +77,8 @@ describe("formatResult", () => {
             assignedVariant: {
               variantId: "variant-factor",
               label: "factor-first",
-              approach: "external-utility"
+              approach: "external-utility",
+              toolBias: ["seq", "factor", "awk"]
             }
           }
         ]
@@ -134,7 +140,7 @@ describe("formatResult", () => {
     expect(output).toContain("shellgei-notes: Uses single awk pass");
     expect(output).toContain("shellgei-penalties: Avoid useless use of cat");
     expect(output).toContain("planner-provider: llm");
-    expect(output).toContain("worker-1 | awk-first | awk-record-pass | awk 'BEGIN{print 42}'");
-    expect(output).toContain("worker-2 | factor-first | external-utility | printf '42\\n'");
+    expect(output).toContain("worker-1 # score: 65 # [awk] # awk 'BEGIN{print 42}'");
+    expect(output).toContain("worker-2 # score: 72 # [seq,factor,awk] # printf '42\\n'");
   });
 });

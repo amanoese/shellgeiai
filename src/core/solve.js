@@ -1,5 +1,6 @@
 import { writeSolveSessionLog } from "../logs/writer.js";
 import { runSolveOrchestrator } from "./orchestrator.js";
+import { reportSessionPhase } from "./progress.js";
 import { scoreShellgeiCandidate } from "./shellgeiScorer.js";
 import { selectSolveOutcome } from "./selector.js";
 import { createSolveSession } from "./solveSession.js";
@@ -11,18 +12,17 @@ export async function solveProblem(options) {
 }
 
 async function finalizeSolve(session, execution) {
+  reportSessionPhase(session, "selecting", "Selecting final candidate.");
+
   const finishedAt = new Date().toISOString();
   const candidates = execution.candidates.map((candidate) =>
     candidate.finalCheck?.passed
       ? {
           ...candidate,
-          shellgeiScore: scoreShellgeiCandidate(candidate, {
-            mode: session.shellgeiScoreMode
-          })
+          shellgeiScore: scoreShellgeiCandidate(candidate, { mode: session.shellgeiScoreMode })
         }
       : candidate
   );
-
   const selection = selectSolveOutcome(candidates, session.selectorName);
   const selectedCandidate = selection.selectedCandidate;
   const finalCheck = selectedCandidate?.finalCheck ?? {
@@ -33,6 +33,7 @@ async function finalizeSolve(session, execution) {
     score: null
   };
 
+  reportSessionPhase(session, "logging", "Writing session log.");
   const { logPath } = await writeSolveSessionLog({
     logsDir: session.logsDir,
     session,
@@ -51,6 +52,7 @@ async function finalizeSolve(session, execution) {
     finalCheck
   });
 
+  reportSessionPhase(session, "completed", "Solve completed.");
   return {
     command: selectedCandidate?.command ?? "",
     output: selectedCandidate?.output ?? "",
