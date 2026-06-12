@@ -127,6 +127,7 @@
  * @property {string} sessionId
  * @property {string} [workerId]
  * @property {string} [strategy]
+ * @property {number} [maxAttempts]
  * @property {"planning" | "running" | "judging" | "stopped" | "idle"} [state]
  * @property {number} [iteration]
  * @property {number} [parallelism]
@@ -164,7 +165,7 @@
  * @property {number} [timeBudgetMs]
  * @property {string} [commandPolicyPath]
  * @property {string} [sandboxPolicyPath]
- * @property {"off" | "plain" | "jsonl"} [progress]
+ * @property {"off" | "plain" | "jsonl" | "bar"} [progress]
  */
 
 /**

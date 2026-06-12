@@ -3,7 +3,7 @@ import { z } from "zod";
 
 const supportedModes = ["single", "parallel"];
 const supportedSelectors = ["first-pass-wins", "best-score-wins"];
-const supportedProgressModes = ["off", "plain", "jsonl"];
+const supportedProgressModes = ["off", "plain", "jsonl", "bar"];
 const defaultRunner = "docker";
 
 const modeOption = new Option("--mode <mode>", "execution mode: single or parallel");
@@ -13,7 +13,7 @@ const timeBudgetOption = new Option("--time-budget <ms>", "overall session time 
 const commandPolicyOption = new Option("--command-policy <path>", "path to a command policy JSON file");
 const sandboxPolicyOption = new Option("--sandbox-policy <path>", "path to a sandbox policy JSON file");
 const runnerOption = new Option("--runner <runner>", "runner to use: local or docker");
-const progressOption = new Option("--progress <mode>", "progress output: off, plain, or jsonl");
+const progressOption = new Option("--progress <mode>", "progress output: off, plain, jsonl, or bar");
 
 const cliOptionsSchema = z.object({
   command: z.literal("solve"),
@@ -341,7 +341,7 @@ export function parseCliOptions(argv) {
     case "sandboxPolicyPath":
       throw new Error("Missing value for --sandbox-policy.");
     case "progress":
-      throw new Error("Invalid --progress value. Use off, plain, or jsonl.");
+      throw new Error("Invalid --progress value. Use off, plain, jsonl, or bar.");
     case "problem":
       throw new Error("Missing <problem> argument.");
     default:

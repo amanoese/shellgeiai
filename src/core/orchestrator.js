@@ -89,7 +89,8 @@ async function runWorkerTask(session, task, control, workerState) {
   reportSolveProgress(session, {
     type: "worker-started",
     workerId: task.workerId,
-    strategy: task.strategy
+    strategy: task.strategy,
+    maxAttempts: task.maxAttempts
   });
 
   for (let iteration = 0; iteration < task.maxAttempts; iteration += 1) {

@@ -71,6 +71,14 @@ describe("parseCliOptions", () => {
     });
   });
 
+  it("parses bar progress options", () => {
+    expect(parseCliOptions(["solve", "sum", "--progress", "bar"])).toMatchObject({
+      command: "solve",
+      problem: "sum",
+      progress: "bar"
+    });
+  });
+
   it("rejects an invalid engine", () => {
     expect(() => parseCliOptions(["solve", "sum", "--engine", "bad-engine"])).toThrow(
       "Invalid --engine value. Use openai or mock."
@@ -109,7 +117,7 @@ describe("parseCliOptions", () => {
 
   it("rejects an unsupported progress mode", () => {
     expect(() => parseCliOptions(["solve", "sum", "--progress", "verbose"])).toThrow(
-      "Invalid --progress value. Use off, plain, or jsonl."
+      "Invalid --progress value. Use off, plain, jsonl, or bar."
     );
   });
 

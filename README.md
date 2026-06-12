@@ -97,6 +97,15 @@ SHELLGEIAI_DOCKER_IMAGE=ubuntu:24.04 shellgeiai solve "CSVの3列目の合計を
 shellgeiai solve "CSVの3列目の合計を出してください" --engine mock --progress plain
 ```
 
+進捗バーを表示する:
+
+```bash
+shellgeiai solve "CSVの3列目の合計を出してください" --engine mock --progress bar
+```
+
+`bar` は TTY 上で一時表示され、TTY でない場合は `plain` に自動でフォールバックします。
+worker ごとの行には内部状態と attempt 回数も表示されます。
+
 進捗を JSON Lines で外部ツールへ渡す:
 
 ```bash
