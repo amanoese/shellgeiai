@@ -4,6 +4,7 @@
 
 現在は次の文書を置いています。
 
+- `development.md`: 開発環境セットアップと現状実装の案内
 - `ideal-cli-flow.md`: 理想的な CLI 実行フロー
 - `ideal-architecture.md`: 理想的な責務分離とアーキテクチャ
 - `policies.md`: command policy / sandbox policy の配置規約と JSON schema
