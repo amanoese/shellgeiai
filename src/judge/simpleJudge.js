@@ -3,7 +3,6 @@ function hasOnlyWarnings(stderr) {
   if (!trimmed) {
     return true;
   }
-
   return /^warning[:\s]/i.test(trimmed);
 }
 
@@ -16,7 +15,10 @@ function buildScoreBreakdown(input, { passedExpectedOutput, passed, stderrAllowe
   };
 }
 
-function buildDecision(input, { passed, reason, passedExpectedOutput = false, stderrAllowed = false }) {
+function buildDecision(
+  input,
+  { passed, reason, passedExpectedOutput = false, stderrAllowed = false }
+) {
   const breakdown = buildScoreBreakdown(input, {
     passedExpectedOutput,
     passed,
@@ -29,6 +31,11 @@ function buildDecision(input, { passed, reason, passedExpectedOutput = false, st
     score: {
       value: Object.values(breakdown).reduce((sum, score) => sum + score, 0),
       breakdown
+    },
+    gate: {
+      disqualified: !passed,
+      stderrAllowed,
+      expectedOutputMatched: passedExpectedOutput
     }
   };
 }
@@ -36,10 +43,7 @@ function buildDecision(input, { passed, reason, passedExpectedOutput = false, st
 export class SimpleJudge {
   async judge(input) {
     if (input.timedOut) {
-      return buildDecision(input, {
-        passed: false,
-        reason: "Command timed out."
-      });
+      return buildDecision(input, { passed: false, reason: "Command timed out." });
     }
 
     if (input.exitCode !== 0) {
@@ -67,6 +71,7 @@ export class SimpleJudge {
 
     const passedExpectedOutput =
       input.expectedOutput === undefined || input.stdout.trim() === input.expectedOutput.trim();
+
     if (!passedExpectedOutput) {
       return buildDecision(input, {
         passed: false,
@@ -77,7 +82,10 @@ export class SimpleJudge {
 
     return buildDecision(input, {
       passed: true,
-      reason: input.expectedOutput !== undefined ? "Output matched expected output." : "Basic checks passed.",
+      reason:
+        input.expectedOutput !== undefined
+          ? "Output matched expected output."
+          : "Basic checks passed.",
       passedExpectedOutput,
       stderrAllowed
     });

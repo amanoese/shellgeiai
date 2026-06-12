@@ -1,350 +1,312 @@
-import { Command, CommanderError, Option } from "commander";
-import { z } from "zod";
+const supportedModes = new Set(["single", "parallel"]);
+const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
+const supportedProgressModes = new Set(["off", "plain", "jsonl", "bar"]);
+const supportedScoreModes = new Set(["standard", "competition", "practical", "appreciation"]);
 
-const supportedModes = ["single", "parallel"];
-const supportedSelectors = ["first-pass-wins", "best-score-wins"];
-const supportedProgressModes = ["off", "plain", "jsonl", "bar"];
-const defaultRunner = "docker";
+function isFlag(value) {
+  return typeof value === "string" && value.startsWith("--");
+}
 
-const modeOption = new Option("--mode <mode>", "execution mode: single or parallel");
-const parallelismOption = new Option("--parallelism <number>", "number of workers to plan");
-const selectorOption = new Option("--selector <name>", "selector to use: first-pass-wins or best-score-wins");
-const timeBudgetOption = new Option("--time-budget <ms>", "overall session time budget in milliseconds");
-const commandPolicyOption = new Option("--command-policy <path>", "path to a command policy JSON file");
-const sandboxPolicyOption = new Option("--sandbox-policy <path>", "path to a sandbox policy JSON file");
-const runnerOption = new Option("--runner <runner>", "runner to use: local or docker");
-const progressOption = new Option("--progress <mode>", "progress output: off, plain, jsonl, or bar");
+function parseNumber(value, message) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(message);
+  }
+  return parsed;
+}
 
-const cliOptionsSchema = z.object({
-  command: z.literal("solve"),
-  problem: z.string().trim().min(1, "Missing <problem> argument."),
-  engine: z.enum(["openai", "mock"]),
-  runner: z.enum(["local", "docker"]),
-  maxIter: z.number().int().positive(),
-  workdir: z.string().trim().min(1).optional(),
-  mode: z.enum(supportedModes),
-  parallelism: z.number().int().positive(),
-  selector: z.enum(supportedSelectors),
-  timeBudgetMs: z.number().int().positive().optional(),
-  commandPolicyPath: z.string().trim().min(1).optional(),
-  sandboxPolicyPath: z.string().trim().min(1).optional(),
-  progress: z.enum(supportedProgressModes)
-});
+function takeValue(argv, index, message) {
+  const value = argv[index + 1];
+  if (value == null || isFlag(value)) {
+    throw new Error(message);
+  }
+  return value;
+}
 
-const checkCliOptionsSchema = z.object({
-  command: z.literal("check"),
-  shellCommand: z.string().trim().min(1, "Missing <command> argument."),
-  runner: z.enum(["local", "docker"]),
-  workdir: z.string().trim().min(1).optional(),
-  problem: z.string().trim().min(1).optional(),
-  expectedOutput: z.string().optional(),
-  timeBudgetMs: z.number().int().positive().optional(),
-  commandPolicyPath: z.string().trim().min(1).optional(),
-  sandboxPolicyPath: z.string().trim().min(1).optional()
-});
+function parseSolve(argv) {
+  const positionals = [];
+  const options = {
+    command: "solve",
+    engine: "openai",
+    runner: "docker",
+    maxIter: 3,
+    mode: "single",
+    parallelism: 1,
+    selector: "first-pass-wins",
+    shellgeiScoreMode: "standard",
+    progress: "off"
+  };
 
-const replayCliOptionsSchema = z.object({
-  command: z.literal("replay"),
-  logPath: z.string().trim().min(1, "Missing --log value."),
-  candidateId: z.string().trim().min(1).optional(),
-  attemptId: z.string().trim().min(1).optional(),
-  runner: z.enum(["local", "docker"]),
-  workdir: z.string().trim().min(1).optional(),
-  expectedOutput: z.string().optional(),
-  timeBudgetMs: z.number().int().positive().optional(),
-  commandPolicyPath: z.string().trim().min(1).optional(),
-  sandboxPolicyPath: z.string().trim().min(1).optional()
-});
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!isFlag(token)) {
+      positionals.push(token);
+      continue;
+    }
 
-const logsShowCliOptionsSchema = z.object({
-  command: z.literal("logs-show"),
-  logRef: z.string().trim().min(1, "Missing <run-id> argument.")
-});
+    switch (token) {
+      case "--engine":
+        options.engine = takeValue(argv, index, "Missing value for --engine.");
+        index += 1;
+        break;
+      case "--runner":
+        options.runner = takeValue(argv, index, "Missing value for --runner.");
+        index += 1;
+        break;
+      case "--max-iter":
+        options.maxIter = parseNumber(
+          takeValue(argv, index, "Missing value for --max-iter."),
+          "Invalid --max-iter value. Use a positive integer."
+        );
+        index += 1;
+        break;
+      case "--workdir":
+        options.workdir = takeValue(argv, index, "Missing value for --workdir.");
+        index += 1;
+        break;
+      case "--mode":
+        options.mode = takeValue(argv, index, "Missing value for --mode.");
+        if (!supportedModes.has(options.mode)) {
+          throw new Error("Invalid --mode value. Use single or parallel.");
+        }
+        index += 1;
+        break;
+      case "--parallelism":
+        options.parallelism = parseNumber(
+          takeValue(argv, index, "Missing value for --parallelism."),
+          "Invalid --parallelism value. Use a positive integer."
+        );
+        index += 1;
+        break;
+      case "--selector":
+        options.selector = takeValue(argv, index, "Missing value for --selector.");
+        if (!supportedSelectors.has(options.selector)) {
+          throw new Error(
+            "Invalid --selector value. Use first-pass-wins or best-score-wins."
+          );
+        }
+        index += 1;
+        break;
+      case "--shellgei-score-mode":
+        options.shellgeiScoreMode = takeValue(
+          argv,
+          index,
+          "Missing value for --shellgei-score-mode."
+        );
+        if (!supportedScoreModes.has(options.shellgeiScoreMode)) {
+          throw new Error(
+            "Invalid --shellgei-score-mode value. Use standard, competition, practical, or appreciation."
+          );
+        }
+        index += 1;
+        break;
+      case "--time-budget":
+        options.timeBudgetMs = parseNumber(
+          takeValue(argv, index, "Missing value for --time-budget."),
+          "Invalid --time-budget value. Use a positive integer."
+        );
+        index += 1;
+        break;
+      case "--command-policy":
+        options.commandPolicyPath = takeValue(argv, index, "Missing value for --command-policy.");
+        index += 1;
+        break;
+      case "--sandbox-policy":
+        options.sandboxPolicyPath = takeValue(argv, index, "Missing value for --sandbox-policy.");
+        index += 1;
+        break;
+      case "--progress":
+        options.progress = takeValue(argv, index, "Missing value for --progress.");
+        if (!supportedProgressModes.has(options.progress)) {
+          throw new Error("Invalid --progress value. Use off, plain, jsonl, or bar.");
+        }
+        index += 1;
+        break;
+      default:
+        throw new Error(`Unknown option: ${token}`);
+    }
+  }
 
-const logsListCliOptionsSchema = z.object({
-  command: z.literal("logs-list"),
-  limit: z.number().int().positive().optional()
-});
+  if (positionals.length === 0) {
+    throw new Error("Missing <problem> argument.");
+  }
 
-const logsSearchCliOptionsSchema = z.object({
-  command: z.literal("logs-search"),
-  query: z.string().trim().min(1, "Missing <query> argument."),
-  mode: z.enum(["solve", "check", "replay"]).optional(),
-  passed: z.boolean().optional(),
-  limit: z.number().int().positive().optional()
-});
+  return {
+    ...options,
+    problem: positionals.join(" ")
+  };
+}
 
-const logsPruneCliOptionsSchema = z.object({
-  command: z.literal("logs-prune"),
-  retainDays: z.number().int().nonnegative(),
-  dryRun: z.boolean()
-});
+function parseCheck(argv) {
+  const commandParts = [];
+  const options = { command: "check", runner: "docker" };
+
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!isFlag(token)) {
+      commandParts.push(token);
+      continue;
+    }
+
+    switch (token) {
+      case "--runner":
+        options.runner = takeValue(argv, index, "Missing value for --runner.");
+        index += 1;
+        break;
+      case "--workdir":
+        options.workdir = takeValue(argv, index, "Missing value for --workdir.");
+        index += 1;
+        break;
+      case "--time-budget":
+        options.timeBudgetMs = parseNumber(
+          takeValue(argv, index, "Missing value for --time-budget."),
+          "Invalid --time-budget value. Use a positive integer."
+        );
+        index += 1;
+        break;
+      case "--problem":
+        options.problem = takeValue(argv, index, "Missing value for --problem.");
+        index += 1;
+        break;
+      case "--expected-output":
+        options.expectedOutput = takeValue(argv, index, "Missing value for --expected-output.");
+        index += 1;
+        break;
+      case "--command-policy":
+        options.commandPolicyPath = takeValue(argv, index, "Missing value for --command-policy.");
+        index += 1;
+        break;
+      case "--sandbox-policy":
+        options.sandboxPolicyPath = takeValue(argv, index, "Missing value for --sandbox-policy.");
+        index += 1;
+        break;
+      default:
+        throw new Error(`Unknown option: ${token}`);
+    }
+  }
+
+  if (commandParts.length === 0) {
+    throw new Error("Missing <command> argument.");
+  }
+
+  return {
+    ...options,
+    shellCommand: commandParts.join(" ")
+  };
+}
+
+function parseReplay(argv) {
+  const options = { command: "replay", runner: "docker" };
+
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index];
+    switch (token) {
+      case "--log":
+        options.logPath = takeValue(argv, index, "Missing --log value.");
+        index += 1;
+        break;
+      case "--candidate-id":
+        options.candidateId = takeValue(argv, index, "Missing value for --candidate-id.");
+        index += 1;
+        break;
+      case "--attempt-id":
+        options.attemptId = takeValue(argv, index, "Missing value for --attempt-id.");
+        index += 1;
+        break;
+      case "--runner":
+        options.runner = takeValue(argv, index, "Missing value for --runner.");
+        index += 1;
+        break;
+      case "--workdir":
+        options.workdir = takeValue(argv, index, "Missing value for --workdir.");
+        index += 1;
+        break;
+      case "--expected-output":
+        options.expectedOutput = takeValue(argv, index, "Missing value for --expected-output.");
+        index += 1;
+        break;
+      case "--time-budget":
+        options.timeBudgetMs = parseNumber(
+          takeValue(argv, index, "Missing value for --time-budget."),
+          "Invalid --time-budget value. Use a positive integer."
+        );
+        index += 1;
+        break;
+      case "--command-policy":
+        options.commandPolicyPath = takeValue(argv, index, "Missing value for --command-policy.");
+        index += 1;
+        break;
+      case "--sandbox-policy":
+        options.sandboxPolicyPath = takeValue(argv, index, "Missing value for --sandbox-policy.");
+        index += 1;
+        break;
+      default:
+        throw new Error(`Unknown option: ${token}`);
+    }
+  }
+
+  if (!options.logPath) {
+    throw new Error("Missing --log value.");
+  }
+  return options;
+}
+
+function parseLogs(argv) {
+  const subcommand = argv[1];
+  if (subcommand === "show") {
+    const logRef = argv[2];
+    if (!logRef) {
+      throw new Error("Missing <run-id> argument.");
+    }
+    return { command: "logs-show", logRef };
+  }
+
+  throw new Error(`Unsupported logs subcommand: ${subcommand ?? "(missing)"}`);
+}
 
 export function createCliProgram() {
-  const program = new Command()
-    .name("shellgeiai")
-    .description("Generate, run, and verify shell one-liners safely.")
-    .showHelpAfterError();
+  const helpText = [
+    "Usage:",
+    "  shellgeiai solve <problem> [options]",
+    "  shellgeiai check <command> [options]",
+    "  shellgeiai replay --log <path> [options]",
+    "  shellgeiai logs show <run-id>",
+    "",
+    "Solve options:",
+    "  --engine <engine>",
+    "  --runner <runner>",
+    "  --max-iter <number>",
+    "  --workdir <path>",
+    "  --mode <mode>",
+    "  --parallelism <number>",
+    "  --selector <name>",
+    "  --shellgei-score-mode <mode>",
+    "  --time-budget <ms>",
+    "  --command-policy <path>",
+    "  --sandbox-policy <path>",
+    "  --progress <mode>"
+  ].join("\n");
 
-  program
-    .command("solve")
-    .description("Solve a shell-gei problem with the selected engine.")
-    .argument("<problem...>", "problem statement")
-    .option("--engine <engine>", "engine to use: openai or mock", "openai")
-    .option("--max-iter <number>", "maximum solve iterations", "3")
-    .option("--workdir <path>", "working directory to reuse")
-    .addOption(runnerOption)
-    .addOption(modeOption)
-    .addOption(parallelismOption)
-    .addOption(selectorOption)
-    .addOption(timeBudgetOption)
-    .addOption(commandPolicyOption)
-    .addOption(sandboxPolicyOption)
-    .addOption(progressOption)
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  program
-    .command("check")
-    .description("Run and judge an explicit shell command.")
-    .argument("<command...>", "shell command to execute")
-    .option("--workdir <path>", "working directory to reuse")
-    .addOption(runnerOption)
-    .addOption(timeBudgetOption)
-    .addOption(commandPolicyOption)
-    .addOption(sandboxPolicyOption)
-    .option("--problem <text>", "problem text to store alongside this check")
-    .option("--expected-output <text>", "expected stdout to compare against")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  program
-    .command("replay")
-    .description("Replay a candidate or attempt from a saved session log.")
-    .option("--log <path>", "path to a saved solve/check/replay log")
-    .option("--candidate-id <id>", "candidate id to replay")
-    .option("--attempt-id <id>", "attempt id to replay")
-    .option("--workdir <path>", "working directory to reuse")
-    .addOption(runnerOption)
-    .addOption(timeBudgetOption)
-    .addOption(commandPolicyOption)
-    .addOption(sandboxPolicyOption)
-    .option("--expected-output <text>", "override expected stdout during replay")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  const logsCommand = program
-    .command("logs")
-    .description("Inspect saved session logs.")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  logsCommand
-    .command("show")
-    .description("Show a saved log by run id, filename, or path.")
-    .argument("<run-id>", "saved run id, filename, or log path")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  logsCommand
-    .command("list")
-    .description("List saved logs newest-first.")
-    .option("--limit <number>", "limit the number of logs to display")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  logsCommand
-    .command("search")
-    .description("Search saved logs by text and filters.")
-    .argument("[query...]", "search text")
-    .option("--mode <mode>", "filter by mode: solve, check, or replay")
-    .option("--passed", "filter to passed logs")
-    .option("--failed", "filter to failed logs")
-    .option("--limit <number>", "limit the number of logs to display")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  logsCommand
-    .command("prune")
-    .description("Delete logs older than the retention window.")
-    .option("--retain-days <number>", "retain logs newer than this many days")
-    .option("--dry-run", "report what would be deleted without removing files")
-    .allowExcessArguments(false)
-    .allowUnknownOption(false);
-
-  return program;
+  return {
+    helpInformation() {
+      return helpText;
+    }
+  };
 }
 
 export function parseCliOptions(argv) {
-  const program = createCliProgram();
-  let parsedOptions;
+  const command = argv[0];
 
-  const solveCommand = program.commands.find((command) => command.name() === "solve");
-  const checkCommand = program.commands.find((command) => command.name() === "check");
-  const replayCommand = program.commands.find((command) => command.name() === "replay");
-  const logsCommand = program.commands.find((command) => command.name() === "logs");
-  const logsShowCommand = logsCommand?.commands.find((command) => command.name() === "show");
-  const logsListCommand = logsCommand?.commands.find((command) => command.name() === "list");
-  const logsSearchCommand = logsCommand?.commands.find((command) => command.name() === "search");
-  const logsPruneCommand = logsCommand?.commands.find((command) => command.name() === "prune");
-
-  solveCommand?.action((problemParts, options) => {
-    parsedOptions = {
-      command: "solve",
-      problem: problemParts.join(" "),
-      engine: options.engine,
-      runner: options.runner ?? defaultRunner,
-      maxIter: Number(options.maxIter),
-      workdir: options.workdir,
-      mode: options.mode ?? "single",
-      parallelism: Number(options.parallelism ?? "1"),
-      selector: options.selector ?? "first-pass-wins",
-      timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
-      commandPolicyPath: options.commandPolicy,
-      sandboxPolicyPath: options.sandboxPolicy,
-      progress: options.progress ?? "off"
-    };
-  });
-
-  checkCommand?.action((commandParts, options) => {
-    parsedOptions = {
-      command: "check",
-      shellCommand: commandParts.join(" "),
-      runner: options.runner ?? defaultRunner,
-      workdir: options.workdir,
-      problem: options.problem,
-      expectedOutput: options.expectedOutput,
-      timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
-      commandPolicyPath: options.commandPolicy,
-      sandboxPolicyPath: options.sandboxPolicy
-    };
-  });
-
-  replayCommand?.action((options) => {
-    parsedOptions = {
-      command: "replay",
-      logPath: options.log,
-      candidateId: options.candidateId,
-      attemptId: options.attemptId,
-      runner: options.runner ?? defaultRunner,
-      workdir: options.workdir,
-      expectedOutput: options.expectedOutput,
-      timeBudgetMs: options.timeBudget == null ? undefined : Number(options.timeBudget),
-      commandPolicyPath: options.commandPolicy,
-      sandboxPolicyPath: options.sandboxPolicy
-    };
-  });
-
-  logsShowCommand?.action((logRef) => {
-    parsedOptions = {
-      command: "logs-show",
-      logRef
-    };
-  });
-
-  logsListCommand?.action((options) => {
-    parsedOptions = {
-      command: "logs-list",
-      limit: options.limit == null ? undefined : Number(options.limit)
-    };
-  });
-
-  logsSearchCommand?.action((queryParts, options) => {
-    const searchParts = Array.isArray(queryParts) ? queryParts : [];
-
-    if (options.passed && options.failed) {
-      throw new Error("Use either --passed or --failed, not both.");
-    }
-
-    parsedOptions = {
-      command: "logs-search",
-      query: searchParts.join(" "),
-      mode: options.mode,
-      passed: options.failed ? false : options.passed ? true : undefined,
-      limit: options.limit == null ? undefined : Number(options.limit)
-    };
-  });
-
-  logsPruneCommand?.action((options) => {
-    parsedOptions = {
-      command: "logs-prune",
-      retainDays: options.retainDays == null ? Number.NaN : Number(options.retainDays),
-      dryRun: Boolean(options.dryRun)
-    };
-  });
-
-  try {
-    program.exitOverride();
-    program.parse(["node", "shellgeiai", ...argv]);
-  } catch (error) {
-    if (error instanceof CommanderError) {
-      throw new Error(error.message);
-    }
-    throw error;
-  }
-
-  if (!parsedOptions) {
-    throw new Error("A supported subcommand is required: solve, check, replay, or logs show.");
-  }
-
-  const result =
-    parsedOptions.command === "solve"
-      ? cliOptionsSchema.safeParse(parsedOptions)
-      : parsedOptions.command === "check"
-        ? checkCliOptionsSchema.safeParse(parsedOptions)
-        : parsedOptions.command === "replay"
-          ? replayCliOptionsSchema.safeParse(parsedOptions)
-          : parsedOptions.command === "logs-list"
-            ? logsListCliOptionsSchema.safeParse(parsedOptions)
-            : parsedOptions.command === "logs-search"
-              ? logsSearchCliOptionsSchema.safeParse(parsedOptions)
-              : parsedOptions.command === "logs-prune"
-                ? logsPruneCliOptionsSchema.safeParse(parsedOptions)
-                : logsShowCliOptionsSchema.safeParse(parsedOptions);
-
-  if (result.success) {
-    return result.data;
-  }
-
-  const issue = result.error.issues[0];
-  switch (issue.path[0]) {
-    case "engine":
-      throw new Error("Invalid --engine value. Use openai or mock.");
-    case "runner":
-      throw new Error("Invalid --runner value. Use local or docker.");
-    case "maxIter":
-      throw new Error("Invalid --max-iter value. Use a positive integer.");
-    case "workdir":
-      throw new Error("Missing value for --workdir.");
-    case "parallelism":
-      throw new Error("Invalid --parallelism value. Use a positive integer.");
-    case "timeBudgetMs":
-      throw new Error("Invalid --time-budget value. Use a positive integer.");
-    case "mode":
-      throw new Error("Invalid --mode value. Use single or parallel.");
-    case "selector":
-      throw new Error("Invalid --selector value. Use first-pass-wins or best-score-wins.");
-    case "shellCommand":
-      throw new Error("Missing <command> argument.");
-    case "logPath":
-      throw new Error("Missing --log value.");
-    case "logRef":
-      throw new Error("Missing <run-id> argument.");
-    case "query":
-      throw new Error("Missing <query> argument.");
-    case "limit":
-      throw new Error("Invalid --limit value. Use a positive integer.");
-    case "retainDays":
-      throw new Error("Invalid --retain-days value. Use a non-negative integer.");
-    case "commandPolicyPath":
-      throw new Error("Missing value for --command-policy.");
-    case "sandboxPolicyPath":
-      throw new Error("Missing value for --sandbox-policy.");
-    case "progress":
-      throw new Error("Invalid --progress value. Use off, plain, jsonl, or bar.");
-    case "problem":
-      throw new Error("Missing <problem> argument.");
+  switch (command) {
+    case "solve":
+      return parseSolve(argv);
+    case "check":
+      return parseCheck(argv);
+    case "replay":
+      return parseReplay(argv);
+    case "logs":
+      return parseLogs(argv);
     default:
-      throw new Error(issue.message);
+      throw new Error(`Unknown command: ${command ?? "(missing)"}`);
   }
 }

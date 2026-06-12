@@ -2,17 +2,6 @@ function normalizeOutput(output) {
   return typeof output === "string" ? output.trim() : "";
 }
 
-const scoreComparisonOrder = [
-  { key: "shellgeiScore", label: "shellgei score", higherIsBetter: true, unit: "" },
-  { key: "judgeScore", label: "judge score", higherIsBetter: true, unit: "" },
-  { key: "stdoutConsistency", label: "stdout consistency", higherIsBetter: true, unit: "" },
-  { key: "outputConsensus", label: "output consensus", higherIsBetter: true, unit: "" },
-  { key: "totalDurationMs", label: "total duration", higherIsBetter: false, unit: "ms" },
-  { key: "iterationCount", label: "iteration count", higherIsBetter: false, unit: "" },
-  { key: "commandLength", label: "command length", higherIsBetter: false, unit: " chars" },
-  { key: "explanationLength", label: "explanation length", higherIsBetter: false, unit: " chars" }
-];
-
 function outputConsensusByValue(candidates) {
   const counts = new Map();
 
@@ -20,12 +9,10 @@ function outputConsensusByValue(candidates) {
     if (!candidate.finalCheck?.passed) {
       continue;
     }
-
     const output = normalizeOutput(candidate.output);
     if (!output) {
       continue;
     }
-
     counts.set(output, (counts.get(output) ?? 0) + 1);
   }
 
@@ -42,11 +29,9 @@ function stdoutConsistencyScore(candidate) {
   if (uniqueOutputs.size === 0) {
     return 0;
   }
-
   if (uniqueOutputs.size === 1) {
     return 10;
   }
-
   return Math.max(0, 10 - (uniqueOutputs.size - 1) * 5);
 }
 
@@ -54,25 +39,20 @@ function outputConsensusScore(candidate, consensusByValue) {
   if (!candidate.finalCheck?.passed) {
     return 0;
   }
-
   const output = normalizeOutput(candidate.output);
   if (!output) {
     return 0;
   }
-
   const matches = consensusByValue.get(output) ?? 0;
   if (matches <= 1) {
     return 0;
   }
-
   return Math.min(10, (matches - 1) * 5);
 }
 
-function candidateScore(candidate, consensusByValue) {
+function candidateMetrics(candidate, consensusByValue) {
   const attempts = candidate.attempts ?? [];
   const totalDurationMs = attempts.reduce((sum, attempt) => sum + (attempt.durationMs ?? 0), 0);
-  const commandLength = candidate.command?.length ?? Number.MAX_SAFE_INTEGER;
-  const explanationLength = candidate.explanation?.length ?? Number.MAX_SAFE_INTEGER;
   const shellgeiScore = candidate.shellgeiScore?.value ?? 0;
   const judgeScore = candidate.finalCheck?.score?.value ?? 0;
   const stdoutConsistency = stdoutConsistencyScore(candidate);
@@ -81,126 +61,119 @@ function candidateScore(candidate, consensusByValue) {
   return {
     totalScore: shellgeiScore + judgeScore + stdoutConsistency + outputConsensus,
     shellgeiScore,
+    rubricBreakdown: candidate.shellgeiScore?.breakdown ?? null,
     judgeScore,
     stdoutConsistency,
     outputConsensus,
     totalDurationMs,
     iterationCount: candidate.finalCheck?.iterations ?? attempts.length,
-    commandLength,
-    explanationLength
+    commandLength: candidate.command?.length ?? Number.MAX_SAFE_INTEGER,
+    explanationLength: candidate.explanation?.length ?? Number.MAX_SAFE_INTEGER
   };
 }
 
-function formatScoreValue(metric, value) {
-  return metric.unit ? `${value}${metric.unit}` : `${value}`;
-}
-
-function describeScoreWin(winnerScore, loserScore) {
-  for (const metric of scoreComparisonOrder) {
-    if (winnerScore[metric.key] === loserScore[metric.key]) {
-      continue;
-    }
-
-    const winnerValue = formatScoreValue(metric, winnerScore[metric.key]);
-    const loserValue = formatScoreValue(metric, loserScore[metric.key]);
-    const comparison = metric.higherIsBetter ? `${winnerValue} > ${loserValue}` : `${winnerValue} < ${loserValue}`;
-    return `${metric.label} (${comparison})`;
-  }
-
-  return "all score dimensions were equal";
-}
-
-function describeBestScoreReason(selected, runnerUp, consensusByValue, hasPassingCandidates) {
-  const prefix = hasPassingCandidates
-    ? `Selected ${selected.candidateId} as the best passing candidate`
-    : `No passing candidate was found; selected ${selected.candidateId} as the best fallback candidate`;
-
-  if (!runnerUp) {
-    return `${prefix}.`;
-  }
-
-  const selectedScore = candidateScore(selected, consensusByValue);
-  const runnerUpScore = candidateScore(runnerUp, consensusByValue);
-  return `${prefix} after comparing it with ${runnerUp.candidateId}; it won on ${describeScoreWin(
-    selectedScore,
-    runnerUpScore
-  )}.`;
-}
-
 function compareCandidateScore(left, right, consensusByValue) {
-  const leftScore = candidateScore(left, consensusByValue);
-  const rightScore = candidateScore(right, consensusByValue);
+  const leftScore = candidateMetrics(left, consensusByValue);
+  const rightScore = candidateMetrics(right, consensusByValue);
 
-  // ShellGei score is the primary signal; other measures are tie-breakers.
   if (leftScore.shellgeiScore !== rightScore.shellgeiScore) {
     return rightScore.shellgeiScore - leftScore.shellgeiScore;
   }
-
   if (leftScore.judgeScore !== rightScore.judgeScore) {
     return rightScore.judgeScore - leftScore.judgeScore;
   }
-
   if (leftScore.stdoutConsistency !== rightScore.stdoutConsistency) {
     return rightScore.stdoutConsistency - leftScore.stdoutConsistency;
   }
-
   if (leftScore.outputConsensus !== rightScore.outputConsensus) {
     return rightScore.outputConsensus - leftScore.outputConsensus;
   }
-
   if (leftScore.totalDurationMs !== rightScore.totalDurationMs) {
     return leftScore.totalDurationMs - rightScore.totalDurationMs;
   }
-
   if (leftScore.iterationCount !== rightScore.iterationCount) {
     return leftScore.iterationCount - rightScore.iterationCount;
   }
-
   if (leftScore.commandLength !== rightScore.commandLength) {
     return leftScore.commandLength - rightScore.commandLength;
   }
-
   return leftScore.explanationLength - rightScore.explanationLength;
 }
 
+function describeBestScoreReason(selected, runnerUp, consensusByValue, usedPassingPool) {
+  if (!selected) {
+    return "No candidate was produced.";
+  }
+
+  if (!runnerUp) {
+    return usedPassingPool
+      ? `Selected ${selected.candidateId} as best passing candidate.`
+      : `No passing candidate was found; selected ${selected.candidateId} as best fallback candidate.`;
+  }
+
+  const selectedMetrics = candidateMetrics(selected, consensusByValue);
+  const runnerUpMetrics = candidateMetrics(runnerUp, consensusByValue);
+  let detail = "tie-breakers";
+
+  if (selectedMetrics.shellgeiScore !== runnerUpMetrics.shellgeiScore) {
+    detail = `shellgei score (${selectedMetrics.shellgeiScore} > ${runnerUpMetrics.shellgeiScore})`;
+  } else if (selectedMetrics.judgeScore !== runnerUpMetrics.judgeScore) {
+    detail = `judge score (${selectedMetrics.judgeScore} > ${runnerUpMetrics.judgeScore})`;
+  } else if (selectedMetrics.stdoutConsistency !== runnerUpMetrics.stdoutConsistency) {
+    detail = `stdout consistency (${selectedMetrics.stdoutConsistency} > ${runnerUpMetrics.stdoutConsistency})`;
+  } else if (selectedMetrics.outputConsensus !== runnerUpMetrics.outputConsensus) {
+    detail = `output consensus (${selectedMetrics.outputConsensus} > ${runnerUpMetrics.outputConsensus})`;
+  }
+
+  if (usedPassingPool) {
+    return `Selected ${selected.candidateId} as best passing candidate; it won on ${detail}.`;
+  }
+  return `No passing candidate was found; selected ${selected.candidateId} as best fallback candidate; it won on ${detail}.`;
+}
+
 export function selectSolveOutcome(candidates, selectorName = "first-pass-wins") {
-  const passingCandidates = candidates.filter((candidate) => candidate.finalCheck.passed);
+  const passingCandidates = candidates.filter((candidate) => candidate.finalCheck?.passed);
   const consensusByValue = outputConsensusByValue(candidates);
-  let selected = null;
+
+  let selectedCandidate = null;
   let reason = "";
   let metrics = null;
 
   switch (selectorName) {
-    case "best-score-wins":
-      {
-        const rankedPassingCandidates = passingCandidates.slice().sort((left, right) =>
-          compareCandidateScore(left, right, consensusByValue)
-        );
-        const rankedCandidates = candidates.slice().sort((left, right) => compareCandidateScore(left, right, consensusByValue));
-        selected = rankedPassingCandidates[0] ?? rankedCandidates[0] ?? null;
-        const competitionPool = rankedPassingCandidates[0] ? rankedPassingCandidates : rankedCandidates;
-        const runnerUp = competitionPool[1] ?? null;
-        metrics = selected ? candidateScore(selected, consensusByValue) : null;
-        reason = selected
-          ? describeBestScoreReason(selected, runnerUp, consensusByValue, Boolean(rankedPassingCandidates[0]))
-          : "No candidate was produced.";
-        break;
-      }
+    case "best-score-wins": {
+      const rankedPassingCandidates = passingCandidates
+        .slice()
+        .sort((left, right) => compareCandidateScore(left, right, consensusByValue));
+      const rankedCandidates = candidates
+        .slice()
+        .sort((left, right) => compareCandidateScore(left, right, consensusByValue));
+      const competitionPool = rankedPassingCandidates[0] ? rankedPassingCandidates : rankedCandidates;
+      selectedCandidate = competitionPool[0] ?? null;
+      metrics = selectedCandidate ? candidateMetrics(selectedCandidate, consensusByValue) : null;
+      reason = describeBestScoreReason(
+        selectedCandidate,
+        competitionPool[1] ?? null,
+        consensusByValue,
+        Boolean(rankedPassingCandidates[0])
+      );
+      break;
+    }
+
     case "first-pass-wins":
     default:
-      selected = passingCandidates[0] ?? candidates.at(-1) ?? null;
-      metrics = selected ? candidateScore(selected, consensusByValue) : null;
-      reason = selected?.finalCheck.passed
-        ? "Selected the first candidate that passed final checks."
-        : "No passing candidate was found; selected the latest candidate.";
+      selectedCandidate = passingCandidates[0] ?? candidates.at(-1) ?? null;
+      metrics = selectedCandidate ? candidateMetrics(selectedCandidate, consensusByValue) : null;
+      reason = selectedCandidate?.finalCheck?.passed
+        ? "Selected first candidate passed final checks."
+        : "No passing candidate was found; selected latest candidate.";
       break;
   }
 
   return {
-    selectedCandidate: selected,
+    selectedCandidate,
     selector: selectorName,
     reason,
-    score: selected?.finalCheck?.score ?? null,
+    score: selectedCandidate?.finalCheck?.score ?? null,
     metrics
   };
 }

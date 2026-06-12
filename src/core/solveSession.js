@@ -1,19 +1,22 @@
 import path from "node:path";
-import { createExecutionPlan } from "./planner.js";
 import { parseProblemInput } from "../problem/parseProblem.js";
 import { createDefaultRunnerLimits } from "../runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../safety/policyLoader.js";
 import { createWorkingDirectory, ensureDirectory } from "../util/fs.js";
+import { createExecutionPlan } from "./planner.js";
 
 export async function createSolveSession(options) {
   const startedAt = new Date().toISOString();
   const problem = parseProblemInput(options.problemInput);
   const workdir = await createWorkingDirectory(options.requestedWorkdir);
   const logsDir = path.join(process.cwd(), "logs");
-  await ensureDirectory(logsDir);
-  const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
-  const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
 
+  await ensureDirectory(logsDir);
+
+  const commandPolicy =
+    options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
+  const sandboxPolicy =
+    options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
   const session = {
     sessionId: startedAt.replace(/[:.]/g, "-"),
     startedAt,
@@ -28,16 +31,16 @@ export async function createSolveSession(options) {
     mode: options.mode ?? "single",
     parallelism: options.parallelism ?? 1,
     selectorName: options.selector ?? "first-pass-wins",
+    shellgeiScoreMode: options.shellgeiScoreMode ?? "standard",
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
     commandPolicy,
     sandboxPolicy,
-    onProgress: options.onProgress
+    onProgress: options.onProgress,
+    plannerProvider: options.plannerProvider
   };
+  const plan = await createExecutionPlan(session);
 
-  return {
-    ...session,
-    plan: createExecutionPlan(session)
-  };
+  return { ...session, plan };
 }

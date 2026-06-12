@@ -1,29 +1,51 @@
+function formatJudgeBreakdown(score) {
+  return `correctness=${score?.breakdown?.correctness ?? 0}, stdout=${score?.breakdown?.stdoutQuality ?? 0}, stderr=${score?.breakdown?.stderrQuality ?? 0}, expected=${score?.breakdown?.expectedOutput ?? 0}`;
+}
+
+function formatShellgeiBreakdown(score) {
+  return `conciseness=${score?.breakdown?.conciseness ?? 0}, shellness=${score?.breakdown?.shellness ?? 0}, ingenuity=${score?.breakdown?.ingenuity ?? 0}, readability=${score?.breakdown?.readability ?? 0}, robustness=${score?.breakdown?.robustness ?? 0}, artistry=${score?.breakdown?.artistry ?? 0}`;
+}
+
+function formatWorkerVariantLines(result) {
+  const workerTasks = result.plan?.workerTasks ?? [];
+  const candidates = result.candidates ?? [];
+
+  if (workerTasks.length === 0) {
+    return ["(none)"];
+  }
+
+  return workerTasks.map((task) => {
+    const candidate = candidates.find(
+      (entry) => entry.workerId === task.workerId || entry.candidateId === task.workerId
+    );
+
+    return [
+      task.workerId,
+      task.assignedVariant?.label ?? "(no-variant)",
+      task.assignedVariant?.approach ?? "(no-approach)",
+      candidate?.command ?? "(no-command)"
+    ].join(" | ");
+  });
+}
+
 export function formatResult(result) {
   const status = result.finalCheck.passed ? "passed" : "failed";
   const selectedScore = result.selector?.score;
-  const selectorMetrics = result.selector?.metrics;
   const selectedCandidate = result.candidates?.find(
     (candidate) => candidate.candidateId === result.selector?.selectedCandidateId
   );
   const selectedShellgeiScore = selectedCandidate?.shellgeiScore;
-  const passingCandidates = (result.candidates ?? []).filter((candidate) => candidate.finalCheck.passed);
-  const passingLines = [
-    "",
-    "PASSING COMMANDS:",
-    ...(passingCandidates.length
-      ? passingCandidates.map((candidate) => {
-          const candidateScore = candidate.shellgeiScore?.value ?? candidate.finalCheck.score?.value ?? 0;
-          return `${candidate.candidateId} | score: ${candidateScore} | command: ${candidate.command}`;
-        })
-      : ["(none)"])
-  ];
+  const selectorMetrics = result.selector?.metrics;
+  const passingCandidates = (result.candidates ?? []).filter((candidate) => candidate.finalCheck?.passed);
+  const plannerInfo = result.plan?.planner ?? null;
+  const workerVariantLines = formatWorkerVariantLines(result);
 
   return [
     "COMMAND:",
     result.command || "(none)",
     "",
     "EXPLANATION:",
-    result.explanation,
+    result.explanation || "(none)",
     "",
     "CHECK:",
     `status: ${status}`,
@@ -34,16 +56,26 @@ export function formatResult(result) {
     `selector: ${result.selector?.name ?? "first-pass-wins"}`,
     `selected-candidate: ${result.selector?.selectedCandidateId ?? "(none)"}`,
     `selected-score: ${selectedScore?.value ?? 0}`,
-    `score-breakdown: correctness=${selectedScore?.breakdown.correctness ?? 0}, stdout=${selectedScore?.breakdown.stdoutQuality ?? 0}, stderr=${selectedScore?.breakdown.stderrQuality ?? 0}, expected=${selectedScore?.breakdown.expectedOutput ?? 0}`,
+    `score-breakdown: ${formatJudgeBreakdown(selectedScore)}`,
     `selected-shellgei-score: ${selectedShellgeiScore?.value ?? 0}`,
-    `shellgei-breakdown: shortness=${selectedShellgeiScore?.breakdown.shortness ?? 0}, simplicity=${selectedShellgeiScore?.breakdown.simplicity ?? 0}, speed=${selectedShellgeiScore?.breakdown.speed ?? 0}`,
-    `selector-metrics: total=${selectorMetrics?.totalScore ?? 0}, shellgei=${selectorMetrics?.shellgeiScore ?? 0}, judge=${selectorMetrics?.judgeScore ?? 0}, stdout-consistency=${selectorMetrics?.stdoutConsistency ?? 0}, output-consensus=${selectorMetrics?.outputConsensus ?? 0}, duration-ms=${selectorMetrics?.totalDurationMs ?? 0}, iterations=${selectorMetrics?.iterationCount ?? 0}`,
-    `selector-reason: ${result.selector?.reason ?? "No selector reason provided."}`,
-    `runner: ${result.runner?.name ?? "local"}`,
-    `sandbox-network: ${result.runner?.sandboxPolicy?.networkAccess ?? "off"}`,
-    `sandbox-filesystem: ${result.runner?.sandboxPolicy?.filesystemScope ?? "workspace-write"}`,
-    `reason: ${result.finalCheck.reason}`,
-    `log: ${result.logPath}`,
-    ...passingLines
+    `shellgei-breakdown: ${formatShellgeiBreakdown(selectedShellgeiScore)}`,
+    `shellgei-notes: ${selectedShellgeiScore?.notes?.join("; ") || "(none)"}`,
+    `shellgei-penalties: ${selectedShellgeiScore?.penalties?.join("; ") || "(none)"}`,
+    `selector-reason: ${result.selector?.reason ?? "(none)"}`,
+    `selector-metrics: total=${selectorMetrics?.totalScore ?? 0}, shellgei=${selectorMetrics?.shellgeiScore ?? 0}, judge=${selectorMetrics?.judgeScore ?? 0}, consensus=${selectorMetrics?.outputConsensus ?? 0}, stdout=${selectorMetrics?.stdoutConsistency ?? 0}, duration=${selectorMetrics?.totalDurationMs ?? 0}, iterations=${selectorMetrics?.iterationCount ?? 0}, command-length=${selectorMetrics?.commandLength ?? 0}, explanation-length=${selectorMetrics?.explanationLength ?? 0}`,
+    `planner-provider: ${plannerInfo?.provider ?? "(unknown)"}`,
+    `planner-attempted-provider: ${plannerInfo?.attemptedProvider ?? "(unknown)"}`,
+    `planner-fallback-reason: ${plannerInfo?.fallbackReason ?? "(none)"}`,
+    `passing-candidates: ${passingCandidates.length}`,
+    "",
+    "WORKER VARIANTS:",
+    ...workerVariantLines,
+    "",
+    "RUNNER:",
+    `name: ${result.runner?.name ?? "(unknown)"}`,
+    `sandbox: ${JSON.stringify(result.runner?.sandboxPolicy ?? {})}`,
+    "",
+    "LOG:",
+    result.logPath ?? "(none)"
   ].join("\n");
 }

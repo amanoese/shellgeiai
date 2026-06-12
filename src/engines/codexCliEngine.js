@@ -5,10 +5,39 @@ import { commandExists } from "../util/exec.js";
 const execFileAsync = promisify(execFile);
 
 function buildPrompt(context) {
+  const workerTask = context.workerTask ?? null;
+
   return [
-    "Return only a shell command.",
+    "Return only the shell command.",
     "Do not include markdown fences or explanation.",
     "Do not execute anything yourself.",
+    "Prefer a shell-gei style one-liner.",
+    "Favor stdin/stdout flow with standard Unix tools.",
+    workerTask?.strategyProfile?.rubricFocus?.length
+      ? `Shellgei rubric focus: ${workerTask.strategyProfile.rubricFocus.join(", ")}`
+      : "",
+    workerTask?.assignedVariant?.label ? `Assigned variant: ${workerTask.assignedVariant.label}` : "",
+    workerTask?.assignedVariant?.approach
+      ? `Variant approach: ${workerTask.assignedVariant.approach}`
+      : "",
+    workerTask?.assignedVariant?.toolBias?.length
+      ? `Preferred tool bias: ${workerTask.assignedVariant.toolBias.join(", ")}`
+      : "",
+    workerTask?.assignedVariant?.intent
+      ? `Variant intent: ${workerTask.assignedVariant.intent}`
+      : "",
+    workerTask?.assignedVariant?.constraints?.length
+      ? `Variant constraints: ${workerTask.assignedVariant.constraints.join(", ")}`
+      : "",
+    workerTask?.assignedVariant?.avoid?.length
+      ? `Avoid while exploring: ${workerTask.assignedVariant.avoid.join(", ")}`
+      : "",
+    workerTask?.assignedVariant?.explorationHint
+      ? `Exploration hint: ${workerTask.assignedVariant.explorationHint}`
+      : "",
+    workerTask?.assignedVariant
+      ? "Use the assigned variant as a soft exploration axis rather than a rigid first step."
+      : "",
     "Problem:",
     context.problem,
     context.attempts.length > 0 ? `Previous attempts: ${JSON.stringify(context.attempts)}` : ""
@@ -18,27 +47,27 @@ function buildPrompt(context) {
 }
 
 export class CodexCliEngine {
-  name = "codex";
+  name = "codex-cli";
+
+  constructor(options = {}) {
+    this.command = options.command ?? "codex";
+    this.args = options.args ?? ["exec", "--json"];
+  }
 
   async generateCommand(context) {
-    const exists = await commandExists("codex");
-    if (!exists) {
-      throw new Error("The 'codex' CLI was not found in PATH. Install it or use --engine mock.");
+    if (!(await commandExists(this.command))) {
+      throw new Error(`The '${this.command}' command is not installed or not in PATH.`);
     }
 
     const prompt = buildPrompt(context);
-    const result = await execFileAsync("codex", ["exec", prompt], {
+    const { stdout } = await execFileAsync(this.command, [...this.args, prompt], {
       cwd: context.workdir,
-      env: {
-        PATH: process.env.PATH ?? "",
-        HOME: process.env.HOME ?? ""
-      },
-      timeout: 15_000
+      env: process.env
     });
+    const command = String(stdout ?? "").trim();
 
-    const command = result.stdout.trim();
     if (!command) {
-      throw new Error("The 'codex' CLI returned an empty command.");
+      throw new Error("The Codex CLI engine returned an empty command.");
     }
 
     return {

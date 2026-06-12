@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatResult } from "../src/formatter/formatResult.js";
 
 describe("formatResult", () => {
-  it("includes selector score details and candidate summaries", () => {
+  it("includes rubric breakdown, notes, penalties, planner provider, and worker variants", () => {
     const output = formatResult({
       command: "printf '42\\n'",
       output: "42",
@@ -16,7 +16,7 @@ describe("formatResult", () => {
       selector: {
         name: "best-score-wins",
         selectedCandidateId: "worker-2",
-        reason: "Selected worker-2 as the best passing candidate after comparing it with worker-1; it won on judge score (100 > 95).",
+        reason: "Selected worker-2 as best passing candidate; it won on shellgei score.",
         score: {
           value: 100,
           breakdown: {
@@ -27,8 +27,16 @@ describe("formatResult", () => {
           }
         },
         metrics: {
-          totalScore: 215,
-          shellgeiScore: 100,
+          totalScore: 187,
+          shellgeiScore: 72,
+          rubricBreakdown: {
+            conciseness: 13,
+            shellness: 14,
+            ingenuity: 12,
+            readability: 11,
+            robustness: 12,
+            artistry: 10
+          },
           judgeScore: 100,
           stdoutConsistency: 10,
           outputConsensus: 5,
@@ -40,76 +48,93 @@ describe("formatResult", () => {
       },
       runner: {
         name: "local",
-        sandboxPolicy: {
-          networkAccess: "off",
-          filesystemScope: "workspace-write"
-        }
+        sandboxPolicy: { networkAccess: "off", filesystemScope: "workspace-write" }
       },
       stopReason: null,
       logPath: "/tmp/solve.json",
+      plan: {
+        planner: {
+          provider: "llm",
+          attemptedProvider: "llm",
+          fallbackReason: null
+        },
+        workerTasks: [
+          {
+            workerId: "worker-1",
+            assignedVariant: {
+              variantId: "variant-awk",
+              label: "awk-first",
+              approach: "awk-record-pass"
+            }
+          },
+          {
+            workerId: "worker-2",
+            assignedVariant: {
+              variantId: "variant-factor",
+              label: "factor-first",
+              approach: "external-utility"
+            }
+          }
+        ]
+      },
       candidates: [
         {
           candidateId: "worker-1",
-          strategy: "default",
-          command: "printf '42\\n'",
+          workerId: "worker-1",
+          command: "awk 'BEGIN{print 42}'",
           shellgeiScore: {
-            value: 95,
+            value: 65,
+            mode: "standard",
             breakdown: {
-              shortness: 35,
-              simplicity: 40,
-              speed: 20
-            }
+              conciseness: 12,
+              shellness: 13,
+              ingenuity: 10,
+              readability: 10,
+              robustness: 10,
+              artistry: 10
+            },
+            notes: [],
+            penalties: []
           },
           finalCheck: {
             passed: true,
             iterations: 1,
-            reason: "Output matched expected output.",
-            score: {
-              value: 95
-            }
+            reason: "Output matched expected output."
           }
         },
         {
           candidateId: "worker-2",
-          strategy: "consensus",
+          workerId: "worker-2",
           command: "printf '42\\n'",
           shellgeiScore: {
-            value: 100,
+            value: 72,
+            mode: "standard",
             breakdown: {
-              shortness: 38,
-              simplicity: 42,
-              speed: 20
-            }
+              conciseness: 13,
+              shellness: 14,
+              ingenuity: 12,
+              readability: 11,
+              robustness: 12,
+              artistry: 10
+            },
+            notes: ["Uses single awk pass"],
+            penalties: ["Avoid useless use of cat"]
           },
           finalCheck: {
             passed: true,
             iterations: 1,
-            reason: "Output matched expected output.",
-            score: {
-              value: 100
-            }
+            reason: "Output matched expected output."
           }
         }
       ]
     });
 
-    expect(output).toContain("selected-score: 100");
-    expect(output).toContain("score-breakdown: correctness=60, stdout=15, stderr=10, expected=15");
-    expect(output).toContain(
-      "selected-shellgei-score: 100"
-    );
-    expect(output).toContain(
-      "shellgei-breakdown: shortness=38, simplicity=42, speed=20"
-    );
-    expect(output).toContain(
-      "selector-metrics: total=215, shellgei=100, judge=100, stdout-consistency=10, output-consensus=5, duration-ms=8, iterations=1"
-    );
-    expect(output).toContain(
-      "selector-reason: Selected worker-2 as the best passing candidate after comparing it with worker-1; it won on judge score (100 > 95)."
-    );
-    expect(output).toContain("PASSING COMMANDS:");
-    expect(output).toContain("worker-1 | score: 95 | command: printf '42\\n'");
-    expect(output).toContain("worker-2 | score: 100 | command: printf '42\\n'");
-    expect(output).not.toContain("OUTPUT:");
+    expect(output).toContain("selected-shellgei-score: 72");
+    expect(output).toContain("shellgei-breakdown: conciseness=13, shellness=14");
+    expect(output).toContain("shellgei-notes: Uses single awk pass");
+    expect(output).toContain("shellgei-penalties: Avoid useless use of cat");
+    expect(output).toContain("planner-provider: llm");
+    expect(output).toContain("worker-1 | awk-first | awk-record-pass | awk 'BEGIN{print 42}'");
+    expect(output).toContain("worker-2 | factor-first | external-utility | printf '42\\n'");
   });
 });

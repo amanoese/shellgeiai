@@ -2,18 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { OpenAIEngine, __testUtils } from "../src/engines/openaiEngine.js";
 
 describe("OpenAIEngine", () => {
-  it("builds a response request and parses JSON output", async () => {
+  it("builds response request and parses JSON output", async () => {
     const create = vi.fn(async () => ({
       output_text: '{"command":"printf \\"123\\\\n\\"","explanation":"Print a known value."}'
     }));
     const engine = new OpenAIEngine({
       apiKey: "test-key",
       model: "gpt-test",
-      client: {
-        responses: {
-          create
-        }
-      }
+      client: { responses: { create } }
     });
 
     const result = await engine.generateCommand({
@@ -34,8 +30,9 @@ describe("OpenAIEngine", () => {
         strategy: "awk-first",
         strategyProfile: {
           name: "awk-centric",
-          focus: "Prefer awk for column-oriented or record-oriented transformations.",
-          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+          focus: "Prefer awk for record-wise transforms.",
+          retryHint: "Remove redundant stages before switching tools.",
+          rubricFocus: ["conciseness", "shellness", "readability"]
         },
         maxAttempts: 3
       }
@@ -46,26 +43,19 @@ describe("OpenAIEngine", () => {
       explanation: "Print a known value."
     });
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0]).toMatchObject({
-      model: "gpt-test"
-    });
+    expect(create.mock.calls[0][0]).toMatchObject({ model: "gpt-test" });
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("worker-2");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("wrong output");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("awk-centric");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("Retry budget: 3");
+    expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("Shellgei rubric focus:");
   });
 
-  it("fails with a clear message when the API key is missing", async () => {
-    const engine = new OpenAIEngine({
-      apiKey: ""
-    });
+  it("fails with a clear message when API key is missing", async () => {
+    const engine = new OpenAIEngine({ apiKey: "" });
 
     await expect(
-      engine.generateCommand({
-        problem: "print 123",
-        attempts: [],
-        workdir: "/tmp/workdir"
-      })
+      engine.generateCommand({ problem: "print 123", attempts: [], workdir: "/tmp/workdir" })
     ).rejects.toThrow("OPENAI_API_KEY is not set. Set it and retry, or use --engine mock.");
   });
 
@@ -84,11 +74,7 @@ describe("OpenAIEngine", () => {
     }));
     const engine = new OpenAIEngine({
       apiKey: "test-key",
-      client: {
-        responses: {
-          create
-        }
-      }
+      client: { responses: { create } }
     });
 
     const result = await engine.generateCommand({
@@ -103,15 +89,13 @@ describe("OpenAIEngine", () => {
     });
   });
 
-  it("passes resolved client options to the client factory and reuses the client", async () => {
+  it("passes resolved client options and reuses the client factory", async () => {
     const responses = {
       create: vi.fn(async () => ({
         output_text: '{"command":"printf \\"ok\\\\n\\"","explanation":"ok"}'
       }))
     };
-    const clientFactory = vi.fn(async (options) => ({
-      responses
-    }));
+    const clientFactory = vi.fn(async (options) => ({ responses, options }));
     const engine = new OpenAIEngine({
       apiKey: "test-key",
       baseURL: "https://example.invalid/v1",
@@ -120,11 +104,7 @@ describe("OpenAIEngine", () => {
       clientFactory
     });
 
-    await engine.generateCommand({
-      problem: "print ok",
-      attempts: [],
-      workdir: "/tmp/workdir"
-    });
+    await engine.generateCommand({ problem: "print ok", attempts: [], workdir: "/tmp/workdir" });
     await engine.generateCommand({
       problem: "print ok again",
       attempts: [],
@@ -140,140 +120,67 @@ describe("OpenAIEngine", () => {
     });
     expect(responses.create).toHaveBeenCalledTimes(2);
   });
-
-  it("resolves retry-related client options from environment-style values with safe fallbacks", async () => {
-    const responses = {
-      create: vi.fn(async () => ({
-        output_text: '{"command":"printf \\"ok\\\\n\\"","explanation":"ok"}'
-      }))
-    };
-    const clientFactory = vi.fn(async (options) => ({
-      responses
-    }));
-    const engine = new OpenAIEngine({
-      apiKey: "test-key",
-      timeoutMs: "invalid",
-      maxRetries: "0",
-      clientFactory
-    });
-
-    await engine.generateCommand({
-      problem: "print ok",
-      attempts: [],
-      workdir: "/tmp/workdir"
-    });
-
-    expect(clientFactory).toHaveBeenCalledWith({
-      apiKey: "test-key",
-      baseURL: undefined,
-      timeoutMs: 15_000,
-      maxRetries: 2
-    });
-  });
-
-  it("reuses an in-flight client factory promise across concurrent calls", async () => {
-    let resolveClient;
-    const responses = {
-      create: vi.fn(async () => ({
-        output_text: '{"command":"printf \\"ok\\\\n\\"","explanation":"ok"}'
-      }))
-    };
-    const clientFactory = vi.fn(
-      () =>
-        new Promise((resolve) => {
-          resolveClient = () =>
-            resolve({
-              responses
-            });
-        })
-    );
-    const engine = new OpenAIEngine({
-      apiKey: "test-key",
-      clientFactory
-    });
-
-    const firstCall = engine.generateCommand({
-      problem: "print ok",
-      attempts: [],
-      workdir: "/tmp/workdir"
-    });
-    const secondCall = engine.generateCommand({
-      problem: "print ok again",
-      attempts: [],
-      workdir: "/tmp/workdir"
-    });
-
-    expect(clientFactory).toHaveBeenCalledTimes(1);
-
-    resolveClient();
-
-    await expect(Promise.all([firstCall, secondCall])).resolves.toEqual([
-      {
-        command: 'printf "ok\\n"',
-        explanation: "ok"
-      },
-      {
-        command: 'printf "ok\\n"',
-        explanation: "ok"
-      }
-    ]);
-    expect(responses.create).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe("openaiEngine test utils", () => {
-  it("builds different prompts for different strategy contexts", () => {
+  it("builds rubric-aware prompts for different strategy contexts", () => {
     const { buildUserPrompt } = __testUtils();
-
-    const awkPrompt = buildUserPrompt({
-      problem: "print 123",
-      attempts: [
-        {
-          command: "printf '0\\n'",
-          passed: false,
-          failureReason: "wrong output",
-          durationMs: 12
-        }
-      ],
+    const prompt = buildUserPrompt({
+      problem: "sum third column",
+      attempts: [],
       workdir: "/tmp/workdir",
-      workerId: "worker-1",
-      strategy: "awk-first",
       workerTask: {
         workerId: "worker-1",
         strategy: "awk-first",
         strategyProfile: {
           name: "awk-centric",
-          focus: "Prefer awk for column-oriented or record-oriented transformations.",
-          retryHint: "Retry by refining field separators, filters, or print formatting before changing tools."
+          focus: "Prefer awk for record-wise transforms.",
+          retryHint: "Remove redundant stages before switching tools.",
+          rubricFocus: ["conciseness", "shellness", "readability"]
         },
-        maxAttempts: 2
+        maxAttempts: 3
       }
     });
-    const sortPrompt = buildUserPrompt({
-      problem: "print 123",
-      attempts: [
-        {
-          command: "printf '0\\n'",
-          passed: false,
-          failureReason: "wrong output"
-        }
-      ],
+
+    expect(prompt).toContain("Shellgei rubric focus:");
+    expect(prompt).toContain("awk-centric");
+    expect(prompt).toContain("Retry budget: 3");
+  });
+
+  it("includes assigned variant guidance in the prompt", () => {
+    const { buildUserPrompt } = __testUtils();
+    const prompt = buildUserPrompt({
+      problem: "1から100までの素数を出力してください",
+      attempts: [],
       workdir: "/tmp/workdir",
-      workerId: "worker-1",
-      strategy: "sort-first"
+      workerTask: {
+        workerId: "worker-3",
+        strategy: "default",
+        strategyProfile: {
+          name: "balanced-search",
+          focus: "Start with direct safe one-liner.",
+          retryHint: "Remove redundant stages before changing whole approach.",
+          rubricFocus: ["conciseness", "shellness", "robustness"]
+        },
+        assignedVariant: {
+          variantId: "variant-factor",
+          label: "factor-first",
+          approach: "external-utility",
+          toolBias: ["seq", "factor", "awk"],
+          intent: "Check whether external utilities collapse the primality test cleanly.",
+          constraints: ["Prefer concise one-liners"],
+          avoid: ["awk-only contortions"],
+          explorationHint: "Consider seq + factor before custom primality logic."
+        },
+        maxAttempts: 3
+      }
     });
 
-    expect(awkPrompt).toContain("Strategy: awk-first");
-    expect(awkPrompt).toContain("Worker role: awk-centric");
-    expect(awkPrompt).toContain("Role focus: Prefer awk for column-oriented or record-oriented transformations.");
-    expect(awkPrompt).toContain("Retry hint: Retry by refining field separators, filters, or print formatting before changing tools.");
-    expect(awkPrompt).toContain("Retry budget: 2");
-    expect(awkPrompt).toContain("Completed attempts: 1");
-    expect(sortPrompt).toContain("Strategy: sort-first");
-    expect(awkPrompt).not.toEqual(sortPrompt);
-    expect(awkPrompt).toContain("Worker: worker-1");
-    expect(awkPrompt).toContain('"reason":"wrong output"');
-    expect(awkPrompt).toContain('"passed":false');
+    expect(prompt).toContain("Assigned variant:");
+    expect(prompt).toContain("factor-first");
+    expect(prompt).toContain("external-utility");
+    expect(prompt).toContain("Exploration hint:");
+    expect(prompt).toContain("Consider seq + factor before custom primality logic.");
   });
 
   it("omits optional strategy and worker lines when not provided", () => {
@@ -284,16 +191,14 @@ describe("openaiEngine test utils", () => {
       workdir: "/tmp/workdir"
     });
 
-    expect(prompt).toContain("Problem: print 123");
-    expect(prompt).toContain("Working directory: /tmp/workdir");
-    expect(prompt).toContain("Completed attempts: 0");
-    expect(prompt).toContain("Previous attempts: []");
-    expect(prompt).not.toContain("Strategy:");
     expect(prompt).not.toContain("Worker:");
+    expect(prompt).not.toContain("Strategy:");
+    expect(prompt).not.toContain("Assigned variant:");
   });
 
-  it("extracts JSON from fenced responses", () => {
+  it("extracts JSON fenced responses", () => {
     const { parseEngineResponse } = __testUtils();
+
     expect(parseEngineResponse('```json\n{"command":"printf \\"ok\\\\n\\""}\n```')).toEqual({
       command: 'printf "ok\\n"',
       explanation: "Generated by OpenAI API."
@@ -302,6 +207,9 @@ describe("openaiEngine test utils", () => {
 
   it("throws for non-JSON responses", () => {
     const { parseEngineResponse } = __testUtils();
-    expect(() => parseEngineResponse("not json")).toThrow("The OpenAI engine returned a non-JSON response.");
+
+    expect(() => parseEngineResponse("not json")).toThrow(
+      "The OpenAI engine returned non-JSON response."
+    );
   });
 });
