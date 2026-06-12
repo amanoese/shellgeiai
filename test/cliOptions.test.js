@@ -18,9 +18,9 @@ describe("parseCliOptions", () => {
       maxIter: 3,
       mode: "single",
       parallelism: 1,
-      selector: "first-pass-wins",
+      selector: "best-score-wins",
       shellgeiScoreMode: "standard",
-      progress: "off"
+      progress: "bar"
     });
   });
 
