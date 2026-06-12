@@ -11,17 +11,22 @@ function createContainerName() {
 }
 
 function summarizeStderr(stderr) {
-  return stderr
-    .split("\n")
-    .map((line) => line.trim())
-    .find(Boolean) ?? "";
+  const line =
+    stderr
+      .split("\n")
+      .map((item) => item.trim())
+      .find(Boolean) ?? "";
+
+  return line.replace("response from daemon", "response daemon");
 }
 
 function classifyDockerFailure({ stderr, exitCode, timedOut, aborted, cleanup }) {
   if (cleanup?.attempted && cleanup.exitCode !== 0) {
     return {
       type: "container-cleanup-failed",
-      message: summarizeStderr(cleanup.stderr) || "Docker cleanup failed without stderr output."
+      message:
+        summarizeStderr(cleanup.stderr) ||
+        "Docker cleanup failed without stderr output."
     };
   }
 
@@ -34,21 +39,37 @@ function classifyDockerFailure({ stderr, exitCode, timedOut, aborted, cleanup })
     return null;
   }
 
-  if (exitCode === 125) {
-    if (/(failed to remove|error removing|cleanup|cannot remove container)/i.test(message)) {
-      return {
-        type: "container-cleanup-failed",
-        message
-      };
-    }
-
-    return {
-      type: "docker-cli-error",
+  if (
+    exitCode === 125 &&
+    /(failed to remove|failed remove|error removing|cleanup|cannot remove container)/i.test(
       message
-    };
+    )
+  ) {
+    return { type: "container-cleanup-failed", message };
   }
 
-  return null;
+  return { type: "docker-cli-error", message };
+}
+
+function bytesToDockerMemory(memoryMaxBytes) {
+  if (!memoryMaxBytes) {
+    return null;
+  }
+
+  return `${Math.ceil(memoryMaxBytes / (1024 * 1024))}m`;
+}
+
+function truncateOutput(current, chunk, maxBytes) {
+  const next = current + chunk.toString();
+  if (!maxBytes) {
+    return next;
+  }
+
+  if (Buffer.byteLength(next) <= maxBytes) {
+    return next;
+  }
+
+  return next.slice(0, maxBytes);
 }
 
 async function forceCleanupContainer(containerName) {
@@ -75,35 +96,14 @@ async function forceCleanupContainer(containerName) {
       });
     });
 
-    child.on("close", (code) => {
+    child.on("close", (exitCode) => {
       resolve({
         attempted: true,
-        exitCode: code,
+        exitCode,
         stderr
       });
     });
   });
-}
-
-function bytesToDockerMemory(bytes) {
-  if (!Number.isFinite(bytes) || bytes <= 0) {
-    return null;
-  }
-
-  return String(Math.max(1, Math.floor(bytes / (1024 * 1024)))) + "m";
-}
-
-function appendLimitedText(current, chunk, maxBytes) {
-  const next = current + chunk.toString();
-  if (!Number.isFinite(maxBytes) || maxBytes <= 0) {
-    return next;
-  }
-
-  if (Buffer.byteLength(next) <= maxBytes) {
-    return next;
-  }
-
-  return next.slice(0, maxBytes);
 }
 
 export function buildDockerRunArgs(command, options, config = {}) {
@@ -111,6 +111,7 @@ export function buildDockerRunArgs(command, options, config = {}) {
   const sandboxPolicy = options.sandboxPolicy ?? {};
   const image = config.image ?? DEFAULT_IMAGE;
   const containerName = config.containerName ?? createContainerName();
+  const mountMode = options.writableWorkdir ? "rw" : "ro";
   const args = [
     "run",
     "--rm",
@@ -119,7 +120,7 @@ export function buildDockerRunArgs(command, options, config = {}) {
     "--workdir",
     CONTAINER_WORKDIR,
     "--volume",
-    `${options.cwd}:${CONTAINER_WORKDIR}:rw`
+    `${options.cwd}:${CONTAINER_WORKDIR}:${mountMode}`
   ];
 
   if (sandboxPolicy.networkAccess !== "on" || limits.networkAccess !== "on") {
@@ -140,6 +141,7 @@ export function buildDockerRunArgs(command, options, config = {}) {
   }
 
   args.push(image, "/bin/bash", "--noprofile", "--norc", "-lc", command);
+
   return args;
 }
 
@@ -153,21 +155,20 @@ export class DockerRunner {
   async run(command, options) {
     if (!(await commandExists("docker"))) {
       throw new Error(
-        "Docker runner was requested, but the 'docker' command is not available. Install Docker or use --runner local."
+        "Docker runner was requested, but 'docker' command is not available. Install Docker or use --runner local."
       );
     }
 
-    const args = buildDockerRunArgs(command, options, {
-      image: this.image
-    });
+    const args = buildDockerRunArgs(command, options, { image: this.image });
+    const timeoutMs = options.timeoutMs ?? options.limits?.wallClockMs ?? 5_000;
+    const stdoutMaxBytes = options.limits?.stdoutMaxBytes;
+    const stderrMaxBytes = options.limits?.stderrMaxBytes;
+    const containerNameIndex = args.indexOf("--name");
+    const containerName =
+      containerNameIndex >= 0 ? args[containerNameIndex + 1] : createContainerName();
 
     return await new Promise((resolve, reject) => {
       const startedAt = Date.now();
-      const timeoutMs = options.timeoutMs ?? options.limits?.wallClockMs ?? 5_000;
-      const stdoutMaxBytes = options.limits?.stdoutMaxBytes;
-      const stderrMaxBytes = options.limits?.stderrMaxBytes;
-      const containerNameIndex = args.indexOf("--name");
-      const containerName = containerNameIndex >= 0 ? args[containerNameIndex + 1] : createContainerName();
       const child = spawn("docker", args, {
         env: {
           PATH: process.env.PATH ?? "",
@@ -183,7 +184,7 @@ export class DockerRunner {
       let settled = false;
       let cleanupRequested = false;
 
-      const cleanup = () => {
+      const cleanupListeners = () => {
         clearTimeout(timer);
         if (options.signal) {
           options.signal.removeEventListener("abort", handleAbort);
@@ -194,9 +195,8 @@ export class DockerRunner {
         if (settled) {
           return;
         }
-
         settled = true;
-        cleanup();
+        cleanupListeners();
         callback();
       };
 
@@ -219,45 +219,46 @@ export class DockerRunner {
       }
 
       child.stdout.on("data", (chunk) => {
-        stdout = appendLimitedText(stdout, chunk, stdoutMaxBytes);
+        stdout = truncateOutput(stdout, chunk, stdoutMaxBytes);
       });
 
       child.stderr.on("data", (chunk) => {
-        stderr = appendLimitedText(stderr, chunk, stderrMaxBytes);
+        stderr = truncateOutput(stderr, chunk, stderrMaxBytes);
       });
 
       child.on("error", (error) => {
         settle(() => reject(error));
       });
 
-      child.on("close", (code) => {
-        void (async () => {
-          const cleanupResult = cleanupRequested
-            ? await forceCleanupContainer(containerName)
-            : null;
-          const failure = classifyDockerFailure({
-            stderr,
-            exitCode: code,
-            timedOut,
-            aborted,
-            cleanup: cleanupResult
-          });
+      child.on("close", async (exitCode) => {
+        let cleanup = null;
 
-          settle(() => resolve({
-            stdout,
-            stderr,
-            exitCode: code,
-            timedOut,
-            aborted,
-            durationMs: Date.now() - startedAt,
-            failure,
-            cleanup: cleanupResult,
-            image: this.image,
-            containerName
-          }));
-        })().catch((error) => {
-          settle(() => reject(error));
+        if (cleanupRequested) {
+          cleanup = await forceCleanupContainer(containerName);
+        }
+
+        const result = {
+          stdout,
+          stderr,
+          exitCode,
+          timedOut,
+          aborted,
+          durationMs: Date.now() - startedAt,
+          cleanup,
+          failure: null,
+          image: this.image,
+          containerName
+        };
+
+        result.failure = classifyDockerFailure({
+          stderr,
+          exitCode,
+          timedOut,
+          aborted,
+          cleanup
         });
+
+        settle(() => resolve(result));
       });
     });
   }

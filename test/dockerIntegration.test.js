@@ -88,14 +88,14 @@ afterEach(async () => {
 });
 
 describeDocker("Docker integration", () => {
-  it("runs commands inside a real container with the mounted workdir", async () => {
+  it("runs commands inside a real container with the mounted workdir read-only by default", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-runner-"));
     tempDirs.push(requestedWorkdir);
     const runner = new DockerRunner({
       image: dockerEnvironment.image
     });
 
-    const result = await runner.run("printf 'from-docker' > proof.txt; pwd", {
+    const result = await runner.run("pwd; touch proof.txt", {
       cwd: requestedWorkdir,
       limits: createDefaultRunnerLimits(),
       sandboxPolicy: {
@@ -107,6 +107,28 @@ describeDocker("Docker integration", () => {
     expect(result.exitCode).toBe(0);
     expect(result.timedOut).toBe(false);
     expect(result.aborted).toBe(false);
+    expect(result.stdout.trim()).toBe("/workspace");
+    await expect(readFile(path.join(requestedWorkdir, "proof.txt"), "utf8")).rejects.toThrow();
+  }, 20_000);
+
+  it("allows writing into the mounted workdir when writable workdir is enabled", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-runner-rw-"));
+    tempDirs.push(requestedWorkdir);
+    const runner = new DockerRunner({
+      image: dockerEnvironment.image
+    });
+
+    const result = await runner.run("printf 'from-docker' > proof.txt; pwd", {
+      cwd: requestedWorkdir,
+      writableWorkdir: true,
+      limits: createDefaultRunnerLimits(),
+      sandboxPolicy: {
+        networkAccess: "off",
+        filesystemScope: "workdir-only"
+      }
+    });
+
+    expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe("/workspace");
     expect(await readFile(path.join(requestedWorkdir, "proof.txt"), "utf8")).toBe("from-docker");
   }, 20_000);

@@ -75,7 +75,10 @@ sandbox policy は「runner に渡す sandbox 方針」を定義します。
 
 - `command policy` は静的な文字列チェックです。完全な policy engine ではありません
 - `sandbox policy.networkAccess` は `DockerRunner` の `--network none` 制御に反映されます
-- `sandbox policy.filesystemScope` は現時点では主に設定・ログ・表示のための値で、`DockerRunner` が値ごとに mount 権限を切り替えるところまでは未実装です
+- Docker の primary workdir mount はデフォルトで read-only です
+- `--workdir` を指定すると `/workspace` に mount するホスト側パスを切り替えられます
+- `--writable-workdir` を指定したときだけ `/workspace` mount が read-write になります
+- `sandbox policy.filesystemScope` は現時点では主に設定・ログ・表示のための値で、primary workdir の writable/readonly は CLI と runtime option が制御します
 - `LocalRunner` は Docker のような強い隔離を提供しないため、本命の防衛線は将来的に Docker 側へ寄せる前提です
 
 ## エラー方針

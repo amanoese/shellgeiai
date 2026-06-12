@@ -3,7 +3,19 @@ import { writeCheckSessionLog } from "../logs/writer.js";
 import { createDefaultRunnerLimits } from "../runner/limits.js";
 import { isSafeCommand } from "../safety/checker.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../safety/policyLoader.js";
-import { createWorkingDirectory, ensureDirectory } from "../util/fs.js";
+import { ensureDirectory, resolveRequestedWorkdir } from "../util/fs.js";
+
+function buildZeroScore() {
+  return {
+    value: 0,
+    breakdown: {
+      correctness: 0,
+      stdoutQuality: 0,
+      stderrQuality: 0,
+      expectedOutput: 0
+    }
+  };
+}
 
 export async function checkCommand(options) {
   const startedAt = new Date().toISOString();
@@ -11,10 +23,13 @@ export async function checkCommand(options) {
   const logsDir = path.join(process.cwd(), "logs");
   await ensureDirectory(logsDir);
 
-  const workdir = await createWorkingDirectory(options.requestedWorkdir);
+  const workdir = await resolveRequestedWorkdir(options.requestedWorkdir);
   const runnerLimits = options.runnerLimits ?? createDefaultRunnerLimits();
-  const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
-  const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const commandPolicy =
+    options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
+  const sandboxPolicy =
+    options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const writableWorkdir = options.writableWorkdir ?? false;
   const expectedOutput = options.expectedOutput;
   const problemText = options.problem ?? options.command;
   const safetyCheck = isSafeCommand(options.command, commandPolicy);
@@ -26,7 +41,8 @@ export async function checkCommand(options) {
     timedOut: false,
     aborted: false,
     durationMs: 0,
-    failure: null
+    failure: null,
+    cleanup: null
   };
   let finalCheck;
 
@@ -36,22 +52,15 @@ export async function checkCommand(options) {
       iterations: 0,
       engine: "manual-check",
       reason: `Command was blocked by safety policy: ${safetyCheck.reason}`,
-      score: {
-        value: 0,
-        breakdown: {
-          correctness: 0,
-          stdoutQuality: 0,
-          stderrQuality: 0,
-          expectedOutput: 0
-        }
-      }
+      score: buildZeroScore()
     };
   } else {
     runResult = await options.runner.run(options.command, {
       cwd: workdir,
       timeoutMs: options.timeBudgetMs,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir
     });
 
     const decision = await options.judge.judge({
@@ -73,15 +82,15 @@ export async function checkCommand(options) {
   }
 
   const attempt = {
-    attemptId: "check-1",
+    attemptId: "check-attempt-1",
     workerId: "check",
     command: options.command,
     stdout: runResult.stdout,
     stderr: runResult.stderr,
     exitCode: runResult.exitCode,
-    passed: finalCheck.passed,
     timedOut: runResult.timedOut,
     aborted: runResult.aborted ?? false,
+    passed: finalCheck.passed,
     explanation: "Checked an explicit command.",
     failureReason: finalCheck.passed ? undefined : finalCheck.reason,
     durationMs: runResult.durationMs,
@@ -89,6 +98,7 @@ export async function checkCommand(options) {
     runnerFailure: runResult.failure ?? null,
     runnerCleanup: runResult.cleanup ?? null
   };
+
   const candidate = {
     candidateId: "check-1",
     workerId: "check",
@@ -99,9 +109,10 @@ export async function checkCommand(options) {
     attempts: [attempt],
     finalCheck
   };
+
   const stopReason = safetyCheck.safe
     ? "Completed explicit command check."
-    : "Stopped before execution because the command was blocked by safety policy.";
+    : "Stopped before execution because command was blocked by safety policy.";
 
   const { logPath } = await writeCheckSessionLog({
     logsDir,
@@ -112,12 +123,15 @@ export async function checkCommand(options) {
       runner: options.runner,
       runnerLimits,
       sandboxPolicy,
+      writableWorkdir,
       commandPolicyPath: options.commandPolicyPath,
       problemText,
       expectedOutput
     },
     result: {
       command: options.command,
+      output: runResult.stdout.trim(),
+      explanation: "Checked explicit command.",
       attempts: [attempt],
       candidates: [candidate],
       finalCheck,
@@ -128,13 +142,13 @@ export async function checkCommand(options) {
   return {
     command: options.command,
     output: runResult.stdout.trim(),
-    explanation: "Checked an explicit command.",
+    explanation: "Checked explicit command.",
     attempts: [attempt],
     candidates: [candidate],
     finalCheck,
     selector: {
       name: "manual-check",
-      reason: "Checked the provided command directly.",
+      reason: "Checked provided command directly.",
       selectedCandidateId: candidate.candidateId,
       score: finalCheck.score,
       metrics: null
@@ -143,7 +157,8 @@ export async function checkCommand(options) {
       name: options.runner.name ?? "local",
       image: "image" in options.runner ? options.runner.image : undefined,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir
     },
     stopReason,
     plan: {
@@ -162,9 +177,7 @@ export async function checkCommand(options) {
       raw: problemText,
       problemText,
       expectedOutput,
-      metadata: {
-        format: "plain-text"
-      }
+      metadata: { format: "plain-text" }
     },
     logPath
   };

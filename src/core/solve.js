@@ -71,7 +71,8 @@ async function finalizeSolve(session, execution) {
     runner: {
       name: session.runner.name ?? "local",
       limits: session.runnerLimits,
-      sandboxPolicy: session.sandboxPolicy
+      sandboxPolicy: session.sandboxPolicy,
+      writableWorkdir: session.writableWorkdir
     },
     stopReason: execution.stopReason ?? null,
     workdir: session.workdir,

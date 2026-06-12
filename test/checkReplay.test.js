@@ -17,6 +17,56 @@ afterEach(async () => {
 });
 
 describe("checkCommand", () => {
+  it("defaults workdir to current directory and records writable workdir mode", async () => {
+    const runSpy = vi.fn().mockResolvedValue({
+      stdout: "ok\n",
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      durationMs: 1,
+      failure: null,
+      cleanup: null
+    });
+
+    const runner = {
+      name: "spy-runner",
+      image: "shellgeiai:test",
+      run: runSpy
+    };
+
+    const result = await checkCommand({
+      command: "printf 'ok\\n'",
+      problem: "print ok",
+      expectedOutput: "ok",
+      writableWorkdir: true,
+      runner,
+      judge: new SimpleJudge()
+    });
+
+    expect(runSpy).toHaveBeenCalledWith(
+      "printf 'ok\\n'",
+      expect.objectContaining({
+        cwd: process.cwd(),
+        writableWorkdir: true
+      })
+    );
+    expect(result.workdir).toBe(process.cwd());
+    expect(result.runner).toEqual(
+      expect.objectContaining({
+        writableWorkdir: true
+      })
+    );
+
+    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(logContent.workdir).toBe(process.cwd());
+    expect(logContent.runner).toEqual(
+      expect.objectContaining({
+        writableWorkdir: true
+      })
+    );
+  });
+
   it("runs an explicit command, judges it, and writes a check log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-check-"));
     tempDirs.push(requestedWorkdir);
@@ -101,7 +151,8 @@ describe("checkCommand", () => {
       cwd: requestedWorkdir,
       timeoutMs: undefined,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir: false
     });
     expect(result.finalCheck.passed).toBe(true);
     expect(result.runner.name).toBe("docker");
@@ -173,6 +224,74 @@ describe("checkCommand", () => {
 });
 
 describe("replaySolveLog", () => {
+  it("defaults replay workdir to current directory and records writable workdir mode", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-replay-"));
+    tempDirs.push(requestedWorkdir);
+
+    const solved = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "test-engine",
+        async generateCommand() {
+          return {
+            command: "printf 'ok\\n'",
+            explanation: "Print ok."
+          };
+        }
+      },
+      runner: new LocalRunner(),
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      requestedWorkdir
+    });
+
+    const runSpy = vi.fn().mockResolvedValue({
+      stdout: "ok\n",
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      durationMs: 1,
+      failure: null,
+      cleanup: null
+    });
+
+    const runner = {
+      name: "spy-runner",
+      image: "shellgeiai:test",
+      run: runSpy
+    };
+
+    const replayed = await replaySolveLog({
+      logPath: solved.logPath,
+      writableWorkdir: true,
+      runner,
+      judge: new SimpleJudge()
+    });
+
+    expect(runSpy).toHaveBeenCalledWith(
+      "printf 'ok\\n'",
+      expect.objectContaining({
+        cwd: process.cwd(),
+        writableWorkdir: true
+      })
+    );
+    expect(replayed.workdir).toBe(process.cwd());
+    expect(replayed.runner).toEqual(
+      expect.objectContaining({
+        writableWorkdir: true
+      })
+    );
+
+    const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
+    expect(logContent.workdir).toBe(process.cwd());
+    expect(logContent.runner).toEqual(
+      expect.objectContaining({
+        writableWorkdir: true
+      })
+    );
+  });
+
   it("replays the selected candidate from a solve log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-replay-"));
     tempDirs.push(requestedWorkdir);
@@ -399,10 +518,11 @@ describe("replaySolveLog", () => {
 
     expect(runSpy).toHaveBeenCalledTimes(1);
     expect(runSpy).toHaveBeenCalledWith("printf 'ok\\n'", {
-      cwd: requestedWorkdir,
+      cwd: process.cwd(),
       timeoutMs: undefined,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir: false
     });
     expect(replayed.finalCheck.passed).toBe(true);
     expect(replayed.runner.name).toBe("docker");

@@ -6,7 +6,7 @@
  * @property {number} [memoryMaxBytes]
  * @property {number} [cpuCount]
  * @property {number} [processMaxCount]
- * @property {"off" | "on"} networkAccess
+ * @property {"off" | "on"} [networkAccess]
  */
 
 /**
@@ -48,6 +48,7 @@
  * @property {number} [timeoutMs]
  * @property {RunnerLimits} [limits]
  * @property {SandboxPolicy} [sandboxPolicy]
+ * @property {boolean} [writableWorkdir]
  * @property {AbortSignal} [signal]
  */
 

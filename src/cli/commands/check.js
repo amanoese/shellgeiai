@@ -11,6 +11,7 @@ export async function runCheckCommand(options) {
     problem: options.problem,
     expectedOutput: options.expectedOutput,
     requestedWorkdir: options.workdir,
+    writableWorkdir: options.writableWorkdir,
     timeBudgetMs: options.timeBudgetMs,
     commandPolicyPath: options.commandPolicyPath,
     sandboxPolicyPath: options.sandboxPolicyPath,

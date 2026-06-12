@@ -176,6 +176,7 @@ async function runWorkerTask(session, task, control, workerState) {
         timeoutMs: remainingBudgetMs,
         limits: session.runnerLimits,
         sandboxPolicy: session.sandboxPolicy,
+        writableWorkdir: session.writableWorkdir,
         signal: workerState.abortController.signal
       });
 

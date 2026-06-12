@@ -1,6 +1,16 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
+function buildRunnerSnapshot(session) {
+  return {
+    name: session.runner.name ?? "local",
+    image: "image" in session.runner ? session.runner.image : undefined,
+    limits: session.runnerLimits,
+    sandboxPolicy: session.sandboxPolicy,
+    writableWorkdir: session.writableWorkdir ?? false
+  };
+}
+
 async function writeSessionLog(logsDir, prefix, startedAt, payload) {
   const logId = startedAt.replace(/[:.]/g, "-");
   const content = `${JSON.stringify(payload, null, 2)}\n`;
@@ -15,7 +25,12 @@ async function writeSessionLog(logsDir, prefix, startedAt, payload) {
       await writeFile(logPath, content, { encoding: "utf8", flag: "wx" });
       return { logId: `${logId}${suffix}`, logPath };
     } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "EEXIST"
+      ) {
         sequence += 1;
         continue;
       }
@@ -67,12 +82,7 @@ export async function writeSolveSessionLog({
     startedAt: session.startedAt,
     finishedAt: summary.finishedAt,
     workdir: session.workdir,
-    runner: {
-      name: session.runner.name ?? "local",
-      image: "image" in session.runner ? session.runner.image : undefined,
-      limits: session.runnerLimits,
-      sandboxPolicy: session.sandboxPolicy
-    },
+    runner: buildRunnerSnapshot(session),
     shellgeiScoreMode: session.shellgeiScoreMode,
     plan: session.plan ?? null,
     planner: session.plan?.planner ?? null
@@ -101,12 +111,7 @@ export async function writeCheckSessionLog({ logsDir, session, result }) {
     startedAt: session.startedAt,
     finishedAt: new Date().toISOString(),
     workdir: session.workdir,
-    runner: {
-      name: session.runner.name ?? "local",
-      image: "image" in session.runner ? session.runner.image : undefined,
-      limits: session.runnerLimits,
-      sandboxPolicy: session.sandboxPolicy
-    }
+    runner: buildRunnerSnapshot(session)
   });
 }
 
@@ -128,11 +133,6 @@ export async function writeReplaySessionLog({ logsDir, session, result }) {
     startedAt: session.startedAt,
     finishedAt: new Date().toISOString(),
     workdir: session.workdir,
-    runner: {
-      name: session.runner.name ?? "local",
-      image: "image" in session.runner ? session.runner.image : undefined,
-      limits: session.runnerLimits,
-      sandboxPolicy: session.sandboxPolicy
-    }
+    runner: buildRunnerSnapshot(session)
   });
 }

@@ -2,7 +2,7 @@ import path from "node:path";
 import { parseProblemInput } from "../problem/parseProblem.js";
 import { createDefaultRunnerLimits } from "../runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../safety/policyLoader.js";
-import { createWorkingDirectory, ensureDirectory } from "../util/fs.js";
+import { ensureDirectory, resolveRequestedWorkdir } from "../util/fs.js";
 import { createExecutionPlan } from "./planner.js";
 import { reportSessionPhase } from "./progress.js";
 
@@ -18,7 +18,7 @@ export async function createSolveSession(options) {
   reportSessionPhase(progressSession, "problem-parsing", "Parsing problem input.");
 
   const problem = parseProblemInput(options.problemInput);
-  const workdir = await createWorkingDirectory(options.requestedWorkdir);
+  const workdir = await resolveRequestedWorkdir(options.requestedWorkdir);
   const logsDir = path.join(process.cwd(), "logs");
   await ensureDirectory(logsDir);
   const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
@@ -41,6 +41,7 @@ export async function createSolveSession(options) {
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
+    writableWorkdir: options.writableWorkdir ?? false,
     commandPolicy,
     sandboxPolicy,
     onProgress: options.onProgress,

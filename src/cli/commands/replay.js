@@ -12,6 +12,7 @@ export async function runReplayCommand(options) {
     attemptId: options.attemptId,
     expectedOutput: options.expectedOutput,
     requestedWorkdir: options.workdir,
+    writableWorkdir: options.writableWorkdir,
     timeBudgetMs: options.timeBudgetMs,
     commandPolicyPath: options.commandPolicyPath,
     sandboxPolicyPath: options.sandboxPolicyPath,

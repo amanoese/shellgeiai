@@ -75,7 +75,7 @@ describe("buildDockerRunArgs", () => {
       "--workdir",
       "/workspace",
       "--volume",
-      "/tmp/example:/workspace:rw",
+      "/tmp/example:/workspace:ro",
       "--network",
       "none",
       "--cpus",
@@ -91,6 +91,20 @@ describe("buildDockerRunArgs", () => {
       "-lc",
       "printf '123\\n'"
     ]);
+  });
+
+  it("mounts the workdir read-write when writable workdir is enabled", () => {
+    const args = buildDockerRunArgs("printf '123\\n'", {
+      cwd: "/tmp/example",
+      writableWorkdir: true,
+      limits: createDefaultRunnerLimits(),
+      sandboxPolicy: {
+        networkAccess: "off",
+        filesystemScope: "workdir-only"
+      }
+    });
+
+    expect(args).toContain("/tmp/example:/workspace:rw");
   });
 
   it("does not force network none when enabled by policy", () => {

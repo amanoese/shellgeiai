@@ -15,13 +15,17 @@ export async function fileExists(targetPath) {
   }
 }
 
-export async function createWorkingDirectory(requestedWorkdir) {
+export async function resolveRequestedWorkdir(requestedWorkdir) {
   if (requestedWorkdir) {
     const resolved = path.resolve(process.cwd(), requestedWorkdir);
     await ensureDirectory(resolved);
     return resolved;
   }
 
+  return process.cwd();
+}
+
+export async function createWorkingDirectory() {
   return await mkdtemp(path.join(os.tmpdir(), "shellgeiai-"));
 }
 

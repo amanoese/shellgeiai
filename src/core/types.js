@@ -108,6 +108,7 @@
  * @property {number} [parallelism]
  * @property {"first-pass-wins" | "best-score-wins"} [selector]
  * @property {number} [timeBudgetMs]
+ * @property {boolean} [writableWorkdir]
  * @property {ShellgeiScoreMode} [shellgeiScoreMode]
  * @property {import("../runner/Runner.js").RunnerLimits} [runnerLimits]
  * @property {{blockedPatterns: {pattern: RegExp, reason: string}[]}} [commandPolicy]

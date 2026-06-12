@@ -65,6 +65,34 @@ describe("parseCliOptions", () => {
     });
   });
 
+  it("parses writable workdir flag for solve, check, replay", () => {
+    expect(
+      parseCliOptions(["solve", "sum", "--writable-workdir"])
+    ).toMatchObject({
+      command: "solve",
+      writableWorkdir: true
+    });
+
+    expect(
+      parseCliOptions(["check", "printf", "'ok\\n'", "--writable-workdir"])
+    ).toMatchObject({
+      command: "check",
+      writableWorkdir: true
+    });
+
+    expect(
+      parseCliOptions([
+        "replay",
+        "--log",
+        "./logs/run.json",
+        "--writable-workdir"
+      ])
+    ).toMatchObject({
+      command: "replay",
+      writableWorkdir: true
+    });
+  });
+
   it("parses check, replay, and logs options", () => {
     expect(
       parseCliOptions([

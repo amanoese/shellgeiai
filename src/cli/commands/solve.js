@@ -22,6 +22,7 @@ export async function runSolveCommand(options) {
       parallelism: options.parallelism,
       selector: options.selector,
       timeBudgetMs: options.timeBudgetMs,
+      writableWorkdir: options.writableWorkdir,
       commandPolicyPath: options.commandPolicyPath,
       sandboxPolicyPath: options.sandboxPolicyPath,
       onProgress: progressReporter

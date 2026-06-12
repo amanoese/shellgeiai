@@ -3,7 +3,7 @@ import { writeReplaySessionLog } from "../logs/writer.js";
 import { createDefaultRunnerLimits } from "../runner/limits.js";
 import { isSafeCommand } from "../safety/checker.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../safety/policyLoader.js";
-import { createWorkingDirectory, ensureDirectory, readJson } from "../util/fs.js";
+import { ensureDirectory, readJson, resolveRequestedWorkdir } from "../util/fs.js";
 
 function buildZeroScore() {
   return {
@@ -31,7 +31,7 @@ function resolveReplayTarget(log, options) {
       return `Selected candidate '${id}' because it was selected in the source log.`;
     }
 
-    return `Selected candidate '${id}' because no selected candidate was recorded in the source log.`;
+    return `Selected candidate '${id}' because no selected candidate was recorded in source log.`;
   }
 
   function findSourceCandidate(attempt) {
@@ -56,23 +56,29 @@ function resolveReplayTarget(log, options) {
     }
 
     const sourceCandidate = findSourceCandidate(attempt);
-
     return {
       kind: "attempt",
       id: attempt.attemptId ?? options.attemptId,
       command: attempt.command,
-      explanation: attempt.explanation ?? "Replayed an attempt from the session log.",
-      sourceCandidateId: sourceCandidate?.candidateId ?? attempt.workerId ?? null,
-      sourceAttemptId: attempt.attemptId ?? options.attemptId,
+      explanation: attempt.explanation ?? "Replayed an attempt from session log.",
+      sourceCandidateId: sourceCandidate?.candidateId ?? null,
+      sourceAttemptId: attempt.attemptId ?? null,
       sourceWorkerId: attempt.workerId ?? null,
       sourceStrategy: sourceCandidate?.strategy ?? null,
       sourceSelectedCandidateId: log.selectedCandidateId ?? null,
-      selectionReason: buildSelectionReason(attempt.attemptId ?? options.attemptId, log.selectedCandidateId ?? null)
+      selectionReason: buildSelectionReason(
+        attempt.attemptId ?? options.attemptId,
+        log.selectedCandidateId ?? null
+      )
     };
   }
 
-  const candidateId = options.candidateId ?? log.selectedCandidateId ?? log.candidates?.[0]?.candidateId;
-  const candidate = log.candidates?.find((item) => item.candidateId === candidateId);
+  const selectedCandidateId = options.candidateId ?? log.selectedCandidateId;
+  const candidate =
+    log.candidates?.find((item) => item.candidateId === selectedCandidateId) ??
+    log.candidates?.[0] ??
+    null;
+
   if (!candidate) {
     throw new Error("Replay log did not contain a candidate to rerun.");
   }
@@ -81,20 +87,24 @@ function resolveReplayTarget(log, options) {
     kind: "candidate",
     id: candidate.candidateId,
     command: candidate.command,
-    explanation: candidate.explanation ?? "Replayed a candidate from the session log.",
+    explanation: candidate.explanation ?? "Replayed a candidate from session log.",
     sourceCandidateId: candidate.candidateId,
     sourceAttemptId: candidate.attempts?.at(-1)?.attemptId ?? null,
     sourceWorkerId: candidate.workerId ?? null,
     sourceStrategy: candidate.strategy ?? null,
     sourceSelectedCandidateId: log.selectedCandidateId ?? null,
-    selectionReason: buildSelectionReason(candidate.candidateId, log.selectedCandidateId ?? null)
+    selectionReason: buildSelectionReason(
+      candidate.candidateId,
+      log.selectedCandidateId ?? null
+    )
   };
 }
 
 function buildProblemSpec(log, expectedOutputOverride) {
   const problemSpec = log.problemSpec ?? {
     raw: log.rawProblem ?? log.problem ?? "",
-    problemText: log.problem ?? log.rawProblem ?? ""
+    problemText: log.problem ?? log.rawProblem ?? "",
+    metadata: { format: "plain-text" }
   };
 
   return {
@@ -112,10 +122,13 @@ export async function replaySolveLog(options) {
   const log = await readJson(options.logPath);
   const replayTarget = resolveReplayTarget(log, options);
   const problem = buildProblemSpec(log, options.expectedOutput);
-  const workdir = await createWorkingDirectory(options.requestedWorkdir ?? log.workdir);
+  const workdir = await resolveRequestedWorkdir(options.requestedWorkdir);
   const runnerLimits = options.runnerLimits ?? log.runner?.limits ?? createDefaultRunnerLimits();
-  const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
-  const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const commandPolicy =
+    options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
+  const sandboxPolicy =
+    options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const writableWorkdir = options.writableWorkdir ?? false;
   const safetyCheck = isSafeCommand(replayTarget.command, commandPolicy);
 
   let runResult = {
@@ -125,7 +138,8 @@ export async function replaySolveLog(options) {
     timedOut: false,
     aborted: false,
     durationMs: 0,
-    failure: null
+    failure: null,
+    cleanup: null
   };
   let finalCheck;
 
@@ -142,7 +156,8 @@ export async function replaySolveLog(options) {
       cwd: workdir,
       timeoutMs: options.timeBudgetMs,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir
     });
 
     const decision = await options.judge.judge({
@@ -180,6 +195,7 @@ export async function replaySolveLog(options) {
     runnerFailure: runResult.failure ?? null,
     runnerCleanup: runResult.cleanup ?? null
   };
+
   const candidate = {
     candidateId: `replay-${replayTarget.id}`,
     workerId: "replay",
@@ -190,6 +206,7 @@ export async function replaySolveLog(options) {
     attempts: [attempt],
     finalCheck
   };
+
   const stopReason = safetyCheck.safe
     ? `Completed replay for ${replayTarget.kind} '${replayTarget.id}'.`
     : `Stopped before replay because ${replayTarget.kind} '${replayTarget.id}' was blocked by safety policy.`;
@@ -205,6 +222,7 @@ export async function replaySolveLog(options) {
       runner: options.runner,
       runnerLimits,
       sandboxPolicy,
+      writableWorkdir,
       problem,
       replayTarget
     },
@@ -225,16 +243,19 @@ export async function replaySolveLog(options) {
     finalCheck,
     selector: {
       name: "replay",
-      reason: replayTarget.selectionReason ?? `Replayed ${replayTarget.kind} '${replayTarget.id}' from ${options.logPath}.`,
+      reason:
+        replayTarget.selectionReason ??
+        `Replayed ${replayTarget.kind} '${replayTarget.id}' from ${options.logPath}.`,
       selectedCandidateId: candidate.candidateId,
       score: finalCheck.score,
       metrics: null
     },
     runner: {
-      name: options.runner.name ?? log.runner?.name ?? "local",
-      image: "image" in options.runner ? options.runner.image : log.runner?.image,
+      name: options.runner.name ?? "local",
+      image: "image" in options.runner ? options.runner.image : undefined,
       limits: runnerLimits,
-      sandboxPolicy
+      sandboxPolicy,
+      writableWorkdir
     },
     stopReason,
     plan: {
