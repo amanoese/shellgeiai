@@ -1,6 +1,6 @@
 {
   "name": "shellgeiai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
   "type": "module",
   "author": "amanoese",

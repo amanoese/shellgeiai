@@ -1,4 +1,4 @@
-name: Require version bump
+name: Version increase check
 
 on:
   pull_request:
@@ -6,7 +6,7 @@ on:
       - master
 
 jobs:
-  version-bump:
+  version-increase:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
