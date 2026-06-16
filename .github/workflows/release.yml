@@ -28,7 +28,11 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          node -e "const pkg = require('./package.json'); const releaseTag = process.env.RELEASE_TAG; const expected = `v${pkg.version}`; if (releaseTag !== expected && releaseTag !== pkg.version) { throw new Error(`Release tag ${releaseTag} does not match package.json version ${pkg.version}.`); }"
+          # Accept both `v0.1.1` and `0.1.1`.
+          # Recommended convention:
+          # - package.json version: 0.1.1
+          # - GitHub Release tag: v0.1.1
+          node -e "const pkg = require('./package.json'); const releaseTag = process.env.RELEASE_TAG; const expected = `v${pkg.version}`; if (releaseTag !== expected && releaseTag !== pkg.version) throw new Error(`Release tag ${releaseTag} does not match package.json version ${pkg.version}.`); }"
 
       - name: Install dependencies
         run: npm ci
