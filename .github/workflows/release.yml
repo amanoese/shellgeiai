@@ -32,7 +32,11 @@ jobs:
           # Recommended convention:
           # - package.json version: 0.1.1
           # - GitHub Release tag: v0.1.1
-          node -e "const pkg = require('./package.json'); const releaseTag = process.env.RELEASE_TAG; const expected = `v${pkg.version}`; if (releaseTag !== expected && releaseTag !== pkg.version) throw new Error(`Release tag ${releaseTag} does not match package.json version ${pkg.version}.`); }"
+          VERSION=$(node -pe 'require("./package.json").version')
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && [ "$RELEASE_TAG" != "$VERSION" ]; then
+            echo "Release tag $RELEASE_TAG does not match package.json version $VERSION."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
