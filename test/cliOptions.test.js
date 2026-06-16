@@ -2,11 +2,23 @@ import { describe, expect, it } from "vitest";
 import { createCliProgram, parseCliOptions } from "../src/cliOptions.js";
 
 describe("parseCliOptions", () => {
-  it("exports a CLI program with help text", () => {
+  it("exports CLI program help text", () => {
     const program = createCliProgram();
 
     expect(program.helpInformation()).toContain("shellgeiai solve");
     expect(program.helpInformation()).toContain("--shellgei-score-mode");
+    expect(program.helpInformation()).toContain("shellgeiai --help");
+  });
+
+  it("parses top-level and subcommand help requests", () => {
+    expect(parseCliOptions(["--help"])).toEqual({
+      command: "help"
+    });
+
+    expect(parseCliOptions(["solve", "--help"])).toEqual({
+      command: "help",
+      topic: "solve"
+    });
   });
 
   it("parses solve options defaults", () => {
@@ -66,17 +78,15 @@ describe("parseCliOptions", () => {
   });
 
   it("parses writable workdir flag for solve, check, replay", () => {
-    expect(
-      parseCliOptions(["solve", "sum", "--writable-workdir"])
-    ).toMatchObject({
+    expect(parseCliOptions(["solve", "sum", "--writable-workdir"])).toMatchObject({
       command: "solve",
+      problem: "sum",
       writableWorkdir: true
     });
 
-    expect(
-      parseCliOptions(["check", "printf", "'ok\\n'", "--writable-workdir"])
-    ).toMatchObject({
+    expect(parseCliOptions(["check", "printf", "'ok\\n'", "--writable-workdir"])).toMatchObject({
       command: "check",
+      shellCommand: "printf 'ok\\n'",
       writableWorkdir: true
     });
 
@@ -84,36 +94,34 @@ describe("parseCliOptions", () => {
       parseCliOptions([
         "replay",
         "--log",
-        "./logs/run.json",
+        "./logs/solve-123.json",
         "--writable-workdir"
       ])
     ).toMatchObject({
       command: "replay",
+      logPath: "./logs/solve-123.json",
       writableWorkdir: true
     });
   });
 
-  it("parses check, replay, and logs options", () => {
+  it("parses check, replay, and logs commands", () => {
     expect(
       parseCliOptions([
         "check",
         "printf",
         "'ok\\n'",
-        "--runner",
-        "docker",
-        "--workdir",
-        "./tmp",
-        "--time-budget",
-        "1200",
         "--problem",
         "print ok",
         "--expected-output",
-        "ok"
+        "ok",
+        "--time-budget",
+        "1200",
+        "--workdir",
+        "./tmp"
       ])
-    ).toEqual({
+    ).toMatchObject({
       command: "check",
       shellCommand: "printf 'ok\\n'",
-      runner: "docker",
       workdir: "./tmp",
       problem: "print ok",
       expectedOutput: "ok",

@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
   "type": "module",
+  "author": "amanoese",
   "bin": {
     "shellgeiai": "src/cli.js"
   },
   "scripts": {
-    "build": "node -e \"console.log('JavaScript sources do not require a build step.')\"",
+    "build": "node -e \"console.log('JavaScript sources do not require build step.')\"",
     "dev": "node src/cli.js",
     "start": "node src/cli.js",
     "lint": "echo \"TODO: add lint\"",
@@ -16,12 +17,36 @@
     "test:watch": "vitest"
   },
   "keywords": [
+    "shellgei",
     "cli",
     "shell",
     "ai",
+    "docker",
+    "openai",
     "javascript"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amanoese/shellgeiai.git"
+  },
+  "homepage": "https://github.com/amanoese/shellgeiai#readme",
+  "bugs": {
+    "url": "https://github.com/amanoese/shellgeiai/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "src",
+    "policies",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "commander": "^15.0.0",
     "log-update": "^8.0.0",

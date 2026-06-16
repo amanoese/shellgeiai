@@ -12,6 +12,10 @@ function isFlag(value) {
   return typeof value === "string" && value.startsWith("--");
 }
 
+function isHelpToken(value) {
+  return value === "--help" || value === "-h" || value === "help";
+}
+
 function parseNumber(value, message) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -330,6 +334,7 @@ function parseLogs(argv) {
 export function createCliProgram() {
   const helpText = [
     "Usage:",
+    " shellgeiai --help",
     " shellgeiai solve <problem> [options]",
     " shellgeiai check <command> [options]",
     " shellgeiai replay --log <path> [options]",
@@ -360,6 +365,14 @@ export function createCliProgram() {
 
 export function parseCliOptions(argv) {
   const command = argv[0];
+
+  if (command == null || isHelpToken(command)) {
+    return { command: "help" };
+  }
+
+  if (argv.length >= 2 && isHelpToken(argv[1])) {
+    return { command: "help", topic: command };
+  }
 
   switch (command) {
     case "solve":

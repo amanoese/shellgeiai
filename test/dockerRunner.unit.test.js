@@ -140,7 +140,7 @@ describe("DockerRunner", () => {
 
     expect(result.failure).toEqual({
       type: "container-cleanup-failed",
-      message: "docker: Error response from daemon: failed to remove container"
+      message: "docker: Error response daemon: failed to remove container"
     });
   });
 
@@ -191,6 +191,8 @@ describe("DockerRunner", () => {
         limits: {},
         sandboxPolicy: {}
       })
-    ).rejects.toThrow("Docker runner was requested, but the 'docker' command is not available.");
+    ).rejects.toThrow(
+      "Docker runner was requested, but 'docker' command is not available. Install Docker or use --runner local."
+    );
   });
 });

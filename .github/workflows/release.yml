@@ -1,0 +1,48 @@
+name: Publish to npm
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Validate release tag matches package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node -e "const pkg = require('./package.json'); const releaseTag = process.env.RELEASE_TAG; const expected = `v${pkg.version}`; if (releaseTag !== expected && releaseTag !== pkg.version) { throw new Error(`Release tag ${releaseTag} does not match package.json version ${pkg.version}.`); }"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Verify CLI help entrypoints
+        run: |
+          node src/cli.js --help
+          node src/cli.js solve --help
+
+      - name: Verify packed contents
+        run: npm pack --dry-run
+
+      - name: Publish package
+        run: npm publish --provenance

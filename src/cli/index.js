@@ -16,6 +16,9 @@ export async function runCli(argv) {
     const options = parseCliOptions(argv);
 
     switch (options.command) {
+      case "help":
+        printUsage();
+        return;
       case "solve":
         await runSolveCommand(options);
         return;
