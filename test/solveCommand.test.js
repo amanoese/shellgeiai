@@ -66,7 +66,7 @@ describe("runSolveCommand", () => {
       runner: "docker",
       maxIter: 3,
       mode: "single",
-      parallelism: 1,
+      parallelism: 3,
       selector: "first-pass-wins",
       progress: "bar"
     });
@@ -92,7 +92,7 @@ describe("runSolveCommand", () => {
         runner: "docker",
         maxIter: 3,
         mode: "single",
-        parallelism: 1,
+      parallelism: 3,
         selector: "first-pass-wins",
         progress: "bar"
       })

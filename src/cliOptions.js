@@ -40,7 +40,7 @@ function parseSolve(argv) {
     runner: "docker",
     maxIter: 3,
     mode: "single",
-    parallelism: 1,
+    parallelism: 3,
     selector: "best-score-wins",
     shellgeiScoreMode: "standard",
     progress: "bar"
