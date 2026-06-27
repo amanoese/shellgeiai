@@ -56,7 +56,7 @@ MVP では、まず次の流れを最小構成で実現します。
 - `src/core/solve.js`: solve の薄い入口
 - `src/core/solveSession.js`: セッション初期化
 - `src/core/orchestrator.js`: 現行の単一 worker 実行オーケストレーション
-- `src/core/planner.js`: 将来拡張前提の最小 plan 生成
+- `src/core/planner.js`: LLM planner 結果を execution plan へ正規化する薄い入口
 - `src/core/selector.js`: 現行の最小 selector
 - `src/engines/`: Engine 実装群
 - `src/problem/`: 問題文正規化の入口
@@ -80,7 +80,7 @@ MVP では、まず次の流れを最小構成で実現します。
 
 - `DockerRunner` が通常実行の既定です
 - `LocalRunner` は必要時の切り替え用で、Docker ほど強い隔離は提供しません
-- `workerTask[]` を返す planner contract と、`first-pass-wins` / `best-score-wins` の最小 selector を持ちます
+- LLM planner が返した variant から `workerTask[]` を作る planner contract と、`first-pass-wins` / `best-score-wins` の最小 selector を持ちます
 - judge score と selector metrics は結果とログへ伝播されます
 - policy JSON の詳細は [docs/policies.md](/home/amanoese/repos/shellgeiai/docs/policies.md) を参照してください
 

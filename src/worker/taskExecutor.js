@@ -1,5 +1,5 @@
 import { isSafeCommand } from "../safety/checker.js";
-import { reportSolveProgress } from "./progress.js";
+import { reportSolveProgress } from "../core/progress.js";
 
 function buildJudgeInput(command, runResult, problem) {
   return {
@@ -50,7 +50,7 @@ function getStopReason(session, control) {
   return "";
 }
 
-export async function executeWorkerTask(session, task, control, workerState, requestStop) {
+export async function executeWorkerTask(session, task, control, workerState) {
   const attempts = [];
   let lastExplanation = "";
   let stopReason = "";

@@ -4,13 +4,27 @@ import { createExecutionPlan } from "../src/core/planner.js";
 import { createSolveRuntime } from "../src/core/runtime.js";
 import { OpenAIEngine } from "../src/engines/openaiEngine.js";
 import { DockerRunner } from "../src/runner/dockerRunner.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("createExecutionPlan", () => {
-  it("returns worker task profiles with rubric guidance", async () => {
+  it("uses the LLM planner by default", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+
+    await expect(
+      createExecutionPlan({
+        mode: "parallel",
+        parallelism: 3,
+        maxIterations: 2
+      })
+    ).rejects.toThrow("OPENAI_API_KEY is not set for LLM planner.");
+  });
+
+  it("returns worker tasks from LLM planner variants", async () => {
     const plan = await createExecutionPlan({
       mode: "parallel",
       parallelism: 3,
-      maxIterations: 2
+      maxIterations: 2,
+      plannerProvider: createTestPlannerProvider()
     });
 
     expect(plan).toEqual(
@@ -20,26 +34,27 @@ describe("createExecutionPlan", () => {
         workerTasks: [
           expect.objectContaining({
             workerId: "worker-1",
-            strategy: "default",
-            strategyProfile: {
-              name: "balanced-search",
-              focus: "Start with direct safe one-liner.",
-              retryHint: "Remove redundant stages before changing whole approach.",
-              rubricFocus: ["conciseness", "shellness", "robustness"]
-            },
+            strategy: "direct-shell",
+            assignedVariant: expect.objectContaining({ variantId: "variant-1" }),
+            strategyProfile: expect.objectContaining({
+              name: "direct-shell",
+              focus: "Use a direct shell pipeline.",
+              retryHint: "Prefer the simplest command that can produce the expected output.",
+              rubricFocus: ["awk", "sed"]
+            }),
             maxAttempts: 2
           }),
           expect.objectContaining({
             workerId: "worker-2",
             strategyProfile: expect.objectContaining({
-              rubricFocus: expect.any(Array),
-              retryHint: expect.stringContaining("Remove")
+              name: "pipeline-shell",
+              rubricFocus: ["grep", "sort"]
             })
           }),
           expect.objectContaining({
             workerId: "worker-3",
             strategyProfile: expect.objectContaining({
-              rubricFocus: expect.any(Array)
+              name: "direct-shell"
             })
           })
         ]
@@ -47,11 +62,12 @@ describe("createExecutionPlan", () => {
     );
   });
 
-  it("creates variants, seeds tool suggestions, and assigns one to each worker", async () => {
+  it("normalizes LLM variants and assigns one to each worker", async () => {
     const plan = await createExecutionPlan({
       mode: "parallel",
       parallelism: 4,
       maxIterations: 2,
+      plannerProvider: createTestPlannerProvider(),
       problem: {
         raw: "1から100までの素数を出力してください",
         problemText: "1から100までの素数を出力してください"

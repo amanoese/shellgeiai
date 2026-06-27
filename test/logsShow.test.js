@@ -2,10 +2,11 @@ import path from "node:path";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { showSavedLog } from "../src/core/logsShow.js";
+import { showSavedLog } from "../src/logs/catalog.js";
 import { solveProblem } from "../src/core/solve.js";
 import { SimpleJudge } from "../src/judge/simpleJudge.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];
 const originalCwd = process.cwd();
@@ -35,6 +36,7 @@ describe("showSavedLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -68,6 +70,7 @@ describe("showSavedLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
     const logFilename = path.basename(solved.logPath, ".json");

@@ -1,5 +1,5 @@
-import { listSavedLogs } from "../../core/logCatalog.js";
-import { formatLogSummaries } from "../../formatter/logCatalog.js";
+import { listSavedLogs } from "../../logs/catalog.js";
+import { formatLogSummaries } from "../../formatter/logs.js";
 
 export async function runLogsListCommand(options) {
   const logs = await listSavedLogs({

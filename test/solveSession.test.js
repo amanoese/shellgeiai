@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { reportSessionPhase } from "../src/core/progress.js";
 import { createSolveSession } from "../src/core/solveSession.js";
 import { SESSION_PHASES } from "../src/core/sessionPhases.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("SESSION_PHASES", () => {
   it("defines ordered main solve phases", () => {
@@ -47,7 +48,8 @@ describe("createSolveSession", () => {
       engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
       runner: { name: "mock" },
       judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
-      maxIterations: 1
+      maxIterations: 1,
+      plannerProvider: createTestPlannerProvider()
     });
 
     expect(session.shellgeiScoreMode).toBe("standard");
@@ -62,6 +64,7 @@ describe("createSolveSession", () => {
       runner: { name: "mock" },
       judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       onProgress: (event) => events.push(event)
     });
 

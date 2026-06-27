@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/core/orchestrator.js";
+import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/worker/taskQueue.js";
 
 describe("calculateWorkerConcurrency", () => {
   it("caps concurrency at the number of queued worker tasks", () => {

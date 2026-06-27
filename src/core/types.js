@@ -46,11 +46,6 @@
  */
 
 /**
- * @typedef {Object} PlannerInputs
- * @property {ToolSuggestion[]} seededToolSuggestions
- */
-
-/**
  * @typedef {Object} SolveContext
  * @property {string} problem
  * @property {SolveAttempt[]} attempts
@@ -117,7 +112,6 @@
  * @property {string} [sandboxPolicyPath]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: unknown): Promise<unknown>}} [plannerProvider]
- * @property {PlannerInputs} [plannerInputs]
  */
 
 /**

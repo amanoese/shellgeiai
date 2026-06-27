@@ -7,6 +7,7 @@ import { formatResult } from "../src/formatter/formatResult.js";
 import { solveProblem } from "../src/core/solve.js";
 import { SimpleJudge } from "../src/judge/simpleJudge.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];
 
@@ -36,6 +37,7 @@ describe("solveProblem", () => {
       judge: new SimpleJudge(),
       maxIterations: 1,
       requestedWorkdir,
+      plannerProvider: createTestPlannerProvider(),
       onProgress: (event) => events.push(event)
     });
 
@@ -71,7 +73,8 @@ describe("solveProblem", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 2,
-      requestedWorkdir
+      requestedWorkdir,
+      plannerProvider: createTestPlannerProvider()
     });
 
     expect(result.command).toBe("awk 'BEGIN{print 123}'");
@@ -110,6 +113,7 @@ describe("solveProblem", () => {
       judge: new SimpleJudge(),
       maxIterations: 1,
       requestedWorkdir,
+      plannerProvider: createTestPlannerProvider(),
       parallelism: 2,
       mode: "parallel",
       selector: "shellgei-score"
@@ -160,6 +164,7 @@ describe("solveProblem", () => {
       judge: new SimpleJudge(),
       maxIterations: 1,
       requestedWorkdir,
+      plannerProvider: createTestPlannerProvider(),
       parallelism: 2,
       mode: "parallel"
     });
@@ -203,6 +208,7 @@ describe("solveProblem", () => {
       judge: new SimpleJudge(),
       maxIterations: 1,
       requestedWorkdir,
+      plannerProvider: createTestPlannerProvider(),
       onProgress: reporter
     });
 

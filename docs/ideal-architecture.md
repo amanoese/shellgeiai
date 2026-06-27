@@ -9,7 +9,7 @@
 
 - 実際の solve はまだ単一 worker の逐次実行
 - `src/core/solveSession.js` と `src/core/orchestrator.js` が現行フローの中心
-- `src/core/planner.js` は worker ごとの strategy profile と tool suggestion 付き variant を返し始めており、`src/core/workerTaskExecutor.js` が worker 内ループの切り出し先になっている
+- `src/core/planner.js` は LLM planner の結果を worker task へ正規化し、`src/worker/taskExecutor.js` が worker 内ループの切り出し先になっている
 - `src/core/selector.js` は最小実装
 - `src/runner/localRunner.js` が唯一の実行基盤
 - `src/problem/`、`src/safety/`、`src/logs/` は将来拡張に備えて分離済み

@@ -1,5 +1,5 @@
 import { formatResult } from "../../formatter/formatResult.js";
-import { showSavedLog } from "../../core/logsShow.js";
+import { showSavedLog } from "../../logs/catalog.js";
 
 export async function runLogsShowCommand(options) {
   const result = await showSavedLog(options.logRef);

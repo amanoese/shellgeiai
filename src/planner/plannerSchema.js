@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { buildStrategyProfile, getStrategyName } from "./strategyCatalog.js";
-
 export const toolSuggestionSchema = z.object({
   summary: z.string().trim().min(1),
   rationale: z.string().trim().min(1),
@@ -24,6 +22,23 @@ export const plannerResultSchema = z.object({
   variants: z.array(variantSchema).min(1)
 });
 
+function buildWorkerTask(index, variants, session) {
+  const assignedVariant = variants[index % variants.length];
+
+  return {
+    workerId: `worker-${index + 1}`,
+    strategy: assignedVariant.label,
+    strategyProfile: {
+      name: assignedVariant.label,
+      focus: assignedVariant.approach,
+      retryHint: assignedVariant.explorationHint,
+      rubricFocus: assignedVariant.toolBias
+    },
+    assignedVariant,
+    maxAttempts: session.maxIterations
+  };
+}
+
 export function normalizePlannerResult(rawPlan, session, plannerMeta) {
   const source =
     rawPlan &&
@@ -39,17 +54,13 @@ export function normalizePlannerResult(rawPlan, session, plannerMeta) {
     mode: session.mode ?? "single",
     parallelism: workerCount,
     variants: parsed.variants,
-    workerTasks: Array.from({ length: workerCount }, (_, index) => ({
-      workerId: `worker-${index + 1}`,
-      strategy: getStrategyName(index),
-      strategyProfile: buildStrategyProfile(index),
-      assignedVariant: parsed.variants[index % parsed.variants.length],
-      maxAttempts: session.maxIterations
-    })),
+    workerTasks: Array.from({ length: workerCount }, (_, index) =>
+      buildWorkerTask(index, parsed.variants, session)
+    ),
     planner: {
       provider: plannerMeta.provider,
       attemptedProvider: plannerMeta.attemptedProvider ?? plannerMeta.provider,
-      fallbackReason: plannerMeta.fallbackReason ?? null,
+      fallbackReason: null,
       promptVersion: plannerMeta.promptVersion ?? null,
       prompt: plannerMeta.prompt ?? null,
       rawResponse: plannerMeta.rawResponse ?? null

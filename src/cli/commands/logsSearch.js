@@ -1,5 +1,5 @@
-import { searchSavedLogs } from "../../core/logCatalog.js";
-import { formatLogSummaries } from "../../formatter/logCatalog.js";
+import { searchSavedLogs } from "../../logs/catalog.js";
+import { formatLogSummaries } from "../../formatter/logs.js";
 
 export async function runLogsSearchCommand(options) {
   const logs = await searchSavedLogs({

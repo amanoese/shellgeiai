@@ -10,6 +10,7 @@ import { SimpleJudge } from "../src/judge/simpleJudge.js";
 import { DockerRunner } from "../src/runner/dockerRunner.js";
 import { createDefaultRunnerLimits } from "../src/runner/limits.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const IMAGE_CANDIDATES = [
   process.env.SHELLGEIAI_DOCKER_IMAGE,
@@ -239,6 +240,7 @@ describeDocker("Docker integration", () => {
       }),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -270,6 +272,7 @@ describeDocker("Docker integration", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 

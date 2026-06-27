@@ -8,6 +8,7 @@ import { solveProblem } from "../src/core/solve.js";
 import { SimpleJudge } from "../src/judge/simpleJudge.js";
 import { DockerRunner } from "../src/runner/dockerRunner.js";
 import { LocalRunner } from "../src/runner/localRunner.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];
 
@@ -242,6 +243,7 @@ describe("replaySolveLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -310,6 +312,7 @@ describe("replaySolveLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -360,6 +363,7 @@ describe("replaySolveLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 2,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -451,6 +455,7 @@ describe("replaySolveLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -481,6 +486,7 @@ describe("replaySolveLog", () => {
       runner: new LocalRunner(),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
     const runnerLimits = {
