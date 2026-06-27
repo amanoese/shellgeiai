@@ -1,5 +1,7 @@
-import { executeWorkerTask } from "../worker/taskExecutor.js";
+import { executeWorkerTask } from "../worker/executeWorkerTask.js";
 import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../worker/taskQueue.js";
+import { createExecutionControl } from "./executionControl.js";
+import { createExecutionSummary } from "./executionSummary.js";
 import { reportSessionPhase, reportSolveProgress } from "./progress.js";
 
 export async function runSolveOrchestrator(session) {
@@ -23,20 +25,7 @@ export async function runSolveOrchestrator(session) {
     control.dispose();
   }
 
-  results.sort((left, right) => {
-    const leftOrder = taskOrder.get(left.candidate.workerId) ?? Number.MAX_SAFE_INTEGER;
-    const rightOrder = taskOrder.get(right.candidate.workerId) ?? Number.MAX_SAFE_INTEGER;
-    return leftOrder - rightOrder;
-  });
-
-  const execution = {
-    attempts: results.flatMap((result) => result.attempts),
-    candidates: results.map((result) => result.candidate),
-    workerSummaries: results.map((result) => result.workerSummary),
-    stopReason: control.stopReason || null,
-    passingCandidateId: control.passingCandidateId,
-    failedWorkerCount: results.filter((result) => !result.candidate.finalCheck.passed).length
-  };
+  const execution = createExecutionSummary({ results, taskOrder, control });
   reportSolveProgress(session, {
     type: "session-finished",
     attemptCount: execution.attempts.length,
@@ -51,7 +40,7 @@ export async function runSolveOrchestrator(session) {
 
 async function runWorkerLoop(session, queue, control, workers, results) {
   while (!queue.isEmpty()) {
-    const preflightStopReason = getStopReason(session, control);
+    const preflightStopReason = control.getStopReason();
     if (preflightStopReason) {
       return;
     }
@@ -61,7 +50,7 @@ async function runWorkerLoop(session, queue, control, workers, results) {
       return;
     }
 
-    const workerState = createWorkerState(task);
+    const workerState = control.createWorkerState(task);
     workers.set(task.workerId, workerState);
     try {
       const result = await executeWorkerTask(session, task, control, workerState);
@@ -70,118 +59,4 @@ async function runWorkerLoop(session, queue, control, workers, results) {
       workers.delete(task.workerId);
     }
   }
-}
-
-function createExecutionControl(session, workers) {
-  const control = {
-    stopRequested: false,
-    stopReason: "",
-    passingCandidateId: null,
-    deadlineTimer: null,
-    graceStopTimer: null,
-    workers,
-    scheduleGraceStop(options, delayMs) {
-      if (control.stopRequested || control.graceStopTimer != null) {
-        return;
-      }
-
-      if (!control.stopReason) {
-        control.stopReason = options.reason;
-      }
-
-      if (options.passingCandidateId && control.passingCandidateId == null) {
-        control.passingCandidateId = options.passingCandidateId;
-      }
-
-      control.graceStopTimer = setTimeout(() => {
-        control.graceStopTimer = null;
-        if (control.stopRequested) {
-          return;
-        }
-
-        requestStop(control, options);
-      }, delayMs);
-    },
-    dispose() {
-      if (control.deadlineTimer) {
-        clearTimeout(control.deadlineTimer);
-        control.deadlineTimer = null;
-      }
-
-      if (control.graceStopTimer) {
-        clearTimeout(control.graceStopTimer);
-        control.graceStopTimer = null;
-      }
-    }
-  };
-
-  if (session.deadlineAtMs != null) {
-    const delayMs = Math.max(0, session.deadlineAtMs - Date.now());
-    control.deadlineTimer = setTimeout(() => {
-      requestStop(control, {
-        reason: "Stopped because the overall time budget was exhausted.",
-        force: true
-      });
-    }, delayMs);
-  }
-
-  return control;
-}
-
-function createWorkerState(task) {
-  return {
-    workerId: task.workerId,
-    phase: "idle",
-    iteration: 0,
-    command: "",
-    abortController: new AbortController()
-  };
-}
-
-function requestStop(control, options) {
-  if (control.graceStopTimer) {
-    clearTimeout(control.graceStopTimer);
-    control.graceStopTimer = null;
-  }
-
-  if (options.passingCandidateId && control.passingCandidateId == null) {
-    control.passingCandidateId = options.passingCandidateId;
-  }
-
-  if (!options.force && control.stopRequested) {
-    return;
-  }
-
-  control.stopRequested = true;
-  control.stopReason = options.reason;
-  for (const workerState of control.workers.values()) {
-    if (workerState.workerId === options.exceptWorkerId) {
-      continue;
-    }
-
-    if (!workerState.abortController.signal.aborted) {
-      workerState.abortController.abort();
-    }
-  }
-}
-
-function getStopReason(session, control) {
-  if (control.stopRequested) {
-    if (control.stopReason) {
-      return control.stopReason;
-    }
-
-    if (control.passingCandidateId != null) {
-      return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
-    }
-
-    return "Execution was stopped.";
-  }
-
-  if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
-    control.stopReason = "Stopped because the overall time budget was exhausted.";
-    return control.stopReason;
-  }
-
-  return "";
 }

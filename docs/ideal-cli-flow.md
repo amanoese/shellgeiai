@@ -5,14 +5,17 @@
 
 ## 現状との差分
 
-2026-06-17 時点の実装は、まだこの理想フローをフルには満たしていませんが、複数 worker の並列実行はすでに利用可能です。現状は planner / selector / Docker 制約 / ログ構造を理想像へ寄せている途中段階として理解してください。
+2026-06-28 時点の実装は、まだこの理想フローをフルには満たしていませんが、複数 worker の並列実行はすでに利用可能です。現状は planner / selector / Docker 制約 / ログ構造を理想像へ寄せている途中段階として理解してください。
 
-- CLI は薄く保ち、実体の依存解決を `core` 側へ寄せる
+- CLI は薄く保ち、引数解析は `src/cli/options/` へ分割済み。`src/cliOptions.js` は互換用の re-export として残す
 - 問題正規化は `src/problem/`
 - セッション初期化は `src/core/solveSession.js`
 - 実行本体は `src/core/orchestrator.js`
 - 最小 planner / selector は `src/core/planner.js` と `src/core/selector.js`
-- planner は LLM が返した exploration variant から worker task を作り、worker 内ループは `src/worker/taskExecutor.js` に切り出されています
+- planner は LLM が返した exploration variant から worker task を作る
+- worker retry loop は `src/worker/executeWorkerTask.js`、1 attempt の実行は `src/worker/attemptRunner.js`
+- attempt / candidate object の構築は `src/worker/attemptFactory.js`、worker 停止理由と deadline 判定は `src/worker/stopReason.js`
+- orchestration 側の停止制御は `src/core/executionControl.js`、実行サマリ整形は `src/core/executionSummary.js`
 - safety と logs は `src/safety/` と `src/logs/` に分離済み
 
 このドキュメントは完成済み機能一覧ではなく、そこへ到達するための設計ゴールとして読んでください。

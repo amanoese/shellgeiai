@@ -5,13 +5,17 @@
 
 ## 現状の実装位置
 
-2026-06-11 時点の `src/` は、理想構成の一部だけを先取りした移行段階です。大きな位置づけは次のとおりです。
+2026-06-28 時点の `src/` は、理想構成の一部だけを先取りした移行段階です。大きな位置づけは次のとおりです。
 
 - 実際の solve はまだ単一 worker の逐次実行
 - `src/core/solveSession.js` と `src/core/orchestrator.js` が現行フローの中心
-- `src/core/planner.js` は LLM planner の結果を worker task へ正規化し、`src/worker/taskExecutor.js` が worker 内ループの切り出し先になっている
+- `src/core/planner.js` は LLM planner の結果を worker task へ正規化する
+- worker retry loop は `src/worker/executeWorkerTask.js`、1 attempt の実行は `src/worker/attemptRunner.js`
+- attempt / candidate object の構築は `src/worker/attemptFactory.js`、worker 停止理由と deadline 判定は `src/worker/stopReason.js`
+- orchestration 側の停止制御は `src/core/executionControl.js`、実行サマリ整形は `src/core/executionSummary.js`
 - `src/core/selector.js` は最小実装
 - `src/runner/localRunner.js` が唯一の実行基盤
+- CLI 引数解析は `src/cli/options/` へ分割済みで、`src/cliOptions.js` は互換用 re-export として残っている
 - `src/problem/`、`src/safety/`、`src/logs/` は将来拡張に備えて分離済み
 
 つまり、ディレクトリ構成の一部は理想像へ近づいていますが、Docker 並列実行と複数 SubAgent の本体はまだこれからです。
@@ -160,10 +164,14 @@ shellgeiai/
 src/
   cli.js
   cliOptions.js
+  cli/
+    options/
   core/
     solve.js
     solveSession.js
     orchestrator.js
+    executionControl.js
+    executionSummary.js
     planner.js
     selector.js
     runtime.js
@@ -183,6 +191,11 @@ src/
     simpleJudge.js
   logs/
     writer.js
+  worker/
+    executeWorkerTask.js
+    attemptRunner.js
+    attemptFactory.js
+    stopReason.js
   engines/
   formatter/
   util/

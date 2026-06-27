@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createCliProgram, parseCliOptions } from "../src/cliOptions.js";
 
 describe("parseCliOptions", () => {
+  it("keeps legacy cliOptions exports stable", async () => {
+    const legacy = await import("../src/cliOptions.js");
+    const modern = await import("../src/cli/parseCliOptions.js");
+
+    expect(legacy.parseCliOptions).toBe(modern.parseCliOptions);
+    expect(legacy.createCliProgram).toBe(modern.createCliProgram);
+  });
+
   it("exports CLI program help text", () => {
     const program = createCliProgram();
 
