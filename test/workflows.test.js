@@ -35,4 +35,14 @@ describe("GitHub workflows", () => {
     expect(workflow).not.toContain("=~");
     expect(workflow).not.toContain("printf");
   });
+
+  it("uses trusted publishing flow for npm release", () => {
+    const workflow = readWorkflow("release.yml");
+
+    expect(workflow).toContain("id-token: write");
+    expect(workflow).toContain("npm publish --provenance");
+    expect(workflow).not.toContain("registry-url: https://registry.npmjs.org");
+    expect(workflow).not.toContain("NODE_AUTH_TOKEN");
+    expect(workflow).not.toContain("NPM_TOKEN");
+  });
 });
