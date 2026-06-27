@@ -40,8 +40,10 @@ describe("GitHub workflows", () => {
     const workflow = readWorkflow("release.yml");
 
     expect(workflow).toContain("id-token: write");
-    expect(workflow).toContain("npm publish --provenance");
-    expect(workflow).not.toContain("registry-url: https://registry.npmjs.org");
+    expect(workflow).toContain("node-version: 24");
+    expect(workflow).toContain("run: npm publish");
+    expect(workflow).not.toContain("npm publish --provenance");
+    expect(workflow).toContain("registry-url: https://registry.npmjs.org");
     expect(workflow).not.toContain("NODE_AUTH_TOKEN");
     expect(workflow).not.toContain("NPM_TOKEN");
   });
