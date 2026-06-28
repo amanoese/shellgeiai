@@ -26,6 +26,7 @@ export async function runSolveCommand(options) {
       commandPolicyPath: options.commandPolicyPath,
       sandboxPolicyPath: options.sandboxPolicyPath,
       knowledgeMode: options.knowledgeMode,
+      knowledgeModel: options.knowledgeModel,
       knowledgeDatasetPath: options.knowledgeDatasetPath,
       knowledgeVectorsPath: options.knowledgeVectorsPath,
       onProgress: progressReporter

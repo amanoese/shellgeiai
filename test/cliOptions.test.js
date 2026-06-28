@@ -1,6 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { createCliProgram, parseCliOptions } from "../src/cliOptions.js";
 
+const DEFAULT_RURI_MODEL = "sirasagi62/ruri-v3-30m-ONNX";
+const DEFAULT_RURI_VECTORS =
+  "data/knowledge/shellgei-basic.vectors.sirasagi62.ruri-v3-30m-ONNX.json";
+
+function withKnowledgeModelEnv(value, fn) {
+  const original = process.env.SHELLGEIAI_KNOWLEDGE_MODEL;
+  if (value == null) {
+    delete process.env.SHELLGEIAI_KNOWLEDGE_MODEL;
+  } else {
+    process.env.SHELLGEIAI_KNOWLEDGE_MODEL = value;
+  }
+
+  try {
+    fn();
+  } finally {
+    if (original == null) {
+      delete process.env.SHELLGEIAI_KNOWLEDGE_MODEL;
+    } else {
+      process.env.SHELLGEIAI_KNOWLEDGE_MODEL = original;
+    }
+  }
+}
+
 describe("parseCliOptions", () => {
   it("keeps legacy cliOptions exports stable", async () => {
     const legacy = await import("../src/cliOptions.js");
@@ -14,9 +37,12 @@ describe("parseCliOptions", () => {
     const program = createCliProgram();
 
     expect(program.helpInformation()).toContain("shellgeiai solve");
+    expect(program.helpInformation()).toContain("shellgeiai knowledge search");
     expect(program.helpInformation()).not.toContain("shellgeiai check");
     expect(program.helpInformation()).not.toContain("shellgeiai replay");
     expect(program.helpInformation()).toContain("--shellgei-score-mode");
+    expect(program.helpInformation()).toContain("--knowledge-model");
+    expect(program.helpInformation()).toContain("--top-k");
     expect(program.helpInformation()).toContain("shellgeiai --help");
   });
 
@@ -42,9 +68,10 @@ describe("parseCliOptions", () => {
       parallelism: 4,
     selector: "best-score-wins",
     shellgeiScoreMode: "simple",
-    knowledgeMode: "off",
-    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
-    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json",
+      knowledgeMode: "off",
+      knowledgeModel: DEFAULT_RURI_MODEL,
+      knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+      knowledgeVectorsPath: DEFAULT_RURI_VECTORS,
     progress: "bar"
   });
 });
@@ -82,10 +109,11 @@ describe("parseCliOptions", () => {
       mode: "parallel",
       parallelism: 2,
       selector: "best-score-wins",
-    shellgeiScoreMode: "robustness",
-    knowledgeMode: "off",
-    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
-    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json",
+      shellgeiScoreMode: "robustness",
+      knowledgeMode: "off",
+      knowledgeModel: DEFAULT_RURI_MODEL,
+      knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+      knowledgeVectorsPath: DEFAULT_RURI_VECTORS,
     timeBudgetMs: 1500,
       commandPolicyPath: "./config/command-policy.json",
       sandboxPolicyPath: "./config/sandbox-policy.json",
@@ -100,17 +128,45 @@ describe("parseCliOptions", () => {
         "CSV の 3列目",
       "--knowledge",
       "worker",
+      "--knowledge-model",
+      "cli-model",
       "--knowledge-dataset",
       "data/knowledge/shellgei-basic.jsonl",
       "--knowledge-vectors",
       "data/knowledge/shellgei-basic.vectors.json"
       ])
-  ).toMatchObject({
-    knowledgeMode: "worker",
-    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
-    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json"
+    ).toMatchObject({
+      knowledgeMode: "worker",
+      knowledgeModel: "cli-model",
+      knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+      knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json"
+    });
   });
-});
+
+  it("uses environment knowledge model for solve when no CLI model is provided", () => {
+    withKnowledgeModelEnv("env-model", () => {
+      expect(parseCliOptions(["solve", "print 42"])).toMatchObject({
+        knowledgeModel: "env-model"
+      });
+    });
+  });
+
+  it("lets solve CLI knowledge model override environment model", () => {
+    withKnowledgeModelEnv("env-model", () => {
+      expect(
+        parseCliOptions([
+          "solve",
+          "print 42",
+          "--knowledge-model",
+          "cli-model"
+        ])
+      ).toMatchObject({
+        knowledgeModel: "cli-model",
+        knowledgeVectorsPath:
+          "data/knowledge/shellgei-basic.vectors.cli-model.json"
+      });
+    });
+  });
 
   it("rejects unknown knowledge mode", () => {
     expect(() =>

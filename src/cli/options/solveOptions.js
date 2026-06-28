@@ -1,8 +1,9 @@
 import { isFlag, parseNumber, takeValue } from "./shared.js";
 import {
-  DEFAULT_KNOWLEDGE_DATASET,
-  DEFAULT_KNOWLEDGE_VECTORS
+  DEFAULT_KNOWLEDGE_DATASET
 } from "../../knowledge/commands.js";
+import { resolveKnowledgeModel } from "../../knowledge/modelConfig.js";
+import { defaultKnowledgeVectorsPath } from "../../knowledge/vectorFile.js";
 
 const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
@@ -22,10 +23,11 @@ export function parseSolve(argv) {
     selector: "best-score-wins",
     shellgeiScoreMode: "simple",
     knowledgeMode: "off",
+    knowledgeModel: resolveKnowledgeModel(),
     knowledgeDatasetPath: DEFAULT_KNOWLEDGE_DATASET,
-    knowledgeVectorsPath: DEFAULT_KNOWLEDGE_VECTORS,
     progress: "bar"
   };
+  let knowledgeVectorsPathExplicit = false;
 
   for (let index = 1; index < argv.length; index += 1) {
     const token = argv[index];
@@ -103,12 +105,21 @@ export function parseSolve(argv) {
         }
         index += 1;
         break;
+      case "--knowledge-model":
+        options.knowledgeModel = takeValue(
+          argv,
+          index,
+          "Missing value --knowledge-model."
+        );
+        index += 1;
+        break;
       case "--knowledge-dataset":
         options.knowledgeDatasetPath = takeValue(argv, index, "Missing value --knowledge-dataset.");
         index += 1;
         break;
       case "--knowledge-vectors":
         options.knowledgeVectorsPath = takeValue(argv, index, "Missing value --knowledge-vectors.");
+        knowledgeVectorsPathExplicit = true;
         index += 1;
         break;
       case "--time-budget":
@@ -150,6 +161,13 @@ export function parseSolve(argv) {
 
   if (positionals.length === 0) {
     throw new Error("Missing <problem> argument.");
+  }
+
+  if (!knowledgeVectorsPathExplicit) {
+    options.knowledgeVectorsPath = defaultKnowledgeVectorsPath(
+      options.knowledgeDatasetPath,
+      options.knowledgeModel
+    );
   }
 
   return {

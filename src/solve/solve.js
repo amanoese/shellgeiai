@@ -9,9 +9,11 @@ export async function solveProblem(options) {
   const session = await createSolveSession({
     ...options,
     knowledgeMode: options.knowledgeMode,
+    knowledgeModel: options.knowledgeModel,
     knowledgeDatasetPath: options.knowledgeDatasetPath,
     knowledgeVectorsPath: options.knowledgeVectorsPath,
-    knowledgeEmbedder: options.knowledgeEmbedder
+    knowledgeEmbedder: options.knowledgeEmbedder,
+    knowledgeEmbedderFactory: options.knowledgeEmbedderFactory
   });
   const execution = await runSolveOrchestrator(session);
   return await finalizeSolve(session, execution);

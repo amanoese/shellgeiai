@@ -1,3 +1,5 @@
+import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
+
 export function meanPool(tokenEmbeddings) {
   if (!Array.isArray(tokenEmbeddings) || tokenEmbeddings.length === 0) return [];
   const dimension = tokenEmbeddings[0].length;
@@ -10,7 +12,7 @@ export function meanPool(tokenEmbeddings) {
   return sums.map((sum) => sum / tokenEmbeddings.length);
 }
 
-export function createRuriEmbedder({ pipeline, model = "Xenova/multilingual-e5-small" } = {}) {
+export function createRuriEmbedder({ pipeline, model = DEFAULT_KNOWLEDGE_MODEL } = {}) {
   let pipePromise = null;
 
   async function getPipeline() {

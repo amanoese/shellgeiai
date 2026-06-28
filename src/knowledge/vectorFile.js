@@ -1,10 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export function defaultKnowledgeVectorsPath(datasetPath) {
-  return datasetPath.endsWith(".jsonl")
-    ? datasetPath.replace(/\.jsonl$/, ".vectors.json")
-    : `${datasetPath}.vectors.json`;
+export function sanitizeKnowledgeModelForPath(model) {
+  return String(model ?? "")
+    .trim()
+    .replace(/\//g, ".")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export function defaultKnowledgeVectorsPath(datasetPath, model) {
+  const basePath = datasetPath.endsWith(".jsonl")
+    ? datasetPath.replace(/\.jsonl$/, "")
+    : datasetPath;
+  return `${basePath}.vectors.${sanitizeKnowledgeModelForPath(model)}.json`;
 }
 
 export async function writeKnowledgeVectorFile(vectorsPath, vectorFile) {

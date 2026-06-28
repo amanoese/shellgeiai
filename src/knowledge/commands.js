@@ -1,10 +1,20 @@
 import { loadKnowledgeDataset } from "./dataset.js";
+import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { createRuriEmbedder } from "./ruriEmbedder.js";
-import { writeKnowledgeVectorFile } from "./vectorFile.js";
+import { searchKnowledgeRecords } from "./vectorSearch.js";
+import {
+  attachKnowledgeVectors,
+  defaultKnowledgeVectorsPath,
+  loadKnowledgeVectorFileIfExists,
+  writeKnowledgeVectorFile
+} from "./vectorFile.js";
 
-export const DEFAULT_KNOWLEDGE_MODEL = "Xenova/multilingual-e5-small";
 export const DEFAULT_KNOWLEDGE_DATASET = "data/knowledge/shellgei-basic.jsonl";
-export const DEFAULT_KNOWLEDGE_VECTORS = "data/knowledge/shellgei-basic.vectors.json";
+export const DEFAULT_KNOWLEDGE_VECTORS = defaultKnowledgeVectorsPath(
+  DEFAULT_KNOWLEDGE_DATASET,
+  DEFAULT_KNOWLEDGE_MODEL
+);
+export { DEFAULT_KNOWLEDGE_MODEL };
 
 export async function prepareKnowledgeModel({
   embedder,
@@ -17,11 +27,13 @@ export async function prepareKnowledgeModel({
 
 export async function buildKnowledgeVectors({
   datasetPath = DEFAULT_KNOWLEDGE_DATASET,
-  vectorsPath = DEFAULT_KNOWLEDGE_VECTORS,
+  vectorsPath,
   embedder,
   model = DEFAULT_KNOWLEDGE_MODEL,
   now = () => new Date().toISOString()
 } = {}) {
+  const resolvedVectorsPath =
+    vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
   await prepareKnowledgeModel({ embedder: activeEmbedder, model });
   const records = await loadKnowledgeDataset(datasetPath);
@@ -32,12 +44,42 @@ export async function buildKnowledgeVectors({
       vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
     });
   }
-  await writeKnowledgeVectorFile(vectorsPath, {
+  await writeKnowledgeVectorFile(resolvedVectorsPath, {
     version: 1,
     model,
     dataset: datasetPath,
     createdAt: now(),
     items
   });
-  return { datasetPath, itemCount: items.length, model, vectorsPath };
+  return {
+    datasetPath,
+    itemCount: items.length,
+    model,
+    vectorsPath: resolvedVectorsPath
+  };
+}
+
+export async function searchKnowledge({
+  query,
+  datasetPath = DEFAULT_KNOWLEDGE_DATASET,
+  vectorsPath,
+  embedder,
+  model = DEFAULT_KNOWLEDGE_MODEL,
+  topK = 10
+} = {}) {
+  const resolvedVectorsPath =
+    vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
+  const activeEmbedder = embedder ?? createRuriEmbedder({ model });
+  const records = await loadKnowledgeDataset(datasetPath);
+  const vectorFile = await loadKnowledgeVectorFileIfExists(resolvedVectorsPath);
+  const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
+  const results = await searchKnowledgeRecords({
+    query: `検索クエリ: ${query}`,
+    records: recordsWithVectors,
+    embedder: activeEmbedder,
+    topK,
+    maxPerCommand: topK
+  });
+
+  return { datasetPath, model, query, results, vectorsPath: resolvedVectorsPath };
 }

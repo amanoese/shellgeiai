@@ -182,4 +182,53 @@ describe("createSolveSession", () => {
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
   });
+
+  it("passes selected knowledge model to worker knowledge embedder", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
+    const datasetPath = path.join(dir, "knowledge.jsonl");
+    await fs.writeFile(
+      datasetPath,
+      `${JSON.stringify({
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "awk -F: CSV columns",
+        source: "test"
+      })}\n`,
+      "utf8"
+    );
+
+    const createKnowledgeEmbedder = vi.fn(() => ({
+      embed: vi.fn(async () => [1, 0])
+    }));
+
+    await createSolveSession({
+      problemInput: "print 42",
+      engine: {
+        name: "mock",
+        generateCommand: async () => ({ command: "printf '42\\n'" })
+      },
+      runner: { name: "mock" },
+      judge: {
+        judge: async () => ({
+          passed: true,
+          reason: "ok",
+          score: { value: 100, breakdown: {} }
+        })
+      },
+      maxIterations: 1,
+      parallelism: 2,
+      knowledgeMode: "worker",
+      knowledgeModel: "test-ruri-model",
+      knowledgeDatasetPath: datasetPath,
+      knowledgeVectorsPath: path.join(dir, "missing.vectors.json"),
+      knowledgeEmbedderFactory: createKnowledgeEmbedder,
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(createKnowledgeEmbedder).toHaveBeenCalledWith({
+      model: "test-ruri-model"
+    });
+  });
 });

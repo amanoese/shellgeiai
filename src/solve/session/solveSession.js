@@ -1,10 +1,12 @@
 import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
 import { loadKnowledgeDataset } from "../../knowledge/dataset.js";
+import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
 import {
   attachKnowledgeVectors,
+  defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists
 } from "../../knowledge/vectorFile.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
@@ -47,8 +49,14 @@ export async function createSolveSession(options) {
     selectorName: options.selector ?? "first-pass-wins",
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
     knowledgeMode: options.knowledgeMode ?? "off",
+    knowledgeModel: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL,
     knowledgeDatasetPath: options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
-    knowledgeVectorsPath: options.knowledgeVectorsPath ?? "data/knowledge/shellgei-basic.vectors.json",
+    knowledgeVectorsPath:
+      options.knowledgeVectorsPath ??
+      defaultKnowledgeVectorsPath(
+        options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
+        options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL
+      ),
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
@@ -68,7 +76,11 @@ export async function createSolveSession(options) {
     session.knowledgeRetriever = createKnowledgeRetriever({
       mode: session.knowledgeMode,
       records: recordsWithVectors,
-      embedder: options.knowledgeEmbedder ?? createRuriEmbedder(),
+      embedder:
+        options.knowledgeEmbedder ??
+        (options.knowledgeEmbedderFactory ?? createRuriEmbedder)({
+          model: session.knowledgeModel
+        }),
       topK: 10
     });
   }
