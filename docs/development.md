@@ -39,7 +39,7 @@ CLI エントリポイントは `src/cli.js` です。CLI コマンド名は `sh
 - `docs/` の理想像: 複数 SubAgent を Docker 内で並列実行し、planner / selector / judge / logs を分離する将来構成
 - `plan/` の実行計画: 現状実装から理想像へ寄せるための段階的な修正計画
 
-現在の `src/` はまだ完全な Docker 並列実行ではありませんが、`core/solveSession`、`core/orchestrator`、`core/planner`、`core/selector`、`problem/`、`safety/`、`logs/` の骨格を先に導入し、段階的に理想構成へ寄せています。
+現在の `src/` は `cli / solve / execution / providers / io / shared` の大きな責務境界へ整理済みです。solve の進行は `src/solve/`、実行・安全性・判定は `src/execution/`、LLM/CLI provider は `src/providers/`、入出力と表示は `src/io/` に寄せ、段階的に理想構成へ近づけています。
 
 MVP では、まず次の流れを最小構成で実現します。
 
@@ -53,28 +53,30 @@ MVP では、まず次の流れを最小構成で実現します。
 ## 主要コンポーネント
 
 - `src/cli.js`: CLI 入口
-- `src/core/solve.js`: solve の薄い入口
-- `src/core/solveSession.js`: セッション初期化
-- `src/core/orchestrator.js`: 現行の単一 worker 実行オーケストレーション
-- `src/core/planner.js`: LLM planner 結果を execution plan へ正規化する薄い入口
-- `src/core/selector.js`: 現行の最小 selector
-- `src/engines/`: Engine 実装群
-- `src/problem/`: 問題文正規化の入口
-- `src/runner/`: 実行基盤
-- `src/safety/`: command policy と sandbox policy
-- `src/judge/`: 判定器
-- `src/logs/`: セッションログ出力
-- `src/formatter/`: 結果表示
-- `src/util/`: ファイル・実行補助
+- `src/cli/`: CLI コマンドと引数解析
+- `src/solve/solve.js`: solve の薄い入口
+- `src/solve/session/solveSession.js`: セッション初期化
+- `src/solve/orchestration/orchestrator.js`: worker 実行オーケストレーション
+- `src/solve/planning/planner.js`: LLM planner 結果を execution plan へ正規化する薄い入口
+- `src/solve/selection/selector.js`: 現行の最小 selector
+- `src/solve/worker/`: worker retry loop と attempt 実行
+- `src/providers/engines/`: Engine 実装群
+- `src/io/problem/`: 問題文正規化の入口
+- `src/execution/runner/`: 実行基盤
+- `src/execution/safety/`: command policy と sandbox policy
+- `src/execution/judge/`: 判定器
+- `src/io/logs/`: セッションログ出力
+- `src/io/formatter/`: 結果表示
+- `src/shared/`: ファイル・実行補助
 
 将来的な理想構成では、次の責務分割を目指します。
 
-- `src/core/`: session / orchestrator / planner / selector
+- `src/solve/`: session / orchestration / planning / selection / worker
 - `src/agents/`: SubAgent 実装群
-- `src/runner/`: Docker 実行基盤
-- `src/safety/`: command policy / sandbox policy
-- `src/judge/`: worker 一次判定と最終判定
-- `src/logs/`: session / worker ログ
+- `src/execution/runner/`: Docker 実行基盤
+- `src/execution/safety/`: command policy / sandbox policy
+- `src/execution/judge/`: worker 一次判定と最終判定
+- `src/io/logs/`: session / worker ログ
 
 ## 実装と運用の補足
 

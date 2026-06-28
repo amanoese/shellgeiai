@@ -14,7 +14,7 @@ shellgeiai solve "..." --sandbox-policy ./policies/default-sandbox-policy.json
 - リポジトリ同梱の既定サンプルは `policies/` に置きます
 - 現在のサンプルは `policies/default-command-policy.json` と `policies/default-sandbox-policy.json` です
 - 指定パスは `process.cwd()` 基準で解決されます
-- policy を指定しない場合、command policy は `src/safety/commandPolicy.js` の既定 deny-list、sandbox policy は `src/safety/sandboxPolicy.js` の既定値を使います
+- policy を指定しない場合、command policy は `src/execution/safety/commandPolicy.js` の既定 deny-list、sandbox policy は `src/execution/safety/sandboxPolicy.js` の既定値を使います
 - チーム運用用の preset を増やす場合も、まずは `policies/` 配下にまとめる前提です
 
 ## Command Policy Schema
