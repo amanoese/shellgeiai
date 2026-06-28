@@ -41,9 +41,50 @@ describe("knowledge dataset", () => {
 
   it("loads seed JSONL dataset", async () => {
     const records = await loadKnowledgeDataset("data/knowledge/shellgei-basic.jsonl");
-    expect(records.length).toBeGreaterThanOrEqual(6);
+    expect(records.length).toBeGreaterThanOrEqual(85);
     expect(records.map((record) => record.id)).toContain("man:awk:-F");
     expect(records.every((record) => record.text.length > 0)).toBe(true);
+
+    const commands = new Set(
+      records
+        .flatMap((record) => record.command.split("|"))
+        .map((command) => command.trim())
+        .filter(Boolean)
+    );
+    expect(Array.from(commands)).toEqual(
+      expect.arrayContaining([
+        "awk",
+        "sed",
+        "grep",
+        "sort",
+        "uniq",
+        "xargs",
+        "find",
+        "cut",
+        "tr",
+        "wc",
+        "head",
+        "tail",
+        "seq",
+        "paste",
+        "join",
+        "comm",
+        "fmt",
+        "perl",
+        "rev",
+        "tac",
+        "zcat",
+        "wget",
+        "curl",
+        "factor",
+        "nkf",
+        "printf",
+        "yes",
+        "fold",
+        "xxd",
+        "jq"
+      ])
+    );
   });
 
   it("wraps malformed JSON with line number", async () => {

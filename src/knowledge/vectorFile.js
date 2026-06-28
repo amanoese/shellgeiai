@@ -13,7 +13,7 @@ export function defaultKnowledgeVectorsPath(datasetPath, model) {
   const basePath = datasetPath.endsWith(".jsonl")
     ? datasetPath.replace(/\.jsonl$/, "")
     : datasetPath;
-  return `${basePath}.vectors.${sanitizeKnowledgeModelForPath(model)}.json`;
+  return `${basePath}.vectors.json`;
 }
 
 export async function writeKnowledgeVectorFile(vectorsPath, vectorFile) {

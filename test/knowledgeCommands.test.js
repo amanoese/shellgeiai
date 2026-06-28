@@ -85,7 +85,7 @@ describe("knowledge commands", () => {
     });
   });
 
-  it("uses model-aware default vector file path", async () => {
+  it("uses stable default vector file path", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
     await fs.writeFile(
@@ -110,7 +110,7 @@ describe("knowledge commands", () => {
         now: () => "2026-06-29T00:00:00.000Z"
       })
     ).resolves.toMatchObject({
-      vectorsPath: path.join(dir, "knowledge.vectors.owner.custom-model.json")
+      vectorsPath: path.join(dir, "knowledge.vectors.json")
     });
   });
 

@@ -89,7 +89,7 @@ shellgeiai knowledge build --knowledge-model sirasagi62/ruri-v3-30m-ONNX
 shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
 ```
 
-`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.sirasagi62.ruri-v3-30m-ONNX.json` のように model 名入りの vectors file を作ります。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.json` を作ります。vectors file 内には model 名も記録されます。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
 
 `solve` と `knowledge prepare/build` の embedding model は `--knowledge-model <model>` で指定できます。環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` でも既定値を上書きでき、CLI オプションが環境変数より優先されます。互換性のため `knowledge prepare/build --model <model>` も使えます。Transformers.js 対応の ONNX が無い model は失敗することがあります。
 

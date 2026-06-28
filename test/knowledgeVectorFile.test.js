@@ -5,15 +5,13 @@ import {
 } from "../src/knowledge/vectorFile.js";
 
 describe("knowledge vector file paths", () => {
-  it("includes sanitized model name in default vectors path", () => {
+  it("uses a stable default vectors path next to the dataset", () => {
     expect(
       defaultKnowledgeVectorsPath(
         "data/knowledge/shellgei-basic.jsonl",
         "sirasagi62/ruri-v3-30m-ONNX"
       )
-    ).toBe(
-      "data/knowledge/shellgei-basic.vectors.sirasagi62.ruri-v3-30m-ONNX.json"
-    );
+    ).toBe("data/knowledge/shellgei-basic.vectors.json");
   });
 
   it("sanitizes model names for file paths", () => {
