@@ -11,9 +11,9 @@
  * @property {string} [explanation]
  * @property {string} [failureReason]
  * @property {number} [durationMs]
- * @property {import("../execution/judge/Judge.js").JudgeScore} [score]
- * @property {import("../execution/runner/Runner.js").RunnerFailure | null} [runnerFailure]
- * @property {import("../execution/runner/Runner.js").RunnerCleanup | null} [runnerCleanup]
+ * @property {import("../../execution/judge/Judge.js").JudgeScore} [score]
+ * @property {import("../../execution/runner/Runner.js").RunnerFailure | null} [runnerFailure]
+ * @property {import("../../execution/runner/Runner.js").RunnerCleanup | null} [runnerCleanup]
  */
 
 /**
@@ -95,8 +95,8 @@
  * @typedef {Object} SolveProblemOptions
  * @property {string} problemInput
  * @property {{name: string, generateCommand(context: SolveContext): Promise<EngineResult>}} engine
- * @property {{name?: string, run(command: string, options: import("../execution/runner/Runner.js").RunOptions): Promise<import("../execution/runner/Runner.js").RunResult>}} runner
- * @property {{judge(input: import("../execution/judge/Judge.js").JudgeInput): Promise<import("../execution/judge/Judge.js").JudgeDecision>}} judge
+ * @property {{name?: string, run(command: string, options: import("../../execution/runner/Runner.js").RunOptions): Promise<import("../../execution/runner/Runner.js").RunResult>}} runner
+ * @property {{judge(input: import("../../execution/judge/Judge.js").JudgeInput): Promise<import("../../execution/judge/Judge.js").JudgeDecision>}} judge
  * @property {number} maxIterations
  * @property {string} [requestedWorkdir]
  * @property {"single" | "parallel"} [mode]
@@ -105,10 +105,10 @@
  * @property {number} [timeBudgetMs]
  * @property {boolean} [writableWorkdir]
  * @property {ShellgeiScoreMode} [shellgeiScoreMode]
- * @property {import("../execution/runner/Runner.js").RunnerLimits} [runnerLimits]
+ * @property {import("../../execution/runner/Runner.js").RunnerLimits} [runnerLimits]
  * @property {{blockedPatterns: {pattern: RegExp, reason: string}[]}} [commandPolicy]
  * @property {string} [commandPolicyPath]
- * @property {import("../execution/runner/Runner.js").SandboxPolicy} [sandboxPolicy]
+ * @property {import("../../execution/runner/Runner.js").SandboxPolicy} [sandboxPolicy]
  * @property {string} [sandboxPolicyPath]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: unknown): Promise<unknown>}} [plannerProvider]

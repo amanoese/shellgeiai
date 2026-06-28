@@ -1,4 +1,4 @@
-import { reportSolveProgress } from "../core/progress.js";
+import { reportSolveProgress } from "../solve/session/progress.js";
 import { isSafeCommand } from "../execution/safety/checker.js";
 import {
   buildJudgeInput,

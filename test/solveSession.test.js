@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { reportSessionPhase } from "../src/core/progress.js";
-import { createSolveSession } from "../src/core/solveSession.js";
-import { SESSION_PHASES } from "../src/core/sessionPhases.js";
+import { reportSessionPhase } from "../src/solve/session/progress.js";
+import { createSolveSession } from "../src/solve/session/solveSession.js";
+import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("SESSION_PHASES", () => {

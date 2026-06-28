@@ -1,6 +1,6 @@
 import { formatResult } from "../../io/formatter/formatResult.js";
-import { checkCommand } from "../../core/check.js";
-import { createSolveRuntime } from "../../core/runtime.js";
+import { checkCommand } from "../../solve/check.js";
+import { createSolveRuntime } from "../../solve/runtime.js";
 
 export async function runCheckCommand(options) {
   const runtime = createSolveRuntime({

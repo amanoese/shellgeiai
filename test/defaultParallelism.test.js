@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseCliOptions } from "../src/cliOptions.js";
-import { createSolveSession } from "../src/core/solveSession.js";
+import { createSolveSession } from "../src/solve/session/solveSession.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("default parallelism", () => {

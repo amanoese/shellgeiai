@@ -1,9 +1,9 @@
 import { writeSolveSessionLog } from "../io/logs/writer.js";
-import { runSolveOrchestrator } from "./orchestrator.js";
-import { reportSessionPhase } from "./progress.js";
-import { scoreShellgeiCandidate } from "./shellgeiScorer.js";
-import { selectSolveOutcome } from "./selector.js";
-import { createSolveSession } from "./solveSession.js";
+import { runSolveOrchestrator } from "../core/orchestrator.js";
+import { scoreShellgeiCandidate } from "../core/shellgeiScorer.js";
+import { selectSolveOutcome } from "../core/selector.js";
+import { reportSessionPhase } from "./session/progress.js";
+import { createSolveSession } from "./session/solveSession.js";
 
 export async function solveProblem(options) {
   const session = await createSolveSession(options);

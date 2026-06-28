@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProgressReporter } from "../src/io/formatter/progressReporter.js";
 import { formatResult } from "../src/io/formatter/formatResult.js";
-import { solveProblem } from "../src/core/solve.js";
+import { solveProblem } from "../src/solve/solve.js";
 import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
 import { LocalRunner } from "../src/execution/runner/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";

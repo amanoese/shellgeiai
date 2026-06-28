@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { showSavedLog } from "../src/io/logs/catalog.js";
-import { solveProblem } from "../src/core/solve.js";
+import { solveProblem } from "../src/solve/solve.js";
 import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
 import { LocalRunner } from "../src/execution/runner/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";

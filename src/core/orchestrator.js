@@ -2,7 +2,7 @@ import { executeWorkerTask } from "../worker/executeWorkerTask.js";
 import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../worker/taskQueue.js";
 import { createExecutionControl } from "./executionControl.js";
 import { createExecutionSummary } from "./executionSummary.js";
-import { reportSessionPhase, reportSolveProgress } from "./progress.js";
+import { reportSessionPhase, reportSolveProgress } from "../solve/session/progress.js";
 
 export async function runSolveOrchestrator(session) {
   const workers = new Map();

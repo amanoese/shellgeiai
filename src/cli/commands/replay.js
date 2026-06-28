@@ -1,6 +1,6 @@
 import { formatResult } from "../../io/formatter/formatResult.js";
-import { replaySolveLog } from "../../core/replay.js";
-import { createSolveRuntime } from "../../core/runtime.js";
+import { replaySolveLog } from "../../solve/replay.js";
+import { createSolveRuntime } from "../../solve/runtime.js";
 
 export async function runReplayCommand(options) {
   const runtime = createSolveRuntime({

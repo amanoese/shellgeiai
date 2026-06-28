@@ -23,8 +23,8 @@ describe("npm publish metadata", () => {
     expect(packageJson.publishConfig).toEqual({
       access: "public",
       registry: "https://registry.npmjs.org/"
-    });
-  });
+ });
+});
 
   it("limits publish files to runtime assets and package docs", () => {
     expect(packageJson.files).toEqual(["src", "policies", "README.md", "LICENSE"]);
@@ -71,6 +71,21 @@ describe("npm publish metadata", () => {
       "../src/shared/exec.js"
     ];
 
-    await Promise.all(modules.map((modulePath) => import(modulePath)));
-  });
+ await Promise.all(modules.map((modulePath) => import(modulePath)));
+ });
+
+ it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
+ const modules = [
+ "../src/solve/solve.js",
+ "../src/solve/check.js",
+ "../src/solve/replay.js",
+ "../src/solve/runtime.js",
+ "../src/solve/session/solveSession.js",
+ "../src/solve/session/sessionPhases.js",
+ "../src/solve/session/progress.js",
+ "../src/solve/session/types.js"
+ ];
+
+ await Promise.all(modules.map((modulePath) => import(modulePath)));
+ });
 });

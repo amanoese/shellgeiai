@@ -1,7 +1,7 @@
 import { createProgressReporter } from "../../io/formatter/progressReporter.js";
 import { formatResult } from "../../io/formatter/formatResult.js";
-import { createSolveRuntime } from "../../core/runtime.js";
-import { solveProblem } from "../../core/solve.js";
+import { createSolveRuntime } from "../../solve/runtime.js";
+import { solveProblem } from "../../solve/solve.js";
 
 export async function runSolveCommand(options) {
   const progressReporter = createProgressReporter(options.progress);
