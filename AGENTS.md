@@ -6,7 +6,7 @@
 
 ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI SubAgent による候補探索、Docker 内での安全な並列実行、判定、結果集約を通じて最終回答を返す CLI ツールです。
 
-ただし現状の実装は、理想像へ向かう移行途中です。いまの `src/` は単一 worker の solve フローを保ちながら、`core / problem / safety / logs` の責務分離を先に進めている段階として理解してください。
+ただし現状の実装は、理想像へ向かう移行途中です。いまの `src/` は複数 worker の solve フローを保ちながら、`cli / solve / execution / providers / io / shared` の責務分離を先に進めている段階として理解してください。
 
 このリポジトリでは、次の性質を特に重視します。
 
@@ -29,28 +29,30 @@ ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI Su
 ## 現在の主要コンポーネント
 
 - `src/cli.js`: CLI 入口
-- `src/core/solve.js`: solve の薄い入口
-- `src/core/solveSession.js`: セッション初期化
-- `src/core/orchestrator.js`: 現行の単一 worker 実行オーケストレーション
-- `src/core/planner.js`: 将来拡張前提の最小 plan 生成
-- `src/core/selector.js`: 現行の最小 selector
-- `src/engines/`: Engine 実装群
-- `src/problem/`: 問題文正規化の入口
-- `src/runner/`: 実行基盤
-- `src/safety/`: command policy と sandbox policy
-- `src/judge/`: 判定器
-- `src/logs/`: セッションログ出力
-- `src/formatter/`: 結果表示
-- `src/util/`: ファイル・実行補助
+- `src/cli/`: CLI コマンドと引数解析
+- `src/solve/solve.js`: solve の薄い入口
+- `src/solve/session/solveSession.js`: セッション初期化
+- `src/solve/orchestration/orchestrator.js`: 現行の worker 実行オーケストレーション
+- `src/solve/planning/planner.js`: LLM planner 結果の plan 正規化
+- `src/solve/selection/selector.js`: 現行の最小 selector
+- `src/solve/worker/`: worker retry loop と attempt 実行
+- `src/providers/engines/`: Engine 実装群
+- `src/io/problem/`: 問題文正規化の入口
+- `src/execution/runner/`: 実行基盤
+- `src/execution/safety/`: command policy と sandbox policy
+- `src/execution/judge/`: 判定器
+- `src/io/logs/`: セッションログ出力
+- `src/io/formatter/`: 結果表示
+- `src/shared/`: ファイル・実行補助
 
 将来的な理想構成では、次の責務分割を目指します。
 
-- `src/core/`: session / orchestrator / planner / selector
-- `src/agents/`: SubAgent 実装群
-- `src/runner/`: Docker 実行基盤
-- `src/safety/`: command policy / sandbox policy
-- `src/judge/`: worker 一次判定と最終判定
-- `src/logs/`: session / worker ログ
+- `src/solve/`: session / orchestrator / planner / selector / worker
+- `src/providers/`: Engine / planner provider 実装群
+- `src/execution/runner/`: Docker 実行基盤
+- `src/execution/safety/`: command policy / sandbox policy
+- `src/execution/judge/`: worker 一次判定と最終判定
+- `src/io/logs/`: session / worker ログ
 
 ## 作業時のルール
 
