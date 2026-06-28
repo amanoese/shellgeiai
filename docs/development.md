@@ -98,25 +98,40 @@ shellgeiai solve "..." --sandbox-policy ./policies/default-sandbox-policy.json
 
 既定サンプルは `policies/default-command-policy.json` と `policies/default-sandbox-policy.json` です。指定パスは `process.cwd()` 基準で解決されます。指定しない場合、command policy は `src/execution/safety/commandPolicy.js` の既定 deny-list、sandbox policy は `src/execution/safety/sandboxPolicy.js` の既定値を使います。
 
-Command policy は、静的に拒否する command pattern を定義します。
+Command policy は、Bash AST から抽出した command name、redirection target、再帰的 background shell function をもとに拒否条件を定義します。
 
 ```json
 {
-  "extendDefault": true,
-  "blockedPatterns": [
+  "blockedCommands": [
     {
-      "pattern": "(^|[^\\\\w])(awk)(\\\\s|$)",
-      "flags": "i",
-      "reason": "Blocked command: awk"
+      "name": "rm",
+      "reason": "Blocked dangerous command: rm"
+    },
+    {
+      "name": "curl",
+      "reason": "Blocked network command: curl"
     }
-  ]
+  ],
+  "blockedRedirectionTargets": [
+    {
+      "prefix": "/etc",
+      "reason": "Blocked redirection to sensitive path"
+    },
+    {
+      "prefix": "$HOME",
+      "reason": "Blocked redirection to sensitive path"
+    }
+  ],
+  "blockRecursiveBackgroundFunctions": true
 }
 ```
 
-- `extendDefault`: 省略または `true` なら既定 deny-list に追加します。`false` なら指定 pattern のみ使います。
-- `blockedPatterns[].pattern`: `new RegExp(pattern, flags)` で解釈できる文字列です。
-- `blockedPatterns[].flags`: JavaScript の `RegExp` flags です。
-- `blockedPatterns[].reason`: ブロック理由として利用者へ返します。
+- `blockedCommands[].name`: AST 上の command name と完全一致した場合に拒否します。
+- `blockedCommands[].reason`: ブロック理由として利用者へ返します。
+- `blockedRedirectionTargets[].prefix`: `>` または `>>` の出力先がこの prefix 配下の場合に拒否します。
+- `blockedRedirectionTargets[].reason`: ブロック理由として利用者へ返します。実際の出力先 path は checker が末尾に付けます。
+- `blockRecursiveBackgroundFunctions`: `f(){ f|f& }; f` や `:(){ :|:& };:` のような再帰的 background shell function を拒否します。
+- `--command-policy` で外部ファイルを指定した場合、既定 policy へ merge せず、そのファイル内容だけを使います。
 
 Sandbox policy は、runner に渡す sandbox 方針を定義します。
 
@@ -130,7 +145,7 @@ Sandbox policy は、runner に渡す sandbox 方針を定義します。
 - `networkAccess`: `off` または `on`。`DockerRunner` では `off` が `--network none` に反映されます。
 - `filesystemScope`: ログ、結果、runner 設定に渡す sandbox 範囲ラベルです。
 
-Policy JSON は、読めない JSON、schema にないキー、空の必須文字列、不正な正規表現がある場合に load 時点で失敗します。`command policy` は軽量な文字列チェックであり、完全な policy engine ではありません。primary workdir mount の writable / read-only は `--workdir` と `--writable-workdir` が制御します。
+Policy JSON は、読めない JSON、schema にないキー、空の必須文字列がある場合に load 時点で失敗します。`command policy` は AST ベースの静的チェックであり、完全な policy engine ではありません。primary workdir mount の writable / read-only は `--workdir` と `--writable-workdir` が制御します。
 
 ## 関連ドキュメント
 

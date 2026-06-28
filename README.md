@@ -74,8 +74,9 @@ shellgeiai logs show <run-id>
 
 - 既定 runner は `docker` で、隔離されたコンテナ内でコマンドを実行します
 - 既定 sandbox policy は `networkAccess: "off"`、`filesystemScope: "workdir-only"` です
-- `rm`、`sudo`、`dd`、`mount`、`curl`、`wget`、`ssh`、`python -c` などの危険なコマンドパターンを事前にブロックします
+- `rm`、`sudo`、`dd`、`mount`、`curl`、`wget`、`ssh` などの危険なコマンドを AST ベースで事前にブロックします
 - `/etc` や `$HOME` などの敏感なパスへのリダイレクトもブロックします
+- 再帰的に background 実行する shell function は fork bomb 相当としてブロックします
 - workdir への書き込みは既定で無効です。必要な場合だけ `--writable-workdir` を付けてください
 
 policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。

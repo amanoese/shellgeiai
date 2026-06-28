@@ -1,88 +1,29 @@
 {
-  "blockedPatterns": [
-    {
-      "pattern": "(^|[^\\\\w])(rm)(\\\\s|$)",
-      "reason": "Blocked dangerous command: rm"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(sudo)(\\\\s|$)",
-      "reason": "Blocked dangerous command: sudo"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(su)(\\\\s|$)",
-      "reason": "Blocked dangerous command: su"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(chmod)(\\\\s|$)",
-      "reason": "Blocked dangerous command: chmod"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(chown)(\\\\s|$)",
-      "reason": "Blocked dangerous command: chown"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(dd)(\\\\s|$)",
-      "reason": "Blocked dangerous command: dd"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(mkfs)(\\\\s|$)",
-      "reason": "Blocked dangerous command: mkfs"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(mount)(\\\\s|$)",
-      "reason": "Blocked dangerous command: mount"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(umount)(\\\\s|$)",
-      "reason": "Blocked dangerous command: umount"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(curl)(\\\\s|$)",
-      "reason": "Blocked network command: curl"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(wget)(\\\\s|$)",
-      "reason": "Blocked network command: wget"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(nc)(\\\\s|$)",
-      "reason": "Blocked network command: nc"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(ssh)(\\\\s|$)",
-      "reason": "Blocked network command: ssh"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(scp)(\\\\s|$)",
-      "reason": "Blocked network command: scp"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(ftp)(\\\\s|$)",
-      "reason": "Blocked network command: ftp"
-    },
-    {
-      "pattern": "(^|[^\\\\w])python(\\\\d+(\\\\.\\\\d+)?)?\\\\s+-c(\\\\s|$)",
-      "reason": "Blocked inline interpreter: python -c"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(perl)\\\\s+-e(\\\\s|$)",
-      "reason": "Blocked inline interpreter: perl -e"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(ruby)\\\\s+-e(\\\\s|$)",
-      "reason": "Blocked inline interpreter: ruby -e"
-    },
-    {
-      "pattern": "(^|[^\\\\w])(node)\\\\s+-e(\\\\s|$)",
-      "reason": "Blocked inline interpreter: node -e"
-    },
-    {
-      "pattern": ":\\\\(\\\\)\\\\s*\\\\{\\\\s*:\\\\|:\\\\s*&\\\\s*};:",
-      "reason": "Blocked fork bomb pattern."
-    },
-    {
-      "pattern": "(?:>|>>)\\\\s*(?:\\\\/etc|\\\\/usr|\\\\/bin|\\\\/sbin|\\\\/var|\\\\$HOME|~\\\\/)",
-      "reason": "Blocked redirection to a sensitive path."
-    }
-  ]
+  "blockedCommands": [
+    { "name": "rm", "reason": "Blocked dangerous command: rm" },
+    { "name": "sudo", "reason": "Blocked dangerous command: sudo" },
+    { "name": "su", "reason": "Blocked dangerous command: su" },
+    { "name": "chmod", "reason": "Blocked dangerous command: chmod" },
+    { "name": "chown", "reason": "Blocked dangerous command: chown" },
+    { "name": "dd", "reason": "Blocked dangerous command: dd" },
+    { "name": "mkfs", "reason": "Blocked dangerous command: mkfs" },
+    { "name": "mount", "reason": "Blocked dangerous command: mount" },
+    { "name": "umount", "reason": "Blocked dangerous command: umount" },
+    { "name": "curl", "reason": "Blocked network command: curl" },
+    { "name": "wget", "reason": "Blocked network command: wget" },
+    { "name": "nc", "reason": "Blocked network command: nc" },
+    { "name": "ssh", "reason": "Blocked network command: ssh" },
+    { "name": "scp", "reason": "Blocked network command: scp" },
+    { "name": "ftp", "reason": "Blocked network command: ftp" }
+  ],
+  "blockedRedirectionTargets": [
+    { "prefix": "/etc", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "/usr", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "/bin", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "/sbin", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "/var", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "$HOME", "reason": "Blocked redirection to sensitive path" },
+    { "prefix": "~/", "reason": "Blocked redirection to sensitive path" }
+  ],
+  "blockRecursiveBackgroundFunctions": true
 }
