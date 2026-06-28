@@ -42,7 +42,7 @@ describe("selectSolveOutcome", () => {
           command: "printf '123\\n'",
           shellgeiScore: {
             value: 72,
-            mode: "standard",
+          mode: "simple",
             breakdown: {
               conciseness: 13,
               shellness: 14,
@@ -70,7 +70,7 @@ describe("selectSolveOutcome", () => {
           command: "cat sample.csv | awk -F, '{print $3}'",
           shellgeiScore: {
             value: 60,
-            mode: "standard",
+          mode: "simple",
             breakdown: {
               conciseness: 9,
               shellness: 12,

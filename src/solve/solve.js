@@ -15,13 +15,17 @@ async function finalizeSolve(session, execution) {
   reportSessionPhase(session, "selecting", "Selecting final candidate.");
 
   const finishedAt = new Date().toISOString();
-  const candidates = execution.candidates.map((candidate) =>
-    candidate.finalCheck?.passed
-      ? {
-          ...candidate,
-          shellgeiScore: scoreShellgeiCandidate(candidate, { mode: session.shellgeiScoreMode })
-        }
-      : candidate
+  const candidates = await Promise.all(
+    execution.candidates.map(async (candidate) =>
+      candidate.finalCheck?.passed
+        ? {
+            ...candidate,
+            shellgeiScore: await scoreShellgeiCandidate(candidate, {
+              mode: session.shellgeiScoreMode
+            })
+          }
+        : candidate
+    )
   );
   const selection = selectSolveOutcome(candidates, session.selectorName);
   const selectedCandidate = selection.selectedCandidate;

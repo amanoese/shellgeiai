@@ -37,7 +37,7 @@ export async function createSolveSession(options) {
     mode: options.mode ?? "single",
     parallelism: options.parallelism ?? 3,
     selectorName: options.selector ?? "first-pass-wins",
-    shellgeiScoreMode: options.shellgeiScoreMode ?? "standard",
+    shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),

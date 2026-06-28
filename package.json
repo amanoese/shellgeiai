@@ -43,6 +43,7 @@
   },
   "files": [
     "src",
+    "wasm",
     "policies",
     "README.md",
     "LICENSE"
@@ -51,9 +52,11 @@
     "commander": "^15.0.0",
     "log-update": "^8.0.0",
     "openai": "^6.9.1",
+    "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "tree-sitter-bash": "^0.25.1",
     "vitest": "^4.1.8"
   }
 }

@@ -70,7 +70,7 @@
  */
 
 /**
- * @typedef {"standard" | "competition" | "practical" | "appreciation"} ShellgeiScoreMode
+ * @typedef {"simple" | "artistry" | "robustness"} ShellgeiScoreMode
  */
 
 /**

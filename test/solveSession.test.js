@@ -42,7 +42,7 @@ describe("progress helpers", () => {
 });
 
 describe("createSolveSession", () => {
-  it("defaults shellgei score mode standard", async () => {
+  it("defaults shellgei score mode simple", async () => {
     const session = await createSolveSession({
       problemInput: "print 42",
       engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
@@ -52,7 +52,7 @@ describe("createSolveSession", () => {
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.shellgeiScoreMode).toBe("standard");
+    expect(session.shellgeiScoreMode).toBe("simple");
   });
 
   it("reports initializing, problem-parsing, planning while building a session", async () => {

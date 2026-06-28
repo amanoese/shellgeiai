@@ -81,7 +81,7 @@ describe("solveProblem", () => {
     expect(result.finalCheck.passed).toBe(true);
     expect(result.candidates[0].shellgeiScore).toEqual(
       expect.objectContaining({
-        mode: "standard",
+          mode: "simple",
         breakdown: expect.objectContaining({
           conciseness: expect.any(Number),
           shellness: expect.any(Number)
@@ -139,7 +139,7 @@ describe("solveProblem", () => {
     );
     expect(logContent.candidates[0].shellgeiScore).toEqual(
       expect.objectContaining({
-        mode: "standard",
+          mode: "simple",
         breakdown: expect.any(Object)
       })
     );

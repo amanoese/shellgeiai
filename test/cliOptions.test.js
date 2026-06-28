@@ -41,7 +41,7 @@ describe("parseCliOptions", () => {
       mode: "single",
       parallelism: 3,
       selector: "best-score-wins",
-      shellgeiScoreMode: "standard",
+      shellgeiScoreMode: "simple",
       progress: "bar"
     });
   });
@@ -60,7 +60,7 @@ describe("parseCliOptions", () => {
         "--selector",
         "best-score-wins",
         "--shellgei-score-mode",
-        "practical",
+        "robustness",
         "--time-budget",
         "1500",
         "--command-policy",
@@ -79,7 +79,7 @@ describe("parseCliOptions", () => {
       mode: "parallel",
       parallelism: 2,
       selector: "best-score-wins",
-      shellgeiScoreMode: "practical",
+      shellgeiScoreMode: "robustness",
       timeBudgetMs: 1500,
       commandPolicyPath: "./config/command-policy.json",
       sandboxPolicyPath: "./config/sandbox-policy.json",

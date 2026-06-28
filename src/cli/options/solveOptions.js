@@ -3,12 +3,7 @@ import { isFlag, parseNumber, takeValue } from "./shared.js";
 const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
 const supportedProgressModes = new Set(["off", "plain", "jsonl", "bar"]);
-const supportedScoreModes = new Set([
-  "standard",
-  "competition",
-  "practical",
-  "appreciation"
-]);
+const supportedScoreModes = new Set(["simple", "artistry", "robustness"]);
 
 export function parseSolve(argv) {
   const positionals = [];
@@ -20,7 +15,7 @@ export function parseSolve(argv) {
     mode: "single",
     parallelism: 3,
     selector: "best-score-wins",
-    shellgeiScoreMode: "standard",
+    shellgeiScoreMode: "simple",
     progress: "bar"
   };
 
@@ -85,7 +80,7 @@ export function parseSolve(argv) {
         );
         if (!supportedScoreModes.has(options.shellgeiScoreMode)) {
           throw new Error(
-            "Invalid --shellgei-score-mode value. Use standard, competition, practical, or appreciation."
+            "Invalid --shellgei-score-mode value. Use simple, artistry, or robustness."
           );
         }
         index += 1;

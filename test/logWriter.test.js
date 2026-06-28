@@ -29,7 +29,7 @@ function buildSolveSession() {
     mode: "parallel",
     parallelism: 1,
     selectorName: "best-score-wins",
-    shellgeiScoreMode: "standard",
+    shellgeiScoreMode: "simple",
     plan: {
       mode: "parallel",
       parallelism: 1,
@@ -96,7 +96,7 @@ describe("writeSolveSessionLog", () => {
         finalCheck: { passed: true, score: { value: 100, breakdown: {} } },
         shellgeiScore: {
           value: 72,
-          mode: "standard",
+          mode: "simple",
           breakdown: {
             conciseness: 13,
             shellness: 14,
@@ -133,10 +133,10 @@ describe("writeSolveSessionLog", () => {
     });
 
     const logContent = JSON.parse(await readFile(logPath, "utf8"));
-    expect(logContent.shellgeiScoreMode).toBe("standard");
+    expect(logContent.shellgeiScoreMode).toBe("simple");
     expect(logContent.candidates[0].shellgeiScore).toEqual(
       expect.objectContaining({
-        mode: "standard",
+          mode: "simple",
         notes: expect.any(Array),
         penalties: expect.any(Array)
       })
