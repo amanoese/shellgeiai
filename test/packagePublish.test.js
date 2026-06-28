@@ -58,4 +58,19 @@ describe("npm publish metadata", () => {
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
+
+  it("exposes io and shared modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/io/problem/parseProblem.js",
+      "../src/io/logs/writer.js",
+      "../src/io/logs/catalog.js",
+      "../src/io/formatter/formatResult.js",
+      "../src/io/formatter/logs.js",
+      "../src/io/formatter/progressReporter.js",
+      "../src/shared/fs.js",
+      "../src/shared/exec.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
 });

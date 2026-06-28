@@ -6,7 +6,7 @@ import {
   writeCheckSessionLog,
   writeReplaySessionLog,
   writeSolveSessionLog
-} from "../src/logs/writer.js";
+} from "../src/io/logs/writer.js";
 
 const tempDirs = [];
 

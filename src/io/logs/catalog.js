@@ -1,6 +1,6 @@
 import { readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import { readJson } from "../util/fs.js";
+import { readJson } from "../../shared/fs.js";
 
 function getDefaultLogsDir() {
   return path.join(process.cwd(), "logs");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseProblemInput } from "../src/problem/parseProblem.js";
+import { parseProblemInput } from "../src/io/problem/parseProblem.js";
 
 describe("parseProblemInput", () => {
   it("keeps plain text input compatible with the previous behavior", () => {

@@ -8,7 +8,7 @@ vi.mock("node:child_process", () => ({
   spawn: spawnMock
 }));
 
-vi.mock("../src/util/exec.js", () => ({
+vi.mock("../src/shared/exec.js", () => ({
   commandExists: commandExistsMock
 }));
 

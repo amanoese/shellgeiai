@@ -1,4 +1,4 @@
-import { formatResult } from "../../formatter/formatResult.js";
+import { formatResult } from "../../io/formatter/formatResult.js";
 import { replaySolveLog } from "../../core/replay.js";
 import { createSolveRuntime } from "../../core/runtime.js";
 

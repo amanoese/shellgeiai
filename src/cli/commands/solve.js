@@ -1,5 +1,5 @@
-import { createProgressReporter } from "../../formatter/progressReporter.js";
-import { formatResult } from "../../formatter/formatResult.js";
+import { createProgressReporter } from "../../io/formatter/progressReporter.js";
+import { formatResult } from "../../io/formatter/formatResult.js";
 import { createSolveRuntime } from "../../core/runtime.js";
 import { solveProblem } from "../../core/solve.js";
 

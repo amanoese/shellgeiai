@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/formatter/progressReporter.js", () => ({
+vi.mock("../src/io/formatter/progressReporter.js", () => ({
   createProgressReporter: mocks.createProgressReporter
 }));
 
@@ -29,7 +29,7 @@ vi.mock("../src/core/solve.js", () => ({
   solveProblem: mocks.solveProblem
 }));
 
-vi.mock("../src/formatter/formatResult.js", () => ({
+vi.mock("../src/io/formatter/formatResult.js", () => ({
   formatResult: mocks.formatResult
 }));
 

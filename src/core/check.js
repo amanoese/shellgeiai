@@ -1,9 +1,9 @@
 import path from "node:path";
-import { writeCheckSessionLog } from "../logs/writer.js";
+import { writeCheckSessionLog } from "../io/logs/writer.js";
 import { createDefaultRunnerLimits } from "../execution/runner/limits.js";
 import { isSafeCommand } from "../execution/safety/checker.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../execution/safety/policyLoader.js";
-import { ensureDirectory, resolveRequestedWorkdir } from "../util/fs.js";
+import { ensureDirectory, resolveRequestedWorkdir } from "../shared/fs.js";
 
 function buildZeroScore() {
   return {

@@ -1,4 +1,4 @@
-import { writeSolveSessionLog } from "../logs/writer.js";
+import { writeSolveSessionLog } from "../io/logs/writer.js";
 import { runSolveOrchestrator } from "./orchestrator.js";
 import { reportSessionPhase } from "./progress.js";
 import { scoreShellgeiCandidate } from "./shellgeiScorer.js";
