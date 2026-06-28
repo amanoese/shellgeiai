@@ -50,7 +50,7 @@ shellgeiai solve "CSVの3列目の合計を出してください" --selector bes
 - `<problem>` の問題文文字列を受け取る
 - `mode`、`parallelism`、`worker-model`、`selector`、`time-budget` などの設定を確定する
 
-CLI はこの時点で複雑な判断を持たず、設定をセッション設定へ変換して core に渡します。
+CLI はこの時点で複雑な判断を持たず、設定をセッション設定へ変換して `src/solve/` の実行フローへ渡します。
 
 ### 2. 問題を正規化する
 

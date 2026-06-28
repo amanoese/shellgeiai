@@ -231,7 +231,7 @@ src/
 - ユーザー向けエラーメッセージ
 - 実行結果の標準出力表示
 
-CLI は薄く保ち、並列制御や Docker 制御の詳細は `core/` に委譲します。
+CLI は薄く保ち、solve の進行は `src/solve/`、Docker などの実行基盤は `src/execution/` に委譲します。
 
 ### Problem
 
