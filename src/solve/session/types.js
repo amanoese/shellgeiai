@@ -106,7 +106,7 @@
  * @property {boolean} [writableWorkdir]
  * @property {ShellgeiScoreMode} [shellgeiScoreMode]
  * @property {import("../../execution/runner/Runner.js").RunnerLimits} [runnerLimits]
- * @property {{blockedPatterns: {pattern: RegExp, reason: string}[]}} [commandPolicy]
+ * @property {{blockedCommands: {name: string, reason: string}[], blockedRedirectionTargets: {prefix: string, reason: string}[], blockRecursiveBackgroundFunctions: boolean}} [commandPolicy]
  * @property {string} [commandPolicyPath]
  * @property {import("../../execution/runner/Runner.js").SandboxPolicy} [sandboxPolicy]
  * @property {string} [sandboxPolicyPath]

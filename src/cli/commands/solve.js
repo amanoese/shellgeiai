@@ -1,10 +1,14 @@
 import { createProgressReporter } from "../../io/formatter/progressReporter.js";
 import { formatResult } from "../../io/formatter/formatResult.js";
+import { defaultKnowledgeVectorsPath } from "../../knowledge/vectorFile.js";
 import { createSolveRuntime } from "../../solve/runtime.js";
 import { solveProblem } from "../../solve/solve.js";
 
 export async function runSolveCommand(options) {
   const progressReporter = createProgressReporter(options.progress);
+  const knowledgeVectors =
+    options.knowledgeVectors ??
+    defaultKnowledgeVectorsPath(options.knowledgeDataset, options.knowledgeModel);
   const runtime = createSolveRuntime({
     engine: options.engine,
     runner: options.runner
@@ -21,10 +25,14 @@ export async function runSolveCommand(options) {
       mode: options.mode,
       parallelism: options.parallelism,
       selector: options.selector,
-      timeBudgetMs: options.timeBudgetMs,
+      timeBudgetMs: options.timeBudget,
       writableWorkdir: options.writableWorkdir,
-      commandPolicyPath: options.commandPolicyPath,
-      sandboxPolicyPath: options.sandboxPolicyPath,
+      commandPolicyPath: options.commandPolicy,
+      sandboxPolicyPath: options.sandboxPolicy,
+      knowledgeMode: options.knowledge,
+      knowledgeModel: options.knowledgeModel,
+      knowledgeDatasetPath: options.knowledgeDataset,
+      knowledgeVectorsPath: knowledgeVectors,
       onProgress: progressReporter
     });
 

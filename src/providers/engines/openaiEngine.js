@@ -12,6 +12,34 @@ function buildSystemPrompt() {
   ].join(" ");
 }
 
+const MAX_KNOWLEDGE_HINTS = 10;
+const MAX_KNOWLEDGE_HINT_TEXT_CHARS = 300;
+
+function truncateHintText(text) {
+  const value = typeof text === "string" ? text : "";
+  if (value.length <= MAX_KNOWLEDGE_HINT_TEXT_CHARS) return value;
+  return `${value.slice(0, MAX_KNOWLEDGE_HINT_TEXT_CHARS)}...`;
+}
+
+function formatKnowledgeHints(workerTask) {
+  const hints = workerTask?.knowledgeHints ?? [];
+  if (hints.length === 0) return "";
+  return [
+    "Relevant command knowledge:",
+    ...hints.slice(0, MAX_KNOWLEDGE_HINTS).map((hint, index) => {
+      const formattedHint = {
+        command: hint.command ?? "",
+        option: hint.option ?? "",
+        text: truncateHintText(hint.text),
+        source: hint.source ?? ""
+      };
+
+      return `${index + 1}. ${JSON.stringify(formattedHint)}`;
+    }),
+    "Use these hints as optional references, not as mandatory commands."
+  ].join("\n");
+}
+
 function buildUserPrompt(context) {
   const workerTask = context.workerTask ?? null;
   const attemptSummary =
@@ -67,6 +95,7 @@ function buildUserPrompt(context) {
     workerTask?.assignedVariant?.toolSuggestions?.length
       ? "Use suggestedTools as optional starting points, but choose any safer or better tools if needed."
       : "",
+    formatKnowledgeHints(workerTask),
     `Retry budget: ${workerTask?.maxAttempts ?? 1}`,
     `Previous attempts: ${attemptSummary}`
   ]

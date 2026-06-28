@@ -1,6 +1,6 @@
 {
   "name": "shellgeiai",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
   "type": "module",
   "author": "amanoese",
@@ -45,10 +45,12 @@
     "src",
     "wasm",
     "policies",
+    "data",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "commander": "^15.0.0",
     "log-update": "^8.0.0",
     "openai": "^6.9.1",

@@ -6,29 +6,50 @@ import { isSafeCommand } from "../src/execution/safety/checker.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../src/execution/safety/policyLoader.js";
 
 describe("isSafeCommand", () => {
-  it("allows a simple awk command", () => {
-    expect(isSafeCommand("awk -F, '{s+=$3} END{print s}' sample.csv")).toEqual({ safe: true });
+  it("allows simple awk command", async () => {
+    await expect(isSafeCommand("awk -F, '{s+=$3} END{print s}' sample.csv")).resolves.toEqual({ safe: true });
   });
 
-  it("blocks dangerous commands", () => {
-    expect(isSafeCommand("rm -rf /tmp/work")).toEqual({
+  it("blocks dangerous commands from AST command names", async () => {
+    await expect(isSafeCommand("rm -rf /tmp/work")).resolves.toEqual({
       safe: false,
       reason: "Blocked dangerous command: rm"
     });
   });
 
-  it("blocks inline interpreters and sensitive redirects from the default policy", () => {
-    expect(isSafeCommand("python3 -c 'print(1)'")).toEqual({
+  it("allows language one-liners but blocks sensitive redirects", async () => {
+    await expect(isSafeCommand("python3 -c 'print(1)'")).resolves.toEqual({ safe: true });
+    await expect(isSafeCommand("node -pe 'JSON.parse($0).name'")).resolves.toEqual({ safe: true });
+    await expect(isSafeCommand("echo ok > /etc/passwd")).resolves.toEqual({
       safe: false,
-      reason: "Blocked inline interpreter: python -c"
+      reason: "Blocked redirection to sensitive path: /etc/passwd"
     });
-    expect(isSafeCommand("echo ok > /etc/passwd")).toEqual({
+    await expect(isSafeCommand("echo ok >> '$HOME/result'")).resolves.toEqual({
       safe: false,
-      reason: "Blocked redirection to a sensitive path."
+      reason: "Blocked redirection to sensitive path: $HOME/result"
+    });
+    await expect(isSafeCommand("echo ok > ~/result")).resolves.toEqual({
+      safe: false,
+      reason: "Blocked redirection to sensitive path: ~/result"
     });
   });
 
-  it("loads an external command policy file and merges it with defaults", async () => {
+  it("blocks recursive background shell functions independent of function name", async () => {
+    await expect(isSafeCommand("boom(){ boom|boom& }; boom")).resolves.toEqual({
+      safe: false,
+      reason: "Blocked recursive background shell function: boom"
+    });
+    await expect(isSafeCommand(":(){ :|:& };:")).resolves.toEqual({
+      safe: false,
+      reason: "Blocked recursive background shell function: :"
+    });
+  });
+
+  it("allows recursive shell functions without background execution", async () => {
+    await expect(isSafeCommand("loop(){ echo '&'; loop; }; loop")).resolves.toEqual({ safe: true });
+  });
+
+  it("loads external structured command policy file and replaces defaults", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
     const policyPath = path.join(tempDir, "command-policy.json");
 
@@ -37,7 +58,7 @@ describe("isSafeCommand", () => {
         policyPath,
         JSON.stringify(
           {
-            blockedPatterns: [{ pattern: "(^|[^\\w])(awk)(\\s|$)", reason: "Blocked command: awk" }]
+            blockedCommands: [{ name: "awk", reason: "Blocked command: awk" }]
           },
           null,
           2
@@ -45,50 +66,19 @@ describe("isSafeCommand", () => {
       );
 
       const policy = await loadCommandPolicy(policyPath);
-      expect(isSafeCommand("awk '{print $1}' sample.txt", policy)).toEqual({
+      await expect(isSafeCommand("awk '{print $1}' sample.txt", policy)).resolves.toEqual({
         safe: false,
         reason: "Blocked command: awk"
       });
-      expect(isSafeCommand("rm -rf /tmp/work", policy)).toEqual({
-        safe: false,
-        reason: "Blocked dangerous command: rm"
-      });
+      await expect(isSafeCommand("rm -rf /tmp/work", policy)).resolves.toEqual({ safe: true });
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+});
 
-  it("replaces the default command policy when extendDefault is false", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
-    const policyPath = path.join(tempDir, "replace-command-policy.json");
-
-    try {
-      await writeFile(
-        policyPath,
-        JSON.stringify(
-          {
-            extendDefault: false,
-            blockedPatterns: [{ pattern: "(^|[^\\w])(awk)(\\s|$)", reason: "Blocked command: awk" }]
-          },
-          null,
-          2
-        )
-      );
-
-      const policy = await loadCommandPolicy(policyPath);
-      expect(isSafeCommand("awk '{print $1}' sample.txt", policy)).toEqual({
-        safe: false,
-        reason: "Blocked command: awk"
-      });
-      expect(isSafeCommand("rm -rf /tmp/work", policy)).toEqual({
-        safe: true
-      });
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("loads an external sandbox policy file and overlays defaults", async () => {
+describe("policy loaders", () => {
+  it("loads external sandbox policy file overlays defaults", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
     const policyPath = path.join(tempDir, "sandbox-policy.json");
 
@@ -113,29 +103,29 @@ describe("isSafeCommand", () => {
     }
   });
 
-  it("fails clearly when a command policy regex is invalid", async () => {
+  it("rejects legacy regex command policy files", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
-    const policyPath = path.join(tempDir, "bad-command-policy.json");
+    const policyPath = path.join(tempDir, "legacy-command-policy.json");
 
     try {
       await writeFile(
         policyPath,
         JSON.stringify(
           {
-            blockedPatterns: [{ pattern: "[", reason: "bad regex" }]
+            blockedPatterns: [{ pattern: "awk", reason: "Blocked command: awk" }]
           },
           null,
           2
         )
       );
 
-      await expect(loadCommandPolicy(policyPath)).rejects.toThrow();
+      await expect(loadCommandPolicy(policyPath)).rejects.toThrow(/blockedPatterns/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects unknown keys in a command policy file", async () => {
+  it("rejects unknown keys in command policy file", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
     const policyPath = path.join(tempDir, "unknown-command-policy.json");
 
@@ -144,7 +134,7 @@ describe("isSafeCommand", () => {
         policyPath,
         JSON.stringify(
           {
-            blockedPatterns: [],
+            blockedCommands: [],
             extraField: true
           },
           null,
@@ -158,7 +148,7 @@ describe("isSafeCommand", () => {
     }
   });
 
-  it("rejects invalid blocked pattern entries in a command policy file", async () => {
+  it("rejects invalid blocked command entries in command policy file", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
     const policyPath = path.join(tempDir, "invalid-command-policy.json");
 
@@ -167,20 +157,20 @@ describe("isSafeCommand", () => {
         policyPath,
         JSON.stringify(
           {
-            blockedPatterns: [{ pattern: "awk", reason: "   " }]
+            blockedCommands: [{ name: "awk", reason: "   " }]
           },
           null,
           2
         )
       );
 
-      await expect(loadCommandPolicy(policyPath)).rejects.toThrow(/blockedPatterns\.0\.reason/);
+      await expect(loadCommandPolicy(policyPath)).rejects.toThrow(/blockedCommands\.0\.reason/);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
 
-  it("rejects unknown keys in a sandbox policy file", async () => {
+  it("rejects unknown keys in sandbox policy file", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-safety-"));
     const policyPath = path.join(tempDir, "unknown-sandbox-policy.json");
 

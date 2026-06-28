@@ -49,7 +49,7 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     command: engineResult.command
   });
 
-  const safety = isSafeCommand(engineResult.command, session.commandPolicy);
+  const safety = await isSafeCommand(engineResult.command, session.commandPolicy);
   if (!safety.safe) {
     reportWorkerState(session, task, "stopped");
     const attempt = createUnsafeAttempt({

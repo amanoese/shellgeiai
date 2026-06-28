@@ -70,12 +70,38 @@ shellgeiai logs show <run-id>
 - `--command-policy <path>`: カスタム command policy を読み込みます
 - `--sandbox-policy <path>`: カスタム sandbox policy を読み込みます
 
+### Worker knowledge retrieval
+
+`--knowledge worker` を指定すると、worker の計画時に command / option とシェル芸 pattern の検索ヒントを注入します。Planner は変更しないため、`--knowledge off` と `--knowledge worker` を同じ条件で直接比較できます。
+
+```bash
+shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge off
+shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge worker
+shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge worker --knowledge-model sirasagi62/ruri-v3-30m-ONNX
+```
+
+seed dataset は `data/knowledge/shellgei-basic.jsonl` にあります。初回実行時の model download や dataset embedding を避けたい場合は、事前に knowledge cache / vectors を準備できます。
+
+```bash
+shellgeiai knowledge prepare
+shellgeiai knowledge build
+shellgeiai knowledge build --knowledge-model sirasagi62/ruri-v3-30m-ONNX
+shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
+```
+
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.json` を作ります。vectors file 内には model 名も記録されます。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
+
+`solve` と `knowledge prepare/build` の embedding model は `--knowledge-model <model>` で指定できます。環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` でも既定値を上書きでき、CLI オプションが環境変数より優先されます。互換性のため `knowledge prepare/build --model <model>` も使えます。Transformers.js 対応の ONNX が無い model は失敗することがあります。
+
+`knowledge search <query>` は同じ dataset / vectors / model 設定で検索結果を確認するためのコマンドです。`--top-k <number>` で表示件数を変更できます。
+
 ## 安全性
 
 - 既定 runner は `docker` で、隔離されたコンテナ内でコマンドを実行します
 - 既定 sandbox policy は `networkAccess: "off"`、`filesystemScope: "workdir-only"` です
-- `rm`、`sudo`、`dd`、`mount`、`curl`、`wget`、`ssh`、`python -c` などの危険なコマンドパターンを事前にブロックします
+- `rm`、`sudo`、`dd`、`mount`、`curl`、`wget`、`ssh` などの危険なコマンドを AST ベースで事前にブロックします
 - `/etc` や `$HOME` などの敏感なパスへのリダイレクトもブロックします
+- 再帰的に background 実行する shell function は fork bomb 相当としてブロックします
 - workdir への書き込みは既定で無効です。必要な場合だけ `--writable-workdir` を付けてください
 
 policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。

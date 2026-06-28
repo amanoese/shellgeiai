@@ -4,18 +4,25 @@ import { defaultCommandPolicy } from "./commandPolicy.js";
 import { createDefaultSandboxPolicy } from "./sandboxPolicy.js";
 import { readJson } from "../../shared/fs.js";
 
-const commandPolicyPatternSchema = z
+const blockedCommandSchema = z
   .object({
-    pattern: z.string().min(1, "Blocked pattern must not be empty."),
-    flags: z.string().optional(),
-    reason: z.string().trim().min(1, "Blocked pattern reason must not be empty.")
+    name: z.string().trim().min(1, "Blocked command name must not be empty."),
+    reason: z.string().trim().min(1, "Blocked command reason must not be empty.")
+  })
+  .strict();
+
+const blockedRedirectionTargetSchema = z
+  .object({
+    prefix: z.string().trim().min(1, "Blocked redirection prefix must not be empty."),
+    reason: z.string().trim().min(1, "Blocked redirection reason must not be empty.")
   })
   .strict();
 
 const commandPolicyFileSchema = z
   .object({
-    extendDefault: z.boolean().optional(),
-    blockedPatterns: z.array(commandPolicyPatternSchema).default([])
+    blockedCommands: z.array(blockedCommandSchema).default([]),
+    blockedRedirectionTargets: z.array(blockedRedirectionTargetSchema).default([]),
+    blockRecursiveBackgroundFunctions: z.boolean().default(true)
   })
   .strict();
 
@@ -42,7 +49,6 @@ export async function loadCommandPolicy(policyPath) {
   }
 
   const resolvedPath = resolvePolicyPath(policyPath);
-
   let parsedFile;
   try {
     parsedFile = await readJson(resolvedPath);
@@ -56,26 +62,7 @@ export async function loadCommandPolicy(policyPath) {
     throw new Error(`Invalid command policy file '${policyPath}': ${formatValidationError(result.error)}`);
   }
 
-  const compiledPatterns = result.data.blockedPatterns.map((item, index) => {
-    try {
-      return {
-        pattern: new RegExp(item.pattern, item.flags),
-        reason: item.reason
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Invalid command policy file '${policyPath}': blockedPatterns.${index}.pattern: ${message}`
-      );
-    }
-  });
-
-  return {
-    blockedPatterns:
-      result.data.extendDefault === false
-        ? compiledPatterns
-        : [...defaultCommandPolicy.blockedPatterns, ...compiledPatterns]
-  };
+  return result.data;
 }
 
 export async function loadSandboxPolicy(policyPath) {
@@ -84,7 +71,6 @@ export async function loadSandboxPolicy(policyPath) {
   }
 
   const resolvedPath = resolvePolicyPath(policyPath);
-
   let parsedFile;
   try {
     parsedFile = await readJson(resolvedPath);

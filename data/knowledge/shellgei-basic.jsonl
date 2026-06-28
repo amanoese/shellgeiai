@@ -1,0 +1,95 @@
+{"id":"man:awk:-F","kind":"option","command":"awk","option":"-F","text":"awk -F: 入力フィールドの区切り文字を指定する。CSVなら -F,、タブ区切りなら -F '\\t'。列を取り出す処理でよく使う。例: awk -F, '{print $3}' file.csv","source":"seed; https://xztaityozx.hatenablog.com/search?q=%E3%82%B7%E3%82%A7%E3%83%AB%E8%8A%B8160%E3%83%8E%E3%83%83%E3%82%AF"}
+{"id":"man:awk:NR","kind":"pattern","command":"awk","option":"NR","text":"awk の NR は現在の行番号。範囲指定や先頭行の除外に使う。例: awk 'NR>=4' は4行目以降だけを出す。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:awk:END","kind":"pattern","command":"awk","option":"END","text":"awk の END ブロックは全入力を読んだ後に実行される。最後の行番号、合計値、集計結果を出す用途に向く。例: awk 'END{print NR-1}'。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:awk:range-pattern","kind":"pattern","command":"awk","option":"pattern,0","text":"awk '開始パターン,0' は開始パターンに一致した行から末尾までを出す。ログやコマンド出力の途中以降を切り出すときに使う。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:awk:sum","kind":"pattern","command":"awk","option":"+","text":"数値列の合計は awk '{s+=$1} END{print s}' が基本。-F と組み合わせると CSV や TSV の指定列を合計できる。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sed:-n","kind":"option","command":"sed","option":"-n","text":"sed -n: 自動出力を止め、p コマンドなどで明示した行だけを出す。例: sed -n '3,5p' file。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sed:-E","kind":"option","command":"sed","option":"-E","text":"sed -E: 拡張正規表現を使う。グループ化や +、? をバックスラッシュ少なめで書ける。置換や抽出の読みやすさを上げる。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sed:substitute","kind":"pattern","command":"sed","option":"s///g","text":"sed 's/正規表現/置換/g' は各行の文字列置換。g を付けると行内の全一致を置換する。区切りは / 以外も使える。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:grep:-E","kind":"option","command":"grep","option":"-E","text":"grep -E: 拡張正規表現で検索する。複数候補、繰り返し、グループを含む条件を簡潔に書ける。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:grep:-P","kind":"option","command":"grep","option":"-P","text":"grep -P: PCRE を使う。先読みや後読みなどを使った抽出に便利。環境によっては使えないため、移植性が必要なら awk や sed も検討する。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:grep:-o","kind":"option","command":"grep","option":"-o","text":"grep -o: 行全体ではなくマッチした部分だけを出す。IP アドレス、TTL、URL のような部分抽出で使う。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:grep:-m","kind":"option","command":"grep","option":"-m","text":"grep -m N: N 件マッチした時点で読み取りを止める。ping など終わらない出力から最初の1件だけ取るときは -m1 が有効。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:grep:-v","kind":"option","command":"grep","option":"-v","text":"grep -v: マッチしない行だけを出す。不要なヘッダ、空行、コメント行を除外する前処理に使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:grep:-c","kind":"option","command":"grep","option":"-c","text":"grep -c: マッチした行数を数える。単純な件数確認に使えるが、同じ行の複数マッチは1行として数える。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sort:-k","kind":"option","command":"sort","option":"-k","text":"sort -k: 指定した列や範囲をキーにして行を並べ替える。-t で区切り文字、-n で数値順、-r で逆順にできる。例: sort -t, -k2,2n file.csv","source":"seed; https://b.ueda.tech/?page=00684"}
+{"id":"man:sort:-n","kind":"option","command":"sort","option":"-n","text":"sort -n: 数値として並べ替える。文字列順だと 10 が 2 より前に来るため、数値列の順位付けでは必須。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sort:-r","kind":"option","command":"sort","option":"-r","text":"sort -r: 逆順に並べ替える。頻度や点数の降順表示では sort -nr のように -n と組み合わせる。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sort:-u","kind":"option","command":"sort","option":"-u","text":"sort -u: ソートしながら重複行を1つにまとめる。重複排除だけなら sort | uniq より短く書ける。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:sort:-t","kind":"option","command":"sort","option":"-t","text":"sort -t: フィールド区切り文字を指定する。CSV や colon 区切りを列キーで並べるときに -k と併用する。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:uniq:-c","kind":"option","command":"uniq","option":"-c","text":"uniq -c: 隣接する重複行の個数を数える。通常は sort | uniq -c の形で頻度集計に使う。","source":"seed; https://b.ueda.tech/?page=00684"}
+{"id":"man:uniq:-d","kind":"option","command":"uniq","option":"-d","text":"uniq -d: 重複している行だけを出す。事前に sort して、同一値を隣接させてから使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:uniq:-u","kind":"option","command":"uniq","option":"-u","text":"uniq -u: 重複していない行だけを出す。2つの集合の差分や一意な値の抽出で使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:xargs:-0","kind":"option","command":"xargs","option":"-0","text":"xargs -0: 入力をNUL文字区切りとして読む。find -print0 と組み合わせ、空白や改行を含むファイル名を安全に処理する。","source":"seed; https://b.ueda.tech/?page=00684"}
+{"id":"man:xargs:-n","kind":"option","command":"xargs","option":"-n","text":"xargs -n N: 1回のコマンド実行に渡す引数数を N 個に制限する。入力を固定個数ずつ処理したいときに使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:xargs:-I","kind":"option","command":"xargs","option":"-I","text":"xargs -I{}: 入力1行をプレースホルダに埋め込んでコマンドを実行する。複数箇所に同じ値を差し込む処理に向く。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:find:-name","kind":"option","command":"find","option":"-name","text":"find -name 'pattern': ファイル名の glob パターンで検索する。クォートしてシェル側の展開を防ぐ。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:find:-type","kind":"option","command":"find","option":"-type","text":"find -type f は通常ファイル、-type d はディレクトリだけを対象にする。削除や集計前に対象種別を絞る。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:find:-print0","kind":"option","command":"find","option":"-print0","text":"find -print0: 検索結果を NUL 区切りで出す。xargs -0 や while read -d '' と組み合わせ、特殊文字を含むパスを安全に扱う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:find:-exec","kind":"option","command":"find","option":"-exec","text":"find -exec cmd {} \\; は見つけた各パスにコマンドを実行する。まとめて渡すなら {} + を使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:cut:-d","kind":"option","command":"cut","option":"-d","text":"cut -d: フィールド区切り文字を指定する。-f と組み合わせて CSV 風の単純な区切りデータから列を抜く。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:cut:-f","kind":"option","command":"cut","option":"-f","text":"cut -f: フィールド番号を指定して取り出す。範囲は 2-4 や 1,3 のように書ける。デフォルト区切りはタブ。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:cut:-c","kind":"option","command":"cut","option":"-c","text":"cut -c: 文字位置で切り出す。固定幅データや先頭数文字の抽出に使う。日本語などマルチバイト文字では環境に注意する。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:tr:-d","kind":"option","command":"tr","option":"-d","text":"tr -d: 指定した文字を削除する。改行、引用符、空白、カンマなどを落とす簡単な整形に使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:tr:-s","kind":"option","command":"tr","option":"-s","text":"tr -s: 連続する同じ文字を1文字に圧縮する。連続空白を1つにまとめて列処理しやすくする。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:tr:classes","kind":"pattern","command":"tr","option":"[:upper:]","text":"tr '[:upper:]' '[:lower:]' は大文字を小文字へ変換する。文字クラスを使うとアルファベットや数字をまとめて扱える。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:wc:-l","kind":"option","command":"wc","option":"-l","text":"wc -l: 行数を数える。grep、awk、find などの結果件数確認に使う。出力には空白が付くため比較では awk '{print $1}' などで整形する。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:wc:-c","kind":"option","command":"wc","option":"-c","text":"wc -c: バイト数を数える。文字数ではなくバイト数なので、日本語などマルチバイト文字では wc -m と区別する。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:head:-n","kind":"option","command":"head","option":"-n","text":"head -n N: 先頭 N 行を出す。sort 後の上位抽出や大きな入力の確認に使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:tail:-n","kind":"option","command":"tail","option":"-n","text":"tail -n N: 末尾 N 行を出す。tail -n +2 は2行目以降を出すため、ヘッダ除外にも使える。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:seq:-f","kind":"option","command":"seq","option":"-f","text":"seq -f: printf 形式で連番を出す。ゼロ埋めや接頭辞付きの連番生成に便利。例: seq -f '%03g' 1 10。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:seq:-s","kind":"option","command":"seq","option":"-s","text":"seq -s SEP: 出力の区切り文字を指定する。連番を1行のカンマ区切りなどにしたいときに使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:paste:-d","kind":"option","command":"paste","option":"-d","text":"paste -d: 複数行や複数ファイルを横に結合するときの区切り文字を指定する。縦のデータを列に並べる問題で使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:paste:-s","kind":"option","command":"paste","option":"-s","text":"paste -s: 入力行を1行にまとめる。-d と組み合わせて、改行区切りをカンマ区切りなどへ変換する。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:join:-1","kind":"option","command":"join","option":"-1","text":"join -1 FIELD: 1つ目のファイルで結合キーにするフィールドを指定する。join は入力がキーでソート済みである必要がある。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:join:-2","kind":"option","command":"join","option":"-2","text":"join -2 FIELD: 2つ目のファイルで結合キーにするフィールドを指定する。異なる列同士をキーにする表結合で使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:join:-t","kind":"option","command":"join","option":"-t","text":"join -t CHAR: 入出力の区切り文字を指定する。CSV 風のデータを結合するなら sort -t と合わせて使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:comm:-12","kind":"option","command":"comm","option":"-12","text":"comm -12: ソート済み2ファイルの共通行だけを出す。-1 は1つ目だけ、-2 は2つ目だけ、-3 は共通行の抑制を意味する。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:comm:-23","kind":"option","command":"comm","option":"-23","text":"comm -23: 1つ目にだけある行を出す。集合差を求めるときに使う。入力は両方ともソート済みにする。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:fmt:-1","kind":"option","command":"fmt","option":"-1","text":"fmt -1: 空白区切りの語を1行1語に整形する。echo で並べた値を while read や grep の入力にしやすくする。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:column:-t","kind":"option","command":"column","option":"-t","text":"column -t: 区切りデータを桁揃えして表にする。人間向け表示の仕上げに使う。-s で区切り文字を指定できる。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:tee:-a","kind":"option","command":"tee","option":"-a","text":"tee -a: 標準出力へ流しながらファイルへ追記する。途中結果を見つつログや候補を蓄積する用途に使う。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:read:-r","kind":"option","command":"read","option":"-r","text":"read -r: バックスラッシュをエスケープとして解釈せずに読む。while read で入力行を壊さず処理する基本形は while IFS= read -r line。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:bash:process-substitution","kind":"pattern","command":"bash","option":"<()","text":"<(cmd) はプロセス置換。コマンド出力を一時ファイルのように渡せるため、join や comm に動的な入力を渡すときに便利。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:bash:pipe-stderr","kind":"pattern","command":"bash","option":"|&","text":"|& は標準出力と標準エラーをまとめて次のコマンドへ渡す bash の記法。openssl など stderr に情報を出すコマンドの整形で使う。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"pattern:frequency-count","kind":"pattern","command":"sort|uniq|awk","option":"-c","text":"重複や頻度を数える問題では sort | uniq -c が基本。uniq は隣接した重複だけを数えるので先に sort する。必要なら awk で列を整形する。","source":"seed; https://b.ueda.tech/?page=00684"}
+{"id":"pattern:csv-column-sum","kind":"pattern","command":"awk","option":"-F","text":"CSV の指定列を合計するなら awk -F, '{sum += $3} END {print sum}' file.csv。引用やエスケープを含む本格 CSV には専用ツールを検討する。","source":"seed; https://b.ueda.tech/?page=00684"}
+{"id":"pattern:top-n","kind":"pattern","command":"sort|head","option":"-nr|-n","text":"上位 N 件は数値を先頭に作って sort -nr | head -n N。昇順の下位 N 件なら sort -n | head -n N。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"pattern:remove-empty-lines","kind":"pattern","command":"grep|sed|awk","option":"-v","text":"空行除去は grep -v '^$'、sed '/^$/d'、awk 'NF' が使える。空白だけの行も除くなら正規表現を '^[[:space:]]*$' にする。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"pattern:extract-field-after-match","kind":"pattern","command":"grep|awk","option":"-o|-F","text":"key=value 形式から値だけ取るなら grep -oP '(?<=key=)[^ ]+' や awk -F= '{print $2}' を使う。grep -P は環境依存に注意する。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"pattern:while-read-lines","kind":"pattern","command":"while|read","option":"-r","text":"行単位処理は while IFS= read -r line; do ...; done。空白やバックスラッシュを含む入力を壊しにくい。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"pattern:ip-address-extract","kind":"pattern","command":"grep|awk","option":"-oE","text":"IPv4 アドレス抽出は grep -oE '([0-9]{1,3}\\.){3}[0-9]{1,3}' が手軽。厳密な範囲検証が必要なら awk で各 octet を確認する。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:nslookup:basic","kind":"note","command":"nslookup","option":"","text":"nslookup はドメイン名の DNS 情報を調べる。複数アドレスを持つかは出力の Address 行を grep や awk で数えて判定できる。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:ping:basic","kind":"note","command":"ping","option":"","text":"ping は ICMP 応答を継続表示する。grep -m1 で最初の応答だけを取り、TTL や応答時間を抽出できる。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:traceroute:-I","kind":"option","command":"traceroute","option":"-I","text":"traceroute -I: ICMP echo を使って経路を調べる。出力行数からホップ数を見積もる例では awk 'END{print NR-1}' のように集計する。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:tcpdump:-c","kind":"option","command":"tcpdump","option":"-c","text":"tcpdump -c N: N パケット取得したら終了する。シェル芸では -c 1 で短く取得し、grep や awk で必要部分を読む。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:tcpdump:-x","kind":"option","command":"tcpdump","option":"-x","text":"tcpdump -x: パケット内容を16進で表示する。ICMP などのパケット中身をテキスト処理する前段に使う。通常は権限が必要。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:whois:basic","kind":"note","command":"whois","option":"","text":"whois はドメイン登録情報を問い合わせる。未登録判定はレジストリごとに文言が違うため、grep する文字列を対象 TLD に合わせる。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:openssl:s_client","kind":"option","command":"openssl","option":"s_client -connect","text":"openssl s_client -connect host:443 は TLS サーバへ接続して証明書情報を得る。標準エラーも出るため |& で後段へ渡すと扱いやすい。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:openssl:x509-dates","kind":"option","command":"openssl","option":"x509 -noout -dates","text":"openssl x509 -noout -dates は証明書の notBefore と notAfter を表示する。s_client -showcerts の出力から証明書期限を確認できる。","source":"https://xztaityozx.hatenablog.com/entry/2021/12/22/230037"}
+{"id":"man:date:-d","kind":"option","command":"date","option":"-d","text":"date -d: 文字列で指定した日時を解釈して表示する。証明書期限やログ日時を別形式に整えるときに使う。GNU date の機能。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:date:+format","kind":"option","command":"date","option":"+FORMAT","text":"date +FORMAT: 日時を指定形式で出す。%Y-%m-%d や %s などを使い、並べ替えや差分計算しやすい形にする。","source":"https://b.ueda.tech/?page=00684"}
+{"id":"man:perl:-pe","kind":"option","command":"perl","option":"-pe","text":"perl -pe: 各入力行に Perl コードを実行して自動出力する。sed より複雑な正規表現置換や行単位の変換を短く書ける。","source":"https://b.ueda.tech/?post=05093"}
+{"id":"man:perl:-lane","kind":"option","command":"perl","option":"-lane","text":"perl -lane: 入力行を自動 chomp し、空白区切りで @F に分割してコードを実行する。awk 風の列処理を Perl で行うときに使う。","source":"https://b.ueda.tech/?post=05093"}
+{"id":"man:rev:basic","kind":"note","command":"rev","option":"","text":"rev は各行の文字を逆順にする。回文生成、末尾側からの整形、左右対称な文字列処理の部品として使う。","source":"https://b.ueda.tech/?post=03535"}
+{"id":"man:tac:basic","kind":"note","command":"tac","option":"","text":"tac は入力行を末尾から先頭へ逆順に出す。head/tail や sort と違い、行順そのものを反転する。macOS では tail -r で代用されることがある。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:tail:-r","kind":"option","command":"tail","option":"-r","text":"tail -r: BSD 系で行順を逆に出すオプション。GNU 環境では tac が同等用途。移植性が必要なら環境差に注意する。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:zcat:basic","kind":"note","command":"zcat","option":"","text":"zcat は gzip 圧縮ファイルを展開して標準出力へ流す。圧縮ログを保存したまま awk、sed、grep に渡して解析できる。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:wget:basic","kind":"note","command":"wget","option":"","text":"wget は URL からファイルを取得する。勉強会の入力データ取得に使われることが多い。ネットワークアクセスと保存先に注意する。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:wget:-O","kind":"option","command":"wget","option":"-O","text":"wget -O FILE: 取得内容の保存先ファイル名を指定する。-O - とすると標準出力へ出せるため、パイプで後続処理に渡せる。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"man:curl:-s","kind":"option","command":"curl","option":"-s","text":"curl -s: 進捗表示やエラーメッセージを抑えて本文だけを扱いやすくする。HTML や API 出力を grep、sed、jq に渡す前段で使う。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"man:curl:-L","kind":"option","command":"curl","option":"-L","text":"curl -L: リダイレクトをたどる。短縮 URL や移転したページを取得するときに必要になる。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"man:factor:basic","kind":"note","command":"factor","option":"","text":"factor は整数を素因数分解する。分数計算や最大公約数・約分をシェル芸で処理するとき、素因数の個数集計に使える。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:nkf:-w","kind":"option","command":"nkf","option":"-w","text":"nkf -w: 入力文字コードを推定して UTF-8 へ変換する。日本語テキストの文字化け対策や、grep/sed 前の正規化に使う。","source":"https://b.ueda.tech/?post=05093"}
+{"id":"man:nkf:-Lu","kind":"option","command":"nkf","option":"-Lu","text":"nkf -Lu: 改行コードを LF に変換する。Windows 由来の CRLF を含む入力を Unix 系コマンドで扱いやすくする。","source":"https://b.ueda.tech/?post=05093"}
+{"id":"man:printf:shell","kind":"note","command":"printf","option":"","text":"printf は echo より形式が安定した出力に使う。awk 内の printf と同様に、改行なし出力、桁揃え、ゼロ埋めの生成に向く。","source":"https://b.ueda.tech/?post=03535"}
+{"id":"man:yes:basic","kind":"note","command":"yes","option":"","text":"yes は同じ文字列を無限に出力する。head -n と組み合わせると、指定行数のダミーデータや繰り返し入力を作れる。","source":"https://b.ueda.tech/?post=03535"}
+{"id":"man:fold:-w","kind":"option","command":"fold","option":"-w","text":"fold -w N: 入力を幅 N ごとに折り返す。固定幅で文字列を分割したいときに使う。バイト幅と表示幅の違いには注意する。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"man:xxd:basic","kind":"note","command":"xxd","option":"","text":"xxd は入力を16進ダンプにする。バイナリや文字コードの確認、バイト単位の加工をシェル上で行うときに使う。","source":"https://b.ueda.tech/?post=03792"}
+{"id":"man:xxd:-r","kind":"option","command":"xxd","option":"-r","text":"xxd -r: 16進ダンプを元のバイナリへ戻す。16進文字列を編集してからバイト列へ復元する用途に使える。","source":"https://b.ueda.tech/?post=03792"}
+{"id":"man:jq:basic","kind":"note","command":"jq","option":"","text":"jq は JSON を検索・整形・変換する。curl で取得した API レスポンスから値を抜く場合は jq '.key' のように使う。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"man:jq:-r","kind":"option","command":"jq","option":"-r","text":"jq -r: JSON 文字列を引用符なしの raw 文字列として出す。後続の grep、awk、xargs に値を渡すときに便利。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"pattern:compressed-log-analysis","kind":"pattern","command":"zcat|awk|sed|sort|uniq","option":"","text":"gzip 圧縮ログは zcat file.gz | awk ... | sed ... のように展開せず処理できる。日時を先頭に正規化してから sort すると時系列解析しやすい。","source":"https://b.ueda.tech/?post=05644"}
+{"id":"pattern:download-and-filter","kind":"pattern","command":"wget|curl|grep|sed","option":"-O|-s|-L","text":"Web 上の教材データや HTML は wget -O - URL または curl -sL URL で標準出力へ流し、grep/sed/awk で必要な行だけを抽出する。","source":"https://b.ueda.tech/?post=04413"}
+{"id":"pattern:repeat-lines","kind":"pattern","command":"yes|head|awk","option":"-n","text":"繰り返しデータは yes X | head -n N で N 行だけ生成できる。awk の NR と組み合わせると座標や図形の生成にも使える。","source":"https://b.ueda.tech/?post=03535"}
+{"id":"pattern:reverse-text","kind":"pattern","command":"rev|tac|tail","option":"-r","text":"文字の反転は rev、行順の反転は tac または BSD tail -r。回文や逆順処理では、どちらを反転したいかを分けて選ぶ。","source":"https://b.ueda.tech/?post=03535"}

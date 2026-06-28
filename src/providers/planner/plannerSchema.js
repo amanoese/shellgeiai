@@ -48,7 +48,7 @@ export function normalizePlannerResult(rawPlan, session, plannerMeta) {
       ? rawPlan.plan
       : rawPlan;
   const parsed = plannerResultSchema.parse(source);
-  const workerCount = Math.max(1, session.parallelism ?? 1);
+  const workerCount = Math.max(2, session.parallelism ?? 4);
 
   return {
     mode: session.mode ?? "single",

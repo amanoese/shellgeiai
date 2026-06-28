@@ -186,6 +186,97 @@ describe("solveProblem", () => {
     );
   });
 
+  it("does not attach knowledge hints when knowledge is off", async () => {
+    const seenTasks = [];
+    const result = await solveProblem({
+      problemInput: "print 42",
+      engine: {
+        name: "mock",
+        generateCommand: async ({ workerTask }) => {
+          seenTasks.push(workerTask);
+          return { command: "printf '42\\n'", explanation: "ok" };
+        }
+      },
+      runner: {
+        name: "mock",
+        run: async () => ({
+          stdout: "42\n",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 1
+        })
+      },
+      judge: {
+        judge: async () => ({
+          passed: true,
+          reason: "ok",
+          score: { value: 100, breakdown: {} }
+        })
+      },
+      maxIterations: 1,
+      parallelism: 2,
+      knowledgeMode: "off",
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(seenTasks[0].knowledgeHints).toBeUndefined();
+  });
+
+  it("passes worker knowledge hints to the engine when enabled", async () => {
+    const seenHints = [];
+    const result = await solveProblem({
+      problemInput: "CSV の 3列目を合計する",
+      engine: {
+        name: "mock",
+        generateCommand: async ({ workerTask }) => {
+          seenHints.push(workerTask.knowledgeHints);
+          return { command: "printf '42\\n'", explanation: "ok" };
+        }
+      },
+      runner: {
+        name: "mock",
+        run: async () => ({
+          stdout: "42\n",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 1
+        })
+      },
+      judge: {
+        judge: async () => ({
+          passed: true,
+          reason: "ok",
+          score: { value: 100, breakdown: {} }
+        })
+      },
+      maxIterations: 1,
+      parallelism: 2,
+      knowledgeMode: "worker",
+      knowledgeRetriever: {
+        async retrieveForWorker() {
+          return [
+            {
+              id: "man:awk:-F",
+              kind: "option",
+              command: "awk",
+              option: "-F",
+              text: "awk -F: CSV 列処理",
+              source: "test",
+              score: 1
+            }
+          ];
+        }
+      },
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(result.finalCheck.passed).toBe(true);
+    expect(seenHints[0]).toEqual([expect.objectContaining({ id: "man:awk:-F" })]);
+  });
+
   it("keeps final formatted output while reporting session phases", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
