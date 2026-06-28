@@ -5,9 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkCommand } from "../src/core/check.js";
 import { replaySolveLog } from "../src/core/replay.js";
 import { solveProblem } from "../src/core/solve.js";
-import { SimpleJudge } from "../src/judge/simpleJudge.js";
-import { DockerRunner } from "../src/runner/dockerRunner.js";
-import { LocalRunner } from "../src/runner/localRunner.js";
+import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
+import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
+import { LocalRunner } from "../src/execution/runner/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];

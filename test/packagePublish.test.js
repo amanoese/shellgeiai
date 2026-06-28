@@ -30,4 +30,17 @@ describe("npm publish metadata", () => {
     expect(packageJson.files).toEqual(["src", "policies", "README.md", "LICENSE"]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
   });
+
+  it("exposes execution modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/execution/runner/localRunner.js",
+      "../src/execution/runner/dockerRunner.js",
+      "../src/execution/runner/limits.js",
+      "../src/execution/safety/checker.js",
+      "../src/execution/safety/policyLoader.js",
+      "../src/execution/judge/simpleJudge.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
 });

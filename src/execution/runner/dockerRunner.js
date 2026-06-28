@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
-import { commandExists } from "../util/exec.js";
+import { commandExists } from "../../util/exec.js";
 
 const DEFAULT_IMAGE =
   process.env.SHELLGEIAI_DOCKER_IMAGE ?? "theoldmoon0602/shellgeibot";

@@ -1,8 +1,8 @@
 import { MockEngine } from "../engines/mockEngine.js";
 import { OpenAIEngine } from "../engines/openaiEngine.js";
-import { SimpleJudge } from "../judge/simpleJudge.js";
-import { DockerRunner } from "../runner/dockerRunner.js";
-import { LocalRunner } from "../runner/localRunner.js";
+import { SimpleJudge } from "../execution/judge/simpleJudge.js";
+import { DockerRunner } from "../execution/runner/dockerRunner.js";
+import { LocalRunner } from "../execution/runner/localRunner.js";
 
 const DEFAULT_RUNNER = "docker";
 

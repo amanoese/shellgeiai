@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SimpleJudge } from "../src/judge/simpleJudge.js";
+import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
 
 describe("SimpleJudge", () => {
   it("passes successful output", async () => {

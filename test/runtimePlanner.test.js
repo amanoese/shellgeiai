@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createExecutionPlan } from "../src/core/planner.js";
 import { createSolveRuntime } from "../src/core/runtime.js";
 import { OpenAIEngine } from "../src/engines/openaiEngine.js";
-import { DockerRunner } from "../src/runner/dockerRunner.js";
+import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("createExecutionPlan", () => {

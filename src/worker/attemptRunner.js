@@ -1,5 +1,5 @@
 import { reportSolveProgress } from "../core/progress.js";
-import { isSafeCommand } from "../safety/checker.js";
+import { isSafeCommand } from "../execution/safety/checker.js";
 import {
   buildJudgeInput,
   createAbortedAttempt,
