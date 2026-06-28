@@ -54,13 +54,6 @@ source ~/.zshrc
 shellgeiai solve "標準入力の行順を逆順にして表示せよ"
 ```
 
-既存コマンドを安全に検証する:
-
-```bash
-shellgeiai check "tac input.txt" \
-  --problem "ファイル input.txt を逆順に表示せよ"
-```
-
 保存済みログを確認する:
 
 ```bash

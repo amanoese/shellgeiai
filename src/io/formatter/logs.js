@@ -14,23 +14,6 @@ export function formatLogSummary(summary) {
     `command=${formatMaybe(summary.command)}`
   ];
 
-  if (summary.sourceLogPath || summary.sourceSelectedCandidateId) {
-    parts.push(
-      `source=${formatMaybe(summary.sourceLogPath)}`,
-      `source-selected=${formatMaybe(summary.sourceSelectedCandidateId)}`
-    );
-  }
-
-  if (summary.replayTargetKind || summary.replayTargetId) {
-    parts.push(
-      `replay-target=${formatMaybe(summary.replayTargetKind)}:${formatMaybe(summary.replayTargetId)}`
-    );
-  }
-
-  if (summary.replayTargetSelectionReason) {
-    parts.push(`reason=${summary.replayTargetSelectionReason}`);
-  }
-
   return parts.join(" | ");
 }
 

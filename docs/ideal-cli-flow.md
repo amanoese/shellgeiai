@@ -193,7 +193,7 @@ worker-model: gpt-5.4-nano
 - 最終採用コマンド
 - 不採用だった有望候補
 
-理想的には、失敗した探索も corpus や replay に流用できる構造にしておきます。
+理想的には、失敗した探索も corpus やログ解析に流用できる構造にしておきます。
 
 ## 理想の内部パイプライン
 
@@ -214,8 +214,6 @@ CLI
 ## 将来的に追加したいサブコマンド
 
 - `shellgeiai solve`
-- `shellgeiai check`
-- `shellgeiai replay`
 - `shellgeiai logs show <run-id>`
 - `shellgeiai corpus add`
 - `shellgeiai policy test`
@@ -256,7 +254,7 @@ CLI
 1. planner が返す複数 `workerTask` の戦略品質を高める
 2. `DockerRunner` の制限値モデルと再現性を強化する
 3. selector と judge を複数候補前提へ拡張する
-4. `check` / `replay` などのサブコマンドを追加する
+4. `logs` / `corpus` などの運用サブコマンドを強化する
 
 ## 設計上の大事な原則
 

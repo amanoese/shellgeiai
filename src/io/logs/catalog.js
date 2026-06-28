@@ -23,20 +23,11 @@ function inferMode(filename, payload) {
     return "check";
   }
 
-  if (filename.startsWith("replay-")) {
-    return "replay";
-  }
-
   return "unknown";
 }
 
 function summarizeLog(filename, logPath, payload, fileStat) {
-  const command =
-    payload.command ??
-    payload.candidates?.[0]?.command ??
-    payload.replayTarget?.command ??
-    payload.attempts?.[0]?.command ??
-    "";
+  const command = payload.command ?? payload.candidates?.[0]?.command ?? payload.attempts?.[0]?.command ?? "";
 
   return {
     logId: path.basename(filename, ".json"),
@@ -49,15 +40,6 @@ function summarizeLog(filename, logPath, payload, fileStat) {
     problem: payload.problem ?? payload.problemSpec?.problemText ?? "",
     command,
     selectedCandidateId: payload.selectedCandidateId ?? null,
-    sourceLogPath: payload.sourceLogPath ?? null,
-    sourceSelectedCandidateId: payload.sourceSelectedCandidateId ?? null,
-    replayTargetKind: payload.replayTarget?.kind ?? null,
-    replayTargetId: payload.replayTarget?.id ?? null,
-    replayTargetCandidateId: payload.replayTarget?.sourceCandidateId ?? null,
-    replayTargetAttemptId: payload.replayTarget?.sourceAttemptId ?? null,
-    replayTargetWorkerId: payload.replayTarget?.sourceWorkerId ?? null,
-    replayTargetStrategy: payload.replayTarget?.sourceStrategy ?? null,
-    replayTargetSelectionReason: payload.replayTarget?.selectionReason ?? null,
     passed: payload.finalCheck?.passed ?? null,
     mtimeMs: fileStat.mtimeMs
   };
@@ -129,24 +111,19 @@ function buildFallbackFinalCheck(log, command) {
       passed: false,
       iterations: Array.isArray(log.attempts) ? log.attempts.length : 0,
       engine: log.engine ?? log.mode ?? "unknown",
-      reason: command
-        ? "Saved log did not contain final check."
-        : "Saved log did not contain a replayable result.",
+      reason: command ? "Saved log did not contain final check." : "Saved log did not contain a result.",
       score: null
     }
   );
 }
 
 function buildSelector(log, selectedCandidate, finalCheck, logPath) {
-  const replayReason =
-    log.mode === "replay" && (log.sourceSelectedCandidateId || log.selectedCandidateId)
-      ? `Loaded candidate selected in the source log ${log.sourceLogPath ?? logPath}.`
-      : `Loaded saved log ${logPath}.`;
+  const loadedReason = `Loaded saved log ${logPath}.`;
 
   if (log.selector && typeof log.selector === "object") {
     return {
       name: log.selector.name ?? "first-pass-wins",
-      reason: log.selector.reason ?? replayReason,
+      reason: log.selector.reason ?? loadedReason,
       selectedCandidateId: log.selector.selectedCandidateId ?? selectedCandidate?.candidateId ?? null,
       score: log.selector.score ?? selectedCandidate?.finalCheck?.score ?? finalCheck.score ?? null,
       metrics: log.selector.metrics ?? null
@@ -155,7 +132,7 @@ function buildSelector(log, selectedCandidate, finalCheck, logPath) {
 
   return {
     name: "first-pass-wins",
-    reason: replayReason,
+    reason: loadedReason,
     selectedCandidateId: selectedCandidate?.candidateId ?? null,
     score: selectedCandidate?.finalCheck?.score ?? finalCheck.score ?? null,
     metrics: null
@@ -163,8 +140,7 @@ function buildSelector(log, selectedCandidate, finalCheck, logPath) {
 }
 
 function restoreResultFromLog(log, logPath) {
-  const selectedCandidateId =
-    log.selector?.selectedCandidateId ?? log.selectedCandidateId ?? log.sourceSelectedCandidateId ?? null;
+  const selectedCandidateId = log.selector?.selectedCandidateId ?? log.selectedCandidateId ?? null;
   const selectedCandidate =
     (log.candidates ?? []).find((candidate) => candidate.candidateId === selectedCandidateId) ??
     (log.candidates ?? [])[0] ??
@@ -182,8 +158,8 @@ function restoreResultFromLog(log, logPath) {
     command,
     output,
     explanation,
-    attempts: log.attempts ?? [],
-    candidates: log.candidates ?? [],
+    attempts: log.attempts ?? selectedCandidate?.attempts ?? [],
+    candidates: log.candidates ?? (selectedCandidate ? [selectedCandidate] : []),
     finalCheck,
     selector: buildSelector(log, selectedCandidate, finalCheck, logPath),
     runner: log.runner ?? { name: "local", limits: {}, sandboxPolicy: {} },
@@ -227,27 +203,22 @@ export async function searchSavedLogs({ query, logsDir = getDefaultLogsDir(), mo
       summary.filename,
       summary.problem,
       summary.command,
-      summary.selectedCandidateId ?? "",
-      summary.sourceLogPath ?? "",
-      summary.sourceSelectedCandidateId ?? "",
-      summary.replayTargetKind ?? "",
-      summary.replayTargetId ?? "",
-      summary.replayTargetCandidateId ?? "",
-      summary.replayTargetAttemptId ?? "",
-      summary.replayTargetWorkerId ?? "",
-      summary.replayTargetStrategy ?? "",
-      summary.replayTargetSelectionReason ?? ""
+      summary.selectedCandidateId ?? ""
     ]
       .join("\n")
       .toLowerCase();
-
     return haystack.includes(normalizedQuery);
   });
 
   return typeof limit === "number" ? filtered.slice(0, limit) : filtered;
 }
 
-export async function pruneSavedLogs({ logsDir = getDefaultLogsDir(), retainDays, now = new Date(), dryRun = false }) {
+export async function pruneSavedLogs({
+  logsDir = getDefaultLogsDir(),
+  retainDays,
+  now = new Date(),
+  dryRun = false
+}) {
   if (!Number.isFinite(retainDays) || retainDays < 0) {
     throw new Error("retainDays must be a non-negative number.");
   }
@@ -264,10 +235,9 @@ export async function pruneSavedLogs({ logsDir = getDefaultLogsDir(), retainDays
       if (!dryRun) {
         await rm(summary.logPath, { force: true });
       }
-      continue;
+    } else {
+      kept.push(summary);
     }
-
-    kept.push(summary);
   }
 
   return {
@@ -275,13 +245,13 @@ export async function pruneSavedLogs({ logsDir = getDefaultLogsDir(), retainDays
     deleted,
     kept,
     deletedCount: deleted.length,
-    keptCount: kept.length
+    keptCount: kept.length,
+    dryRun
   };
 }
 
 export async function showSavedLog(logRef) {
   const logPath = await resolveLogPath(logRef);
   const log = await readJson(logPath);
-
   return restoreResultFromLog(log, logPath);
 }

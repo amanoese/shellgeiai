@@ -75,12 +75,10 @@ describe("npm publish metadata", () => {
  });
 
   it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
-    const modules = [
-      "../src/solve/solve.js",
-      "../src/solve/check.js",
-      "../src/solve/replay.js",
- "../src/solve/runtime.js",
- "../src/solve/session/solveSession.js",
+  const modules = [
+    "../src/solve/solve.js",
+    "../src/solve/runtime.js",
+    "../src/solve/session/solveSession.js",
  "../src/solve/session/sessionPhases.js",
  "../src/solve/session/progress.js",
  "../src/solve/session/types.js"

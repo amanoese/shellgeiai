@@ -18,69 +18,50 @@ src/
   solve/
 ```
 
-直近の主なコミット:
-
-```text
-b80b164 docs: refresh development path references
-a43456d docs: remove stale core hierarchy references
-6a3b694 docs: update src hierarchy references
-2e9f324 refactor: move solve flow modules
-ea5bc33 refactor: move solve session modules
-0a1bce2 refactor: group io and shared modules
-5ad71be refactor: group provider modules
-e2c7a11 refactor: group execution infrastructure
-f73aef3 refactor: clarify src execution boundaries
-```
-
 確認済み:
 
-- working tree は clean
 - 旧 `src/core`, `src/worker`, `src/runner`, `src/safety`, `src/judge`, `src/engines`, `src/planner`, `src/logs`, `src/formatter`, `src/problem`, `src/util` は撤去済み
-- 通常 docs / 現行コード / tests に旧 `src/...` path 参照なし
-- `rtk npm test` は通過済み
+- 不要な補助サブコマンドは撤去済み
+- 現在の主経路は `solve` と `logs`
 
-## 次回のおすすめ作業
+## 現在のおすすめ作業
 
-次にやるなら、コード移動ではなく **solve/check/replay の共通初期化整理** が最も効果的です。
+次にやるなら、`src/solve/session/solveSession.js` の初期化責務を読みやすく整理するのがよさそうです。
 
-現状、以下の処理が `solve`, `check`, `replay` 周辺で重複気味です。
+現状、以下の処理が `createSolveSession()` にまとまっています。
 
+- problem parse
 - workdir 解決
 - logs directory 作成
 - command policy / sandbox policy 読み込み
 - runner limits 設定
 - deadline / time budget 扱い
 - writable workdir 設定
-- session log に残す共通 metadata
+- execution plan 作成
+- progress phase 通知
 
 ## 提案する次回テーマ
 
-### Theme: command session setup の共通化
+### Theme: solve session setup の見通し整理
 
 目的:
 
-- `src/solve/check.js` と `src/solve/replay.js` の見通しを良くする
-- `src/solve/session/solveSession.js` と重複する初期化概念を整理する
+- `src/solve/session/solveSession.js` の見通しを良くする
+- 初期化、problem parsing、plan 作成の境界を読みやすくする
 - ただし solve 固有の planner / selector / worker orchestration は隠さない
 
 想定ファイル:
 
 ```text
 src/solve/session/
-  commandSession.js      # 新規
-  solveSession.js        # 必要なら軽く整理
-
-src/solve/
-  check.js
-  replay.js
+  solveSession.js
 ```
 
-`commandSession.js` の責務案:
+整理するときの責務案:
 
 ```js
-export async function createCommandSession(options) {
-  // workdir, logsDir, policies, runnerLimits, deadlineAtMs など
-}
+// createSolveSession は solve session object の組み立てに集中する
+// workdir/logs/policies/limits の小さな helper は必要になった場合だけ切り出す
 ```
 
 含めてよいもの:
@@ -98,49 +79,30 @@ export async function createCommandSession(options) {
 
 含めないもの:
 
-- planner
 - selector
-- workerTasks
-- solve candidate selection
+- workerTasks の実行
+- candidate selection
 - solve progress phase の詳細
 
 ## 進め方
 
-1. `src/solve/check.js` と `src/solve/replay.js` を読み、重複している初期化処理だけをリスト化する
-2. `createCommandSession` の最小 API を決める
-3. 先に `check` の既存テストを守る regression test を追加する
-4. `check` だけを `createCommandSession` に寄せる
-5. `replay` を同じ helper に寄せる
-6. full test を実行する
+1. `src/solve/session/solveSession.js` を読み、初期化処理のまとまりをリスト化する
+2. helper を切る場合でも、planner / selector / worker orchestration に関わる値は `solveSession.js` 側に残す
+3. `solve` の既存テストを先に守る
+4. 必要最小限だけ整理する
+5. full test を実行する
 
 ## 注意点
 
-- 今回の階層整理は完了しているので、次回は大きなディレクトリ移動をしない
+- 大きなディレクトリ移動をしない
 - `solveSession.js` を無理に共通化しすぎない
-- `check/replay` のログ形式を変えない
-- CLI の parse result shape と error message を変えない
+- CLI の parse result shape と error message を不用意に変えない
 - Docker runner / safety policy の挙動を変えない
-
-## 開始時の確認コマンド
-
-```bash
-rtk proxy git status --short --untracked-files=all
-rtk find src -maxdepth 2 -type d
-rtk npm test
-```
-
-期待:
-
-```text
-working tree clean
-src top-level: cli / execution / io / providers / shared / solve
-tests pass
-```
 
 ## 次回セッションへの依頼文例
 
 ```text
 docs/next-refactor-proposal.md を読んでください。
-次は command session setup の共通化を進めたいです。
-まず src/solve/check.js と src/solve/replay.js の重複を確認し、設計案を出してください。
+次は solve session setup の見通し整理を進めたいです。
+まず src/solve/session/solveSession.js の初期化責務を確認し、設計案を出してください。
 ```

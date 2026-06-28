@@ -2,11 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  writeCheckSessionLog,
-  writeReplaySessionLog,
-  writeSolveSessionLog
-} from "../src/io/logs/writer.js";
+import { writeSolveSessionLog } from "../src/io/logs/writer.js";
 
 const tempDirs = [];
 
@@ -15,97 +11,84 @@ afterEach(async () => {
   tempDirs.length = 0;
 });
 
-describe("writeCheckSessionLog", () => {
-  it("uses a unique filename when the timestamp would otherwise collide", async () => {
-    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
-    tempDirs.push(logsDir);
-    const startedAt = "2026-06-12T00:00:00.000Z";
-    const session = {
-      sessionId: "session-1",
-      startedAt,
-      workdir: "/tmp/workdir",
-      runner: { name: "local" },
-      runnerLimits: {},
-      sandboxPolicy: {},
+function buildSolveSession() {
+  return {
+    sessionId: "session-1",
+    problem: {
+      raw: "print ok",
       problemText: "print ok",
-      expectedOutput: "ok"
-    };
-    const result = {
-      command: "printf 'ok\\n'",
-      attempts: [],
-      candidates: [{ candidateId: "check-1" }],
-      finalCheck: { passed: true },
-      stopReason: "Completed explicit command check."
-    };
-
-    const first = await writeCheckSessionLog({ logsDir, session, result });
-    const second = await writeCheckSessionLog({ logsDir, session, result });
-    const logContent = JSON.parse(await readFile(first.logPath, "utf8"));
-
-    expect(path.basename(first.logPath)).toBe("check-2026-06-12T00-00-00-000Z.json");
-    expect(path.basename(second.logPath)).toBe("check-2026-06-12T00-00-00-000Z-2.json");
-    expect(logContent.mode).toBe("check");
-    expect(logContent.problemSpec.expectedOutput).toBe("ok");
-  });
-});
+      expectedOutput: "ok",
+      metadata: { format: "plain-text" }
+    },
+    engine: { name: "test-engine" },
+    runner: { name: "local" },
+    runnerLimits: {},
+    sandboxPolicy: {},
+    writableWorkdir: false,
+    workdir: "/tmp/workdir",
+    mode: "parallel",
+    parallelism: 1,
+    selectorName: "best-score-wins",
+    shellgeiScoreMode: "standard",
+    plan: {
+      mode: "parallel",
+      parallelism: 1,
+      workerTasks: [
+        {
+          workerId: "worker-1",
+          strategy: "default",
+          maxAttempts: 1
+        }
+      ],
+      planner: { provider: "rule-based", fallbackReason: null }
+    }
+  };
+}
 
 describe("writeSolveSessionLog", () => {
-  it("stores shellgei score mode, notes, penalties, selector metrics, and assigned variants", async () => {
+  it("uses a unique filename when timestamp would otherwise collide", async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
     tempDirs.push(logsDir);
-    const session = {
-      sessionId: "session-2",
-      startedAt: "2026-06-13T00:00:00.000Z",
-      workdir: "/tmp/workdir",
-      runner: { name: "local" },
-      runnerLimits: {},
-      sandboxPolicy: {},
-      shellgeiScoreMode: "standard",
-      problem: { raw: "print 42", problemText: "print 42" },
-      plan: {
-        mode: "single",
-        parallelism: 1,
-        variants: [
-          {
-            variantId: "variant-awk",
-            label: "awk-first",
-            approach: "awk-record-pass",
-            toolBias: ["awk"],
-            intent: "Start with a compact single-pass transform.",
-            constraints: ["Prefer concise one-liners"],
-            avoid: ["temporary files"],
-            explorationHint: "Try awk first."
-          }
-        ],
-        workerTasks: [
-          {
-            workerId: "worker-1",
-            strategy: "default",
-            strategyProfile: {
-              name: "balanced-search",
-              focus: "Start with direct safe one-liner.",
-              retryHint: "Remove redundant stages before changing whole approach.",
-              rubricFocus: ["conciseness", "shellness", "robustness"]
-            },
-            assignedVariant: {
-              variantId: "variant-awk",
-              label: "awk-first",
-              approach: "awk-record-pass",
-              toolBias: ["awk"],
-              intent: "Start with a compact single-pass transform.",
-              constraints: ["Prefer concise one-liners"],
-              avoid: ["temporary files"],
-              explorationHint: "Try awk first."
-            },
-            maxAttempts: 1
-          }
-        ],
-        planner: {
-          provider: "rule-based",
-          fallbackReason: null
-        }
-      }
+    const session = buildSolveSession();
+    const summary = {
+      finishedAt: "2026-06-13T00:00:05.000Z",
+      selectedCandidateId: null,
+      stopReason: "No candidate was produced.",
+      selectorReason: "No candidate was selected.",
+      selectorScore: null,
+      selectorMetrics: null
     };
+
+    const first = await writeSolveSessionLog({
+      logsDir,
+      session,
+      summary,
+      attempts: [],
+      candidates: [],
+      workerSummaries: [],
+      finalCheck: { passed: false, reason: "No candidate was produced." }
+    });
+    const second = await writeSolveSessionLog({
+      logsDir,
+      session,
+      summary,
+      attempts: [],
+      candidates: [],
+      workerSummaries: [],
+      finalCheck: { passed: false, reason: "No candidate was produced." }
+    });
+
+    const logContent = JSON.parse(await readFile(first.logPath, "utf8"));
+    expect(path.basename(first.logPath)).toBe("solve-2026-06-13T00-00-05-000Z.json");
+    expect(path.basename(second.logPath)).toBe("solve-2026-06-13T00-00-05-000Z-2.json");
+    expect(logContent.mode).toBe("solve");
+    expect(logContent.problemSpec.expectedOutput).toBe("ok");
+  });
+
+  it("writes solve plan and shellgei score metadata", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const session = buildSolveSession();
     const candidates = [
       {
         candidateId: "worker-1",
@@ -150,7 +133,6 @@ describe("writeSolveSessionLog", () => {
     });
 
     const logContent = JSON.parse(await readFile(logPath, "utf8"));
-
     expect(logContent.shellgeiScoreMode).toBe("standard");
     expect(logContent.candidates[0].shellgeiScore).toEqual(
       expect.objectContaining({
@@ -163,55 +145,11 @@ describe("writeSolveSessionLog", () => {
       expect.objectContaining({
         totalScore: 187,
         shellgeiScore: 72,
-        rubricBreakdown: expect.objectContaining({
-          conciseness: 13
-        })
+        rubricBreakdown: expect.objectContaining({ conciseness: 13 })
       })
     );
-    expect(logContent.plan.workerTasks[0].assignedVariant).toEqual(
-      expect.objectContaining({
-        variantId: "variant-awk",
-        approach: "awk-record-pass"
-      })
+    expect(logContent.plan.workerTasks[0]).toEqual(
+      expect.objectContaining({ workerId: "worker-1", strategy: "default" })
     );
-  });
-});
-
-describe("writeReplaySessionLog", () => {
-  it("writes replay logs with source and target metadata", async () => {
-    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
-    tempDirs.push(logsDir);
-    const session = {
-      sessionId: "session-3",
-      startedAt: "2026-06-13T01:00:00.000Z",
-      sourceLogPath: "/tmp/source-solve.json",
-      sourceSelectedCandidateId: "worker-2",
-      workdir: "/tmp/workdir",
-      runner: { name: "local" },
-      runnerLimits: {},
-      sandboxPolicy: {},
-      problem: {
-        raw: "print ok",
-        problemText: "print ok",
-        expectedOutput: "ok",
-        metadata: { format: "plain-text" }
-      },
-      replayTarget: "selected"
-    };
-    const result = {
-      attempts: [{ attemptId: "replay-1", command: "printf 'ok\\n'" }],
-      candidates: [{ candidateId: "worker-2", command: "printf 'ok\\n'" }],
-      finalCheck: { passed: true, reason: "ok" },
-      stopReason: null
-    };
-
-    const { logPath } = await writeReplaySessionLog({ logsDir, session, result });
-    const logContent = JSON.parse(await readFile(logPath, "utf8"));
-
-    expect(logContent.mode).toBe("replay");
-    expect(logContent.sourceLogPath).toBe("/tmp/source-solve.json");
-    expect(logContent.sourceSelectedCandidateId).toBe("worker-2");
-    expect(logContent.replayTarget).toBe("selected");
-    expect(logContent.candidates[0].candidateId).toBe("worker-2");
   });
 });

@@ -14,6 +14,8 @@ describe("parseCliOptions", () => {
     const program = createCliProgram();
 
     expect(program.helpInformation()).toContain("shellgeiai solve");
+    expect(program.helpInformation()).not.toContain("shellgeiai check");
+    expect(program.helpInformation()).not.toContain("shellgeiai replay");
     expect(program.helpInformation()).toContain("--shellgei-score-mode");
     expect(program.helpInformation()).toContain("shellgeiai --help");
   });
@@ -85,69 +87,29 @@ describe("parseCliOptions", () => {
     });
   });
 
-  it("parses writable workdir flag for solve, check, replay", () => {
+  it("parses writable workdir flag for solve", () => {
     expect(parseCliOptions(["solve", "sum", "--writable-workdir"])).toMatchObject({
       command: "solve",
       problem: "sum",
       writableWorkdir: true
     });
 
-    expect(parseCliOptions(["check", "printf", "'ok\\n'", "--writable-workdir"])).toMatchObject({
-      command: "check",
-      shellCommand: "printf 'ok\\n'",
-      writableWorkdir: true
-    });
-
-    expect(
-      parseCliOptions([
-        "replay",
-        "--log",
-        "./logs/solve-123.json",
-        "--writable-workdir"
-      ])
-    ).toMatchObject({
-      command: "replay",
-      logPath: "./logs/solve-123.json",
-      writableWorkdir: true
-    });
   });
 
-  it("parses check, replay, and logs commands", () => {
-    expect(
-      parseCliOptions([
-        "check",
-        "printf",
-        "'ok\\n'",
-        "--problem",
-        "print ok",
-        "--expected-output",
-        "ok",
-        "--time-budget",
-        "1200",
-        "--workdir",
-        "./tmp"
-      ])
-    ).toMatchObject({
-      command: "check",
-      shellCommand: "printf 'ok\\n'",
-      workdir: "./tmp",
-      problem: "print ok",
-      expectedOutput: "ok",
-      timeBudgetMs: 1200
-    });
-
-    expect(
-      parseCliOptions(["replay", "--log", "./logs/solve-123.json", "--candidate-id", "worker-2"])
-    ).toMatchObject({
-      command: "replay",
-      logPath: "./logs/solve-123.json",
-      candidateId: "worker-2",
-      runner: "docker"
-    });
-
+  it("parses logs commands", () => {
     expect(parseCliOptions(["logs", "show", "2026-06-12T12-00-00-000Z"])).toEqual({
       command: "logs-show",
       logRef: "2026-06-12T12-00-00-000Z"
     });
+  });
+
+  it("does not expose the removed check command", () => {
+    expect(() => parseCliOptions(["check", "printf", "ok"])).toThrow("Unknown command: check");
+  });
+
+  it("does not expose the removed replay command", () => {
+    expect(() => parseCliOptions(["replay", "--log", "./logs/solve-123.json"])).toThrow(
+      "Unknown command: replay"
+    );
   });
 });

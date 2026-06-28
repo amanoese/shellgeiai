@@ -1,6 +1,4 @@
-import { parseCheck } from "./options/checkOptions.js";
 import { parseLogs } from "./options/logsOptions.js";
-import { parseReplay } from "./options/replayOptions.js";
 import { isHelpToken } from "./options/shared.js";
 import { parseSolve } from "./options/solveOptions.js";
 
@@ -9,8 +7,6 @@ export function createCliProgram() {
     "Usage:",
     " shellgeiai --help",
     " shellgeiai solve <problem> [options]",
-    " shellgeiai check <command> [options]",
-    " shellgeiai replay --log <path> [options]",
     " shellgeiai logs show <run-id>",
     "",
     "Solve options:",
@@ -49,10 +45,6 @@ export function parseCliOptions(argv) {
   switch (command) {
     case "solve":
       return parseSolve(argv);
-    case "check":
-      return parseCheck(argv);
-    case "replay":
-      return parseReplay(argv);
     case "logs":
       return parseLogs(argv);
     default:

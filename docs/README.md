@@ -11,4 +11,4 @@
 
 実装との差分を埋めるための実行計画や運用計画のアーカイブは `plan/` に分離しています。
 
-現在の通常実行経路は `DockerRunner` が既定で、`solve` / `check` / `replay` は Docker を前提に動作します。`replay` ログには source candidate / attempt のメタデータも保存され、`logs list` / `logs search` / `logs prune` の運用導線は `README.md` を参照してください。
+現在の通常実行経路は `DockerRunner` が既定で、`solve` は Docker を前提に動作します。`logs list` / `logs search` / `logs prune` の運用導線は `README.md` を参照してください。

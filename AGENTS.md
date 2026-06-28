@@ -24,7 +24,7 @@ ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI Su
 - 親プロセスは監督者としてふるまい、worker の並列実行と集約を担う
 - SubAgent には短い自己修正ループを許可する
 - 問題解釈、計画、実行、判定、選択、整形を分離する
-- 将来的な OpenAI API / Bedrock / Docker / corpus / replay 拡張を妨げない構造にする
+- 将来的な OpenAI API / Bedrock / Docker / corpus 拡張を妨げない構造にする
 
 ## 現在の主要コンポーネント
 
