@@ -1,7 +1,7 @@
 import { writeSolveSessionLog } from "../io/logs/writer.js";
-import { runSolveOrchestrator } from "../core/orchestrator.js";
-import { scoreShellgeiCandidate } from "../core/shellgeiScorer.js";
-import { selectSolveOutcome } from "../core/selector.js";
+import { runSolveOrchestrator } from "./orchestration/orchestrator.js";
+import { scoreShellgeiCandidate } from "./scoring/shellgeiScorer.js";
+import { selectSolveOutcome } from "./selection/selector.js";
 import { reportSessionPhase } from "./session/progress.js";
 import { createSolveSession } from "./session/solveSession.js";
 

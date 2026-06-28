@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scoreShellgeiCandidate } from "../src/core/shellgeiScorer.js";
+import { scoreShellgeiCandidate } from "../src/solve/scoring/shellgeiScorer.js";
 
 describe("scoreShellgeiCandidate", () => {
   it("returns rubric-aligned breakdown for passing candidates", () => {

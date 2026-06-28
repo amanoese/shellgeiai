@@ -1,4 +1,4 @@
-import { reportSolveProgress } from "../solve/session/progress.js";
+import { reportSolveProgress } from "../session/progress.js";
 import { createWorkerCandidate, createWorkerSummary } from "./attemptFactory.js";
 import { runWorkerAttempt } from "./attemptRunner.js";
 import { getWorkerStopReason } from "./stopReason.js";

@@ -74,11 +74,11 @@ describe("npm publish metadata", () => {
  await Promise.all(modules.map((modulePath) => import(modulePath)));
  });
 
- it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
- const modules = [
- "../src/solve/solve.js",
- "../src/solve/check.js",
- "../src/solve/replay.js",
+  it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/solve/solve.js",
+      "../src/solve/check.js",
+      "../src/solve/replay.js",
  "../src/solve/runtime.js",
  "../src/solve/session/solveSession.js",
  "../src/solve/session/sessionPhases.js",
@@ -86,6 +86,25 @@ describe("npm publish metadata", () => {
  "../src/solve/session/types.js"
  ];
 
- await Promise.all(modules.map((modulePath) => import(modulePath)));
- });
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
+
+  it("exposes solve flow modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/solve/orchestration/orchestrator.js",
+      "../src/solve/orchestration/executionControl.js",
+      "../src/solve/orchestration/executionSummary.js",
+      "../src/solve/worker/executeWorkerTask.js",
+      "../src/solve/worker/attemptRunner.js",
+      "../src/solve/worker/attemptFactory.js",
+      "../src/solve/worker/stopReason.js",
+      "../src/solve/worker/taskExecutor.js",
+      "../src/solve/worker/taskQueue.js",
+      "../src/solve/planning/planner.js",
+      "../src/solve/selection/selector.js",
+      "../src/solve/scoring/shellgeiScorer.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
 });

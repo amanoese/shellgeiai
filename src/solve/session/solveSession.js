@@ -3,7 +3,7 @@ import { parseProblemInput } from "../../io/problem/parseProblem.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
-import { createExecutionPlan } from "../../core/planner.js";
+import { createExecutionPlan } from "../planning/planner.js";
 import { reportSessionPhase } from "./progress.js";
 
 export async function createSolveSession(options) {

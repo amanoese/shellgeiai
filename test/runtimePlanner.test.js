@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createExecutionPlan } from "../src/core/planner.js";
+import { createExecutionPlan } from "../src/solve/planning/planner.js";
 import { createSolveRuntime } from "../src/solve/runtime.js";
 import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
 import { DockerRunner } from "../src/execution/runner/dockerRunner.js";

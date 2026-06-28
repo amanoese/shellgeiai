@@ -3,12 +3,12 @@ import {
   createAbortedAttempt,
   createWorkerCandidate,
   createWorkerSummary
-} from "../src/worker/attemptFactory.js";
-import { getRemainingBudgetMs, getWorkerStopReason } from "../src/worker/stopReason.js";
-import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/worker/taskQueue.js";
-import { runWorkerAttempt } from "../src/worker/attemptRunner.js";
-import { createExecutionSummary } from "../src/core/executionSummary.js";
-import { createExecutionControl } from "../src/core/executionControl.js";
+} from "../src/solve/worker/attemptFactory.js";
+import { getRemainingBudgetMs, getWorkerStopReason } from "../src/solve/worker/stopReason.js";
+import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/solve/worker/taskQueue.js";
+import { runWorkerAttempt } from "../src/solve/worker/attemptRunner.js";
+import { createExecutionSummary } from "../src/solve/orchestration/executionSummary.js";
+import { createExecutionControl } from "../src/solve/orchestration/executionControl.js";
 
 describe("createExecutionSummary", () => {
   it("orders results by task order and counts failed workers", () => {
@@ -71,8 +71,8 @@ describe("createExecutionControl", () => {
 
 describe("worker task executor imports", () => {
   it("keeps the compatibility export identical to the direct worker executor export", async () => {
-    const direct = await import("../src/worker/executeWorkerTask.js");
-    const compat = await import("../src/worker/taskExecutor.js");
+    const direct = await import("../src/solve/worker/executeWorkerTask.js");
+    const compat = await import("../src/solve/worker/taskExecutor.js");
 
     expect(compat.executeWorkerTask).toBe(direct.executeWorkerTask);
   });
