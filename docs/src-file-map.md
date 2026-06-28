@@ -33,12 +33,11 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### Root
 
 - `src/cli.js`: npm bin から呼ばれる CLI entry point。`runCli()` に `process.argv` を渡す。
-- `src/cliOptions.js`: 旧 import 互換用。`src/cli/parseCliOptions.js` を re-export する。
 
 ### CLI
 
-- `src/cli/index.js`: parse 済み command を各 command handler に dispatch する。
-- `src/cli/parseCliOptions.js`: top-level command を判定し、help text と parser dispatch を持つ。
+- `src/cli/index.js`: Commander program を作成し、`parseAsync()` で CLI を実行する。
+- `src/cli/program.js`: Commander の command / option / action 定義を持ち、各 command handler に直接 dispatch する。
 
 ### CLI Commands
 

@@ -1,58 +1,20 @@
-import { createCliProgram, parseCliOptions } from "../cliOptions.js";
-import { runLogsListCommand } from "./commands/logsList.js";
-import { runLogsPruneCommand } from "./commands/logsPrune.js";
-import { runLogsSearchCommand } from "./commands/logsSearch.js";
-import { runLogsShowCommand } from "./commands/logsShow.js";
-import {
-  runKnowledgeBuildCommand,
-  runKnowledgePrepareCommand,
-  runKnowledgeSearchCommand
-} from "./commands/knowledge.js";
-import { runSolveCommand } from "./commands/solve.js";
-
-function printUsage() {
-  process.stderr.write(`${createCliProgram().helpInformation()}\n`);
-}
+import { createCliProgram } from "./program.js";
 
 export async function runCli(argv) {
-  try {
-    const options = parseCliOptions(argv);
+  const program = createCliProgram();
 
-    switch (options.command) {
-      case "help":
-        printUsage();
-        return;
-    case "solve":
-      await runSolveCommand(options);
-      return;
-    case "knowledge-prepare":
-      await runKnowledgePrepareCommand(options);
-      return;
-      case "knowledge-build":
-        await runKnowledgeBuildCommand(options);
-        return;
-      case "knowledge-search":
-        await runKnowledgeSearchCommand(options);
-        return;
-      case "logs-show":
-        await runLogsShowCommand(options);
-        return;
-      case "logs-list":
-        await runLogsListCommand(options);
-        return;
-      case "logs-search":
-        await runLogsSearchCommand(options);
-        return;
-      case "logs-prune":
-        await runLogsPruneCommand(options);
-        return;
-      default:
-        throw new Error(`Unsupported command: ${String(options.command)}`);
-    }
+  try {
+    await program.parseAsync(argv, { from: "user" });
   } catch (error) {
+    if (
+      error?.code === "commander.helpDisplayed" ||
+      error?.code === "commander.help"
+    ) {
+      return;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Error: ${message}`);
-    printUsage();
     process.exitCode = 1;
   }
 }

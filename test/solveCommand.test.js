@@ -68,6 +68,9 @@ describe("runSolveCommand", () => {
       mode: "single",
       parallelism: 3,
       selector: "first-pass-wins",
+      knowledge: "off",
+      knowledgeModel: "test-model",
+      knowledgeDataset: "data/knowledge/shellgei-basic.jsonl",
       progress: "bar"
     });
 
@@ -91,11 +94,14 @@ describe("runSolveCommand", () => {
         engine: "mock",
         runner: "docker",
         maxIter: 3,
-        mode: "single",
-      parallelism: 3,
-        selector: "first-pass-wins",
-        progress: "bar"
-      })
+          mode: "single",
+          parallelism: 3,
+          selector: "first-pass-wins",
+          knowledge: "off",
+          knowledgeModel: "test-model",
+          knowledgeDataset: "data/knowledge/shellgei-basic.jsonl",
+          progress: "bar"
+        })
     ).rejects.toThrow("boom");
 
     expect(mocks.reporter.cleanup).toHaveBeenCalledTimes(1);
