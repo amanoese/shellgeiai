@@ -5,13 +5,13 @@ import { createSolveSession } from "../src/solve/session/solveSession.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("default parallelism", () => {
-  it("defaults solve CLI options to three workers", () => {
+  it("defaults solve CLI options to four workers", () => {
     const options = parseCliOptions(["solve", "print 42"]);
 
-    expect(options.parallelism).toBe(3);
+    expect(options.parallelism).toBe(4);
   });
 
-  it("defaults solve sessions to three workers", async () => {
+  it("defaults solve sessions to four workers", async () => {
     const session = await createSolveSession({
       problemInput: "print 42",
       engine: {
@@ -30,6 +30,6 @@ describe("default parallelism", () => {
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.parallelism).toBe(3);
+    expect(session.parallelism).toBe(4);
   });
 });

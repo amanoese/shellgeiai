@@ -1,4 +1,5 @@
 import { parseLogs } from "./options/logsOptions.js";
+import { parseKnowledge } from "./options/knowledgeOptions.js";
 import { isHelpToken } from "./options/shared.js";
 import { parseSolve } from "./options/solveOptions.js";
 
@@ -7,6 +8,8 @@ export function createCliProgram() {
     "Usage:",
     " shellgeiai --help",
     " shellgeiai solve <problem> [options]",
+    " shellgeiai knowledge prepare [options]",
+    " shellgeiai knowledge build [options]",
     " shellgeiai logs show <run-id>",
     "",
     "Solve options:",
@@ -19,6 +22,9 @@ export function createCliProgram() {
     " --parallelism <number>",
     " --selector <name>",
     " --shellgei-score-mode <mode>",
+    " --knowledge <mode>",
+    " --knowledge-dataset <path>",
+    " --knowledge-vectors <path>",
     " --time-budget <ms>",
     " --command-policy <path>",
     " --sandbox-policy <path>",
@@ -45,6 +51,8 @@ export function parseCliOptions(argv) {
   switch (command) {
     case "solve":
       return parseSolve(argv);
+    case "knowledge":
+      return parseKnowledge(argv);
     case "logs":
       return parseLogs(argv);
     default:

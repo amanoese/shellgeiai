@@ -1,9 +1,14 @@
 import { isFlag, parseNumber, takeValue } from "./shared.js";
+import {
+  DEFAULT_KNOWLEDGE_DATASET,
+  DEFAULT_KNOWLEDGE_VECTORS
+} from "../../knowledge/commands.js";
 
 const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
 const supportedProgressModes = new Set(["off", "plain", "jsonl", "bar"]);
 const supportedScoreModes = new Set(["simple", "artistry", "robustness"]);
+const supportedKnowledgeModes = new Set(["off", "worker"]);
 
 export function parseSolve(argv) {
   const positionals = [];
@@ -13,9 +18,12 @@ export function parseSolve(argv) {
     runner: "docker",
     maxIter: 3,
     mode: "single",
-    parallelism: 3,
+    parallelism: 4,
     selector: "best-score-wins",
     shellgeiScoreMode: "simple",
+    knowledgeMode: "off",
+    knowledgeDatasetPath: DEFAULT_KNOWLEDGE_DATASET,
+    knowledgeVectorsPath: DEFAULT_KNOWLEDGE_VECTORS,
     progress: "bar"
   };
 
@@ -59,8 +67,11 @@ export function parseSolve(argv) {
       case "--parallelism":
         options.parallelism = parseNumber(
           takeValue(argv, index, "Missing value --parallelism."),
-          "Invalid --parallelism value. Use positive integer."
+          "Invalid --parallelism value. Use integer 2 or greater."
         );
+        if (options.parallelism < 2) {
+          throw new Error("Invalid --parallelism value. Use integer 2 or greater.");
+        }
         index += 1;
         break;
       case "--selector":
@@ -83,6 +94,21 @@ export function parseSolve(argv) {
             "Invalid --shellgei-score-mode value. Use simple, artistry, or robustness."
           );
         }
+        index += 1;
+        break;
+      case "--knowledge":
+        options.knowledgeMode = takeValue(argv, index, "Missing value --knowledge.");
+        if (!supportedKnowledgeModes.has(options.knowledgeMode)) {
+          throw new Error("Invalid --knowledge value. Use off or worker.");
+        }
+        index += 1;
+        break;
+      case "--knowledge-dataset":
+        options.knowledgeDatasetPath = takeValue(argv, index, "Missing value --knowledge-dataset.");
+        index += 1;
+        break;
+      case "--knowledge-vectors":
+        options.knowledgeVectorsPath = takeValue(argv, index, "Missing value --knowledge-vectors.");
         index += 1;
         break;
       case "--time-budget":

@@ -70,6 +70,24 @@ shellgeiai logs show <run-id>
 - `--command-policy <path>`: カスタム command policy を読み込みます
 - `--sandbox-policy <path>`: カスタム sandbox policy を読み込みます
 
+### Worker knowledge retrieval
+
+`--knowledge worker` を指定すると、worker の計画時に command / option とシェル芸 pattern の検索ヒントを注入します。Planner は変更しないため、`--knowledge off` と `--knowledge worker` を同じ条件で直接比較できます。
+
+```bash
+shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge off
+shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge worker
+```
+
+seed dataset は `data/knowledge/shellgei-basic.jsonl` にあります。初回実行時の model download や dataset embedding を避けたい場合は、事前に knowledge cache / vectors を準備できます。
+
+```bash
+shellgeiai knowledge prepare
+shellgeiai knowledge build
+```
+
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `Xenova/multilingual-e5-small` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.json` を作ります。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。`cl-nagoya/ruri-v3-30m` など別 model は `--model` で明示できますが、Transformers.js 対応の ONNX が無い model は失敗することがあります。
+
 ## 安全性
 
 - 既定 runner は `docker` で、隔離されたコンテナ内でコマンドを実行します

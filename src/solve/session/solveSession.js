@@ -1,5 +1,12 @@
 import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
+import { loadKnowledgeDataset } from "../../knowledge/dataset.js";
+import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
+import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
+import {
+  attachKnowledgeVectors,
+  loadKnowledgeVectorFileIfExists
+} from "../../knowledge/vectorFile.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
@@ -23,6 +30,7 @@ export async function createSolveSession(options) {
   await ensureDirectory(logsDir);
   const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
   const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
+  const parallelism = Math.max(2, options.parallelism ?? 4);
   const session = {
     sessionId,
     startedAt,
@@ -35,9 +43,12 @@ export async function createSolveSession(options) {
     judge: options.judge,
     maxIterations: options.maxIterations,
     mode: options.mode ?? "single",
-    parallelism: options.parallelism ?? 3,
+    parallelism,
     selectorName: options.selector ?? "first-pass-wins",
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
+    knowledgeMode: options.knowledgeMode ?? "off",
+    knowledgeDatasetPath: options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
+    knowledgeVectorsPath: options.knowledgeVectorsPath ?? "data/knowledge/shellgei-basic.vectors.json",
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
@@ -48,8 +59,44 @@ export async function createSolveSession(options) {
     plannerProvider: options.plannerProvider
   };
 
+  if (options.knowledgeRetriever) {
+    session.knowledgeRetriever = options.knowledgeRetriever;
+  } else if (session.knowledgeMode === "worker") {
+    const records = await loadKnowledgeDataset(session.knowledgeDatasetPath);
+    const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
+    const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
+    session.knowledgeRetriever = createKnowledgeRetriever({
+      mode: session.knowledgeMode,
+      records: recordsWithVectors,
+      embedder: options.knowledgeEmbedder ?? createRuriEmbedder(),
+      topK: 10
+    });
+  }
+
   reportSessionPhase(session, "planning", "Building execution plan.");
-  const plan = await createExecutionPlan(session);
+  const plan = {
+    ...(await enrichWorkerTasksWithKnowledge(session, await createExecutionPlan(session))),
+    knowledgeMode: session.knowledgeMode
+  };
 
   return { ...session, plan };
+}
+
+async function enrichWorkerTasksWithKnowledge(session, plan) {
+  if (session.knowledgeMode !== "worker") return plan;
+
+  const retriever = session.knowledgeRetriever;
+  if (!retriever) return plan;
+
+  const workerTasks = await Promise.all(
+    plan.workerTasks.map(async (task) => ({
+      ...task,
+      knowledgeHints: await retriever.retrieveForWorker({
+        problem: session.problem.problemText,
+        task
+      })
+    }))
+  );
+
+  return { ...plan, workerTasks };
 }

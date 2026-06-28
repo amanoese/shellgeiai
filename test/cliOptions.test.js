@@ -39,12 +39,15 @@ describe("parseCliOptions", () => {
       runner: "docker",
       maxIter: 3,
       mode: "single",
-      parallelism: 3,
-      selector: "best-score-wins",
-      shellgeiScoreMode: "simple",
-      progress: "bar"
-    });
+      parallelism: 4,
+    selector: "best-score-wins",
+    shellgeiScoreMode: "simple",
+    knowledgeMode: "off",
+    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json",
+    progress: "bar"
   });
+});
 
   it("parses runtime wiring options including shellgei score mode", () => {
     expect(
@@ -79,12 +82,46 @@ describe("parseCliOptions", () => {
       mode: "parallel",
       parallelism: 2,
       selector: "best-score-wins",
-      shellgeiScoreMode: "robustness",
-      timeBudgetMs: 1500,
+    shellgeiScoreMode: "robustness",
+    knowledgeMode: "off",
+    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json",
+    timeBudgetMs: 1500,
       commandPolicyPath: "./config/command-policy.json",
       sandboxPolicyPath: "./config/sandbox-policy.json",
       progress: "jsonl"
     });
+  });
+
+  it("parses worker knowledge options", () => {
+    expect(
+      parseCliOptions([
+        "solve",
+        "CSV の 3列目",
+      "--knowledge",
+      "worker",
+      "--knowledge-dataset",
+      "data/knowledge/shellgei-basic.jsonl",
+      "--knowledge-vectors",
+      "data/knowledge/shellgei-basic.vectors.json"
+      ])
+  ).toMatchObject({
+    knowledgeMode: "worker",
+    knowledgeDatasetPath: "data/knowledge/shellgei-basic.jsonl",
+    knowledgeVectorsPath: "data/knowledge/shellgei-basic.vectors.json"
+  });
+});
+
+  it("rejects unknown knowledge mode", () => {
+    expect(() =>
+      parseCliOptions(["solve", "print 42", "--knowledge", "planner"])
+    ).toThrow("Invalid --knowledge value. Use off or worker.");
+  });
+
+  it("rejects parallelism lower than two workers", () => {
+    expect(() => parseCliOptions(["solve", "print 42", "--parallelism", "1"])).toThrow(
+      "Invalid --parallelism value. Use integer 2 or greater."
+    );
   });
 
   it("parses writable workdir flag for solve", () => {

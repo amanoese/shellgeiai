@@ -6,7 +6,13 @@ import { reportSessionPhase } from "./session/progress.js";
 import { createSolveSession } from "./session/solveSession.js";
 
 export async function solveProblem(options) {
-  const session = await createSolveSession(options);
+  const session = await createSolveSession({
+    ...options,
+    knowledgeMode: options.knowledgeMode,
+    knowledgeDatasetPath: options.knowledgeDatasetPath,
+    knowledgeVectorsPath: options.knowledgeVectorsPath,
+    knowledgeEmbedder: options.knowledgeEmbedder
+  });
   const execution = await runSolveOrchestrator(session);
   return await finalizeSolve(session, execution);
 }
@@ -78,6 +84,7 @@ async function finalizeSolve(session, execution) {
       sandboxPolicy: session.sandboxPolicy,
       writableWorkdir: session.writableWorkdir
     },
+    knowledgeMode: session.knowledgeMode,
     stopReason: execution.stopReason ?? null,
     workdir: session.workdir,
     problem: session.problem,

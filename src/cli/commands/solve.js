@@ -25,6 +25,9 @@ export async function runSolveCommand(options) {
       writableWorkdir: options.writableWorkdir,
       commandPolicyPath: options.commandPolicyPath,
       sandboxPolicyPath: options.sandboxPolicyPath,
+      knowledgeMode: options.knowledgeMode,
+      knowledgeDatasetPath: options.knowledgeDatasetPath,
+      knowledgeVectorsPath: options.knowledgeVectorsPath,
       onProgress: progressReporter
     });
 

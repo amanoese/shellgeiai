@@ -45,10 +45,12 @@
     "src",
     "wasm",
     "policies",
+    "data",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "commander": "^15.0.0",
     "log-update": "^8.0.0",
     "openai": "^6.9.1",

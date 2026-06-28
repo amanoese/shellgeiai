@@ -27,7 +27,7 @@ describe("npm publish metadata", () => {
 });
 
   it("limits publish files to runtime assets and package docs", () => {
-    expect(packageJson.files).toEqual(["src", "wasm", "policies", "README.md", "LICENSE"]);
+    expect(packageJson.files).toEqual(["src", "wasm", "policies", "data", "README.md", "LICENSE"]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
   });
 

@@ -1,0 +1,6 @@
+{"id":"man:awk:-F","kind":"option","command":"awk","option":"-F","text":"awk -F: 入力フィールドの区切り文字を指定する。CSVなら -F,、タブ区切りなら -F '\\t'。列を取り出す処理でよく使う。例: awk -F, '{print $3}' file.csv","source":"seed"}
+{"id":"man:sort:-k","kind":"option","command":"sort","option":"-k","text":"sort -k: 指定した列や範囲をキーにして行を並べ替える。-t で区切り文字、-n で数値順、-r で逆順にできる。例: sort -t, -k2,2n file.csv","source":"seed"}
+{"id":"man:uniq:-c","kind":"option","command":"uniq","option":"-c","text":"uniq -c: 隣接する重複行の個数を数える。通常は sort | uniq -c の形で頻度集計に使う。","source":"seed"}
+{"id":"man:xargs:-0","kind":"option","command":"xargs","option":"-0","text":"xargs -0: 入力をNUL文字区切りとして読む。find -print0 と組み合わせ、空白や改行を含むファイル名を安全に処理する。","source":"seed"}
+{"id":"pattern:frequency-count","kind":"pattern","command":"sort|uniq|awk","option":"-c","text":"重複や頻度を数える問題では sort | uniq -c が基本。uniq は隣接した重複だけを数えるので先に sort する。必要なら awk で列を整形する。","source":"seed"}
+{"id":"pattern:csv-column-sum","kind":"pattern","command":"awk","option":"-F","text":"CSV の特定列を合計する問題では awk -F, '{sum += $3} END {print sum}' のように区切り文字と列番号を指定する。","source":"seed"}

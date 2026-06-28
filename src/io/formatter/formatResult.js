@@ -9,6 +9,8 @@ function formatShellgeiBreakdown(score) {
 function formatWorkerVariantLines(result) {
   const workerTasks = result.plan?.workerTasks ?? [];
   const candidates = result.candidates ?? [];
+  const knowledgeEnabled =
+    (result.knowledgeMode ?? result.plan?.knowledgeMode ?? "off") === "worker";
 
   if (workerTasks.length === 0) {
     return ["(none)"];
@@ -28,6 +30,7 @@ function formatWorkerVariantLines(result) {
     return [
       task.workerId,
       `score: ${score}`,
+      `knowledge: ${knowledgeEnabled ? "on" : "off"}`,
       `[${toolBias.join(",")}]`,
       candidate?.command ?? "(no-command)"
     ].join(" # ");

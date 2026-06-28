@@ -3,6 +3,7 @@ import { runLogsListCommand } from "./commands/logsList.js";
 import { runLogsPruneCommand } from "./commands/logsPrune.js";
 import { runLogsSearchCommand } from "./commands/logsSearch.js";
 import { runLogsShowCommand } from "./commands/logsShow.js";
+import { runKnowledgeBuildCommand, runKnowledgePrepareCommand } from "./commands/knowledge.js";
 import { runSolveCommand } from "./commands/solve.js";
 
 function printUsage() {
@@ -17,9 +18,15 @@ export async function runCli(argv) {
       case "help":
         printUsage();
         return;
-      case "solve":
-        await runSolveCommand(options);
-        return;
+    case "solve":
+      await runSolveCommand(options);
+      return;
+    case "knowledge-prepare":
+      await runKnowledgePrepareCommand(options);
+      return;
+    case "knowledge-build":
+      await runKnowledgeBuildCommand(options);
+      return;
       case "logs-show":
         await runLogsShowCommand(options);
         return;

@@ -56,11 +56,12 @@ describe("formatResult", () => {
       },
       stopReason: null,
       logPath: "/tmp/solve.json",
-      plan: {
-        planner: {
-          provider: "llm",
-          attemptedProvider: "llm",
-          fallbackReason: null
+        plan: {
+          knowledgeMode: "worker",
+          planner: {
+            provider: "llm",
+            attemptedProvider: "llm",
+            fallbackReason: null
         },
         workerTasks: [
           {
@@ -138,9 +139,45 @@ describe("formatResult", () => {
     expect(output).toContain("selected-shellgei-score: 72");
     expect(output).toContain("shellgei-breakdown: conciseness=13, shellness=14");
     expect(output).toContain("shellgei-notes: Uses single awk pass");
-    expect(output).toContain("shellgei-penalties: Avoid useless use of cat");
-    expect(output).toContain("planner-provider: llm");
-    expect(output).toContain("worker-1 # score: 65 # [awk] # awk 'BEGIN{print 42}'");
-    expect(output).toContain("worker-2 # score: 72 # [seq,factor,awk] # printf '42\\n'");
+      expect(output).toContain("shellgei-penalties: Avoid useless use of cat");
+      expect(output).toContain("planner-provider: llm");
+      expect(output).toContain(
+        "worker-1 # score: 65 # knowledge: on # [awk] # awk 'BEGIN{print 42}'"
+      );
+      expect(output).toContain(
+        "worker-2 # score: 72 # knowledge: on # [seq,factor,awk] # printf '42\\n'"
+      );
+    });
+
+    it("marks worker variants knowledge off when disabled", () => {
+      const output = formatResult({
+        command: "printf '42\\n'",
+        output: "42",
+        explanation: "Prints agreed answer.",
+        finalCheck: { passed: true, iterations: 1, engine: "mock", reason: "ok" },
+        selector: { name: "best-score-wins", selectedCandidateId: "worker-1", reason: "ok" },
+        runner: { name: "local" },
+        plan: {
+          knowledgeMode: "off",
+          workerTasks: [
+            {
+              workerId: "worker-1",
+              assignedVariant: {
+                toolBias: ["awk"]
+              }
+            }
+          ]
+        },
+        candidates: [
+          {
+            candidateId: "worker-1",
+            workerId: "worker-1",
+            command: "printf '42\\n'",
+            finalCheck: { passed: true }
+          }
+        ]
+      });
+
+      expect(output).toContain("worker-1 # score: 0 # knowledge: off # [awk] # printf '42\\n'");
+    });
   });
-});
