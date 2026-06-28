@@ -78,6 +78,6 @@ shellgeiai logs show <run-id>
 - `/etc` や `$HOME` などの敏感なパスへのリダイレクトもブロックします
 - workdir への書き込みは既定で無効です。必要な場合だけ `--writable-workdir` を付けてください
 
-policy の形式や拡張方法は [docs/README.md](docs/README.md) を参照してください。
+policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。
 
 開発者向けのセットアップやローカル実行方法は [docs/development.md](docs/development.md) を参照してください。

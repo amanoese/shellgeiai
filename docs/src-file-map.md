@@ -1,7 +1,7 @@
 # src File Map
 
 このドキュメントは、現行 `src/` 配下のファイルが何を担当しているかを短く整理したものです。
-詳細な将来像は `docs/ideal-architecture.md` と `docs/ideal-cli-flow.md` を参照してください。
+詳細な将来像は `docs/ideal-architecture.md` を参照してください。
 
 ## 全体構成
 

@@ -33,11 +33,13 @@ CLI エントリポイントは `src/cli.js` です。CLI コマンド名は `sh
 
 ## 現状と理想像
 
-このリポジトリには 3 つのレイヤがあります。
+このリポジトリには 3 つのドキュメントレイヤがあります。
 
 - 現状の実装: 単一 worker solve フローを保ちつつ、通常実行は `DockerRunner` を既定にした MVP
 - `docs/` の理想像: 複数 SubAgent を Docker 内で並列実行し、planner / selector / judge / logs を分離する将来構成
-- `plan/` の実行計画: 現状実装から理想像へ寄せるための段階的な修正計画
+- `docs/superpowers/` の作業計画: Codex Superpowers の SKILLS が生成する一時的な設計・実装計画
+
+生成された作業計画 `.md` は追跡しません。過去の実行計画は git history を参照してください。
 
 現在の `src/` は `cli / solve / execution / providers / io / shared` の大きな責務境界へ整理済みです。solve の進行は `src/solve/`、実行・安全性・判定は `src/execution/`、LLM/CLI provider は `src/providers/`、入出力と表示は `src/io/` に寄せ、段階的に理想構成へ近づけています。
 
@@ -84,14 +86,55 @@ MVP では、まず次の流れを最小構成で実現します。
 - `LocalRunner` は必要時の切り替え用で、Docker ほど強い隔離は提供しません
 - LLM planner が返した variant から `workerTask[]` を作る planner contract と、`first-pass-wins` / `best-score-wins` の最小 selector を持ちます
 - judge score と selector metrics は結果とログへ伝播されます
-- policy JSON の詳細は [docs/policies.md](/home/amanoese/repos/shellgeiai/docs/policies.md) を参照してください
+
+### Policy JSON
+
+`command policy` と `sandbox policy` は、`solve` 実行時に次の option で差し替えられます。
+
+```bash
+shellgeiai solve "..." --command-policy ./policies/default-command-policy.json
+shellgeiai solve "..." --sandbox-policy ./policies/default-sandbox-policy.json
+```
+
+既定サンプルは `policies/default-command-policy.json` と `policies/default-sandbox-policy.json` です。指定パスは `process.cwd()` 基準で解決されます。指定しない場合、command policy は `src/execution/safety/commandPolicy.js` の既定 deny-list、sandbox policy は `src/execution/safety/sandboxPolicy.js` の既定値を使います。
+
+Command policy は、静的に拒否する command pattern を定義します。
+
+```json
+{
+  "extendDefault": true,
+  "blockedPatterns": [
+    {
+      "pattern": "(^|[^\\\\w])(awk)(\\\\s|$)",
+      "flags": "i",
+      "reason": "Blocked command: awk"
+    }
+  ]
+}
+```
+
+- `extendDefault`: 省略または `true` なら既定 deny-list に追加します。`false` なら指定 pattern のみ使います。
+- `blockedPatterns[].pattern`: `new RegExp(pattern, flags)` で解釈できる文字列です。
+- `blockedPatterns[].flags`: JavaScript の `RegExp` flags です。
+- `blockedPatterns[].reason`: ブロック理由として利用者へ返します。
+
+Sandbox policy は、runner に渡す sandbox 方針を定義します。
+
+```json
+{
+  "networkAccess": "off",
+  "filesystemScope": "workdir-only"
+}
+```
+
+- `networkAccess`: `off` または `on`。`DockerRunner` では `off` が `--network none` に反映されます。
+- `filesystemScope`: ログ、結果、runner 設定に渡す sandbox 範囲ラベルです。
+
+Policy JSON は、読めない JSON、schema にないキー、空の必須文字列、不正な正規表現がある場合に load 時点で失敗します。`command policy` は軽量な文字列チェックであり、完全な policy engine ではありません。primary workdir mount の writable / read-only は `--workdir` と `--writable-workdir` が制御します。
 
 ## 関連ドキュメント
 
 - [README.md](/home/amanoese/repos/shellgeiai/README.md): 利用者向けの導入と使い方
 - [docs/README.md](/home/amanoese/repos/shellgeiai/docs/README.md): `docs/` 全体の案内
-- [docs/ideal-cli-flow.md](/home/amanoese/repos/shellgeiai/docs/ideal-cli-flow.md): 理想的な CLI 実行フロー
-- [docs/ideal-architecture.md](/home/amanoese/repos/shellgeiai/docs/ideal-architecture.md): 理想的な責務分離とアーキテクチャ
-- [docs/policies.md](/home/amanoese/repos/shellgeiai/docs/policies.md): command policy / sandbox policy の配置規約と schema
-- [plan/README.md](/home/amanoese/repos/shellgeiai/plan/README.md): 実装計画の整理場所
-- [plan/archive/2026-06-12-current-gap-remediation-plan.md](/home/amanoese/repos/shellgeiai/plan/archive/2026-06-12-current-gap-remediation-plan.md): 現状実装から理想像へ寄せる修正計画のアーカイブ
+- [docs/ideal-architecture.md](/home/amanoese/repos/shellgeiai/docs/ideal-architecture.md): 理想的な責務分離、アーキテクチャ、CLI 実行フロー
+- [docs/superpowers/plans/](/home/amanoese/repos/shellgeiai/docs/superpowers/plans): Codex Superpowers が生成する作業用実装計画の置き場

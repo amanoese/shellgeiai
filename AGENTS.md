@@ -77,14 +77,12 @@ ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI Su
 
 - 利用者向けの説明は `README.md`
 - 将来像や設計意図は `docs/`
-- 実行計画や移行順序は `plan/`
+- 作業中の実行計画や移行順序は `docs/superpowers/` に一時生成されるが、生成された `.md` は追跡しない
 - エージェント向けの運用ルールは `AGENTS.md`
 
 追加で設計を整理するときは、次のファイルを起点にしてください。
 
-- [docs/ideal-cli-flow.md](/home/amanoese/repos/shellgeiai/docs/ideal-cli-flow.md)
 - [docs/ideal-architecture.md](/home/amanoese/repos/shellgeiai/docs/ideal-architecture.md)
-- [plan/archive/2026-06-12-current-gap-remediation-plan.md](/home/amanoese/repos/shellgeiai/plan/archive/2026-06-12-current-gap-remediation-plan.md)
 
 ## 近い将来の優先項目
 

@@ -1,6 +1,8 @@
 .serena/
 node_modules/
-docs/superpowers/
+dist/
+docs/superpowers/plans/*.md
+docs/superpowers/specs/*.md
 
 logs/*.json
 !logs/.gitkeep
