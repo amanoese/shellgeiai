@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildLlmPlan } from "../src/planner/llmPlanner.js";
-import { buildPlannerUserPrompt } from "../src/planner/plannerPrompt.js";
+import { buildLlmPlan } from "../src/providers/planner/llmPlanner.js";
+import { buildPlannerUserPrompt } from "../src/providers/planner/plannerPrompt.js";
 
 describe("buildLlmPlan", () => {
   it("describes the LLM planner JSON contract in the prompt", () => {

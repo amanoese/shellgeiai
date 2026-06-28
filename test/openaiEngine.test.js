@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { OpenAIEngine, __testUtils } from "../src/engines/openaiEngine.js";
+import { OpenAIEngine, __testUtils } from "../src/providers/engines/openaiEngine.js";
 
 describe("OpenAIEngine", () => {
   it("builds the response request and parses JSON output", async () => {

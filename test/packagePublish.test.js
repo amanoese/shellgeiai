@@ -43,4 +43,19 @@ describe("npm publish metadata", () => {
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
+
+  it("exposes provider modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/providers/engines/Engine.js",
+      "../src/providers/engines/openaiEngine.js",
+      "../src/providers/engines/mockEngine.js",
+      "../src/providers/engines/codexCliEngine.js",
+      "../src/providers/engines/cursorCliEngine.js",
+      "../src/providers/planner/llmPlanner.js",
+      "../src/providers/planner/plannerPrompt.js",
+      "../src/providers/planner/plannerSchema.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
 });
