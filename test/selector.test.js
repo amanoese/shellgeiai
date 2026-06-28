@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectSolveOutcome } from "../src/core/selector.js";
+import { selectSolveOutcome } from "../src/solve/selection/selector.js";
 
 describe("selectSolveOutcome", () => {
   it("selects the first passing candidate in first-pass mode", () => {
@@ -42,7 +42,7 @@ describe("selectSolveOutcome", () => {
           command: "printf '123\\n'",
           shellgeiScore: {
             value: 72,
-            mode: "standard",
+          mode: "simple",
             breakdown: {
               conciseness: 13,
               shellness: 14,
@@ -70,7 +70,7 @@ describe("selectSolveOutcome", () => {
           command: "cat sample.csv | awk -F, '{print $3}'",
           shellgeiScore: {
             value: 60,
-            mode: "standard",
+          mode: "simple",
             breakdown: {
               conciseness: 9,
               shellness: 12,

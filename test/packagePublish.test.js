@@ -23,11 +23,86 @@ describe("npm publish metadata", () => {
     expect(packageJson.publishConfig).toEqual({
       access: "public",
       registry: "https://registry.npmjs.org/"
-    });
-  });
+ });
+});
 
   it("limits publish files to runtime assets and package docs", () => {
-    expect(packageJson.files).toEqual(["src", "policies", "README.md", "LICENSE"]);
+    expect(packageJson.files).toEqual(["src", "wasm", "policies", "README.md", "LICENSE"]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
+  });
+
+  it("exposes execution modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/execution/runner/localRunner.js",
+      "../src/execution/runner/dockerRunner.js",
+      "../src/execution/runner/limits.js",
+      "../src/execution/safety/checker.js",
+      "../src/execution/safety/policyLoader.js",
+      "../src/execution/judge/simpleJudge.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
+
+  it("exposes provider modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/providers/engines/Engine.js",
+      "../src/providers/engines/openaiEngine.js",
+      "../src/providers/engines/mockEngine.js",
+      "../src/providers/engines/codexCliEngine.js",
+      "../src/providers/engines/cursorCliEngine.js",
+      "../src/providers/planner/llmPlanner.js",
+      "../src/providers/planner/plannerPrompt.js",
+      "../src/providers/planner/plannerSchema.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
+
+  it("exposes io and shared modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/io/problem/parseProblem.js",
+      "../src/io/logs/writer.js",
+      "../src/io/logs/catalog.js",
+      "../src/io/formatter/formatResult.js",
+      "../src/io/formatter/logs.js",
+      "../src/io/formatter/progressReporter.js",
+      "../src/shared/fs.js",
+      "../src/shared/exec.js"
+    ];
+
+ await Promise.all(modules.map((modulePath) => import(modulePath)));
+ });
+
+  it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
+  const modules = [
+    "../src/solve/solve.js",
+    "../src/solve/runtime.js",
+    "../src/solve/session/solveSession.js",
+ "../src/solve/session/sessionPhases.js",
+ "../src/solve/session/progress.js",
+ "../src/solve/session/types.js"
+ ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
+
+  it("exposes solve flow modules from the grouped src hierarchy", async () => {
+    const modules = [
+      "../src/solve/orchestration/orchestrator.js",
+      "../src/solve/orchestration/executionControl.js",
+      "../src/solve/orchestration/executionSummary.js",
+      "../src/solve/worker/executeWorkerTask.js",
+      "../src/solve/worker/attemptRunner.js",
+      "../src/solve/worker/attemptFactory.js",
+      "../src/solve/worker/stopReason.js",
+      "../src/solve/worker/taskExecutor.js",
+      "../src/solve/worker/taskQueue.js",
+      "../src/solve/planning/planner.js",
+      "../src/solve/selection/selector.js",
+      "../src/solve/scoring/shellgeiScorer.js"
+    ];
+
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 });

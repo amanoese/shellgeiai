@@ -1,34 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildLlmPlan } from "../src/planner/llmPlanner.js";
-import { buildPlannerUserPrompt } from "../src/planner/plannerPrompt.js";
+import { buildLlmPlan } from "../src/providers/planner/llmPlanner.js";
+import { buildPlannerUserPrompt } from "../src/providers/planner/plannerPrompt.js";
 
 describe("buildLlmPlan", () => {
-  it("includes rubric guidance and seeded tool suggestions in the prompt", () => {
+  it("describes the LLM planner JSON contract in the prompt", () => {
     const prompt = buildPlannerUserPrompt({
       problem: {
         raw: "1から100までの素数を出力してください",
         problemText: "1から100までの素数を出力してください"
-      },
-      plannerInputs: {
-        seededToolSuggestions: [
-          {
-            summary: "既存 utility を先に検討する",
-            rationale: "短く安全な候補が見つかりやすい",
-            suggestedTools: ["factor", "seq"]
-          }
-        ]
       },
       mode: "parallel",
       parallelism: 3,
       maxIterations: 2
     });
 
-    expect(prompt).toContain("Correctness and executability over surface cleverness");
-    expect(prompt).toContain("Prefer concise stdin/stdout-oriented Unix composition");
-    expect(prompt).toContain("Seeded tool suggestions:");
-    expect(prompt).toContain('"suggestedTools":["factor","seq"]');
+    expect(prompt).toContain("Problem: 1から100までの素数を出力してください");
+    expect(prompt).toContain("Return an object `variants` with array field.");
     expect(prompt).toContain("toolSuggestions");
+    expect(prompt).toContain("Planning only.");
   });
 
   it("uses structured outputs and returns parsed variants with tool suggestions", async () => {
@@ -61,15 +51,6 @@ describe("buildLlmPlan", () => {
         problem: {
           raw: "1から100までの素数を出力してください",
           problemText: "1から100までの素数を出力してください"
-        },
-        plannerInputs: {
-          seededToolSuggestions: [
-            {
-              summary: "既存 utility を先に検討する",
-              rationale: "短く安全な候補が見つかりやすい",
-              suggestedTools: ["factor", "seq"]
-            }
-          ]
         },
         mode: "parallel",
         parallelism: 3,

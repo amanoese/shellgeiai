@@ -3,13 +3,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkCommand } from "../src/core/check.js";
-import { replaySolveLog } from "../src/core/replay.js";
-import { solveProblem } from "../src/core/solve.js";
-import { SimpleJudge } from "../src/judge/simpleJudge.js";
-import { DockerRunner } from "../src/runner/dockerRunner.js";
-import { createDefaultRunnerLimits } from "../src/runner/limits.js";
-import { LocalRunner } from "../src/runner/localRunner.js";
+import { solveProblem } from "../src/solve/solve.js";
+import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
+import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
+import { createDefaultRunnerLimits } from "../src/execution/runner/limits.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const IMAGE_CANDIDATES = [
   process.env.SHELLGEIAI_DOCKER_IMAGE,
@@ -193,32 +191,6 @@ describeDocker("Docker integration", () => {
     });
   }, 20_000);
 
-  it("checks an explicit command through DockerRunner and writes a docker-backed log", async () => {
-    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-check-"));
-    tempDirs.push(requestedWorkdir);
-
-    const result = await checkCommand({
-      command: "printf 'ok\\n'",
-      problem: "print ok",
-      expectedOutput: "ok",
-      requestedWorkdir,
-      runner: new DockerRunner({
-        image: dockerEnvironment.image
-      }),
-      judge: new SimpleJudge()
-    });
-
-    expect(result.finalCheck.passed).toBe(true);
-    expect(result.output).toBe("ok");
-    expect(result.runner.name).toBe("docker");
-
-    const logContent = JSON.parse(await readFile(result.logPath, "utf8"));
-    expect(logContent.mode).toBe("check");
-    expect(logContent.runner.name).toBe("docker");
-    expect(logContent.runner.image).toBe(dockerEnvironment.image);
-    expect(logContent.finalCheck.passed).toBe(true);
-  }, 20_000);
-
   it("solves through DockerRunner and writes a docker-backed solve log", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-solve-"));
     tempDirs.push(requestedWorkdir);
@@ -239,6 +211,7 @@ describeDocker("Docker integration", () => {
       }),
       judge: new SimpleJudge(),
       maxIterations: 1,
+      plannerProvider: createTestPlannerProvider(),
       requestedWorkdir
     });
 
@@ -252,44 +225,4 @@ describeDocker("Docker integration", () => {
     expect(logContent.finalCheck.passed).toBe(true);
   }, 20_000);
 
-  it("replays a saved solve candidate through DockerRunner", async () => {
-    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-replay-"));
-    tempDirs.push(requestedWorkdir);
-
-    const solved = await solveProblem({
-      problemInput: "print ok",
-      engine: {
-        name: "test-engine",
-        async generateCommand() {
-          return {
-            command: "printf 'ok\\n'",
-            explanation: "Print ok."
-          };
-        }
-      },
-      runner: new LocalRunner(),
-      judge: new SimpleJudge(),
-      maxIterations: 1,
-      requestedWorkdir
-    });
-
-    const replayed = await replaySolveLog({
-      logPath: solved.logPath,
-      runner: new DockerRunner({
-        image: dockerEnvironment.image
-      }),
-      judge: new SimpleJudge()
-    });
-
-    expect(replayed.finalCheck.passed).toBe(true);
-    expect(replayed.command).toBe("printf 'ok\\n'");
-    expect(replayed.output).toBe("ok");
-    expect(replayed.runner.name).toBe("docker");
-
-    const logContent = JSON.parse(await readFile(replayed.logPath, "utf8"));
-    expect(logContent.mode).toBe("replay");
-    expect(logContent.runner.name).toBe("docker");
-    expect(logContent.runner.image).toBe(dockerEnvironment.image);
-    expect(logContent.finalCheck.passed).toBe(true);
-  }, 20_000);
 });

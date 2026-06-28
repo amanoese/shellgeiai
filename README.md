@@ -54,13 +54,6 @@ source ~/.zshrc
 shellgeiai solve "標準入力の行順を逆順にして表示せよ"
 ```
 
-既存コマンドを安全に検証する:
-
-```bash
-shellgeiai check "tac input.txt" \
-  --problem "ファイル input.txt を逆順に表示せよ"
-```
-
 保存済みログを確認する:
 
 ```bash
@@ -85,6 +78,6 @@ shellgeiai logs show <run-id>
 - `/etc` や `$HOME` などの敏感なパスへのリダイレクトもブロックします
 - workdir への書き込みは既定で無効です。必要な場合だけ `--writable-workdir` を付けてください
 
-policy の形式や拡張方法は [docs/README.md](docs/README.md) を参照してください。
+policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。
 
 開発者向けのセットアップやローカル実行方法は [docs/development.md](docs/development.md) を参照してください。

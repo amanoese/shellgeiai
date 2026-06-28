@@ -15,7 +15,7 @@ vi.mock("log-update", () => ({
   createLogUpdate: logUpdateMocks.createLogUpdate
 }));
 
-import { createProgressReporter } from "../src/formatter/progressReporter.js";
+import { createProgressReporter } from "../src/io/formatter/progressReporter.js";
 
 describe("createProgressReporter", () => {
   beforeEach(() => {

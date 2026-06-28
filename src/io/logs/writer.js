@@ -1,0 +1,90 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+
+function buildRunnerSnapshot(session) {
+  return {
+    name: session.runner.name ?? "local",
+    image: "image" in session.runner ? session.runner.image : undefined,
+    limits: session.runnerLimits,
+    sandboxPolicy: session.sandboxPolicy,
+    writableWorkdir: session.writableWorkdir ?? false
+  };
+}
+
+async function writeSessionLog(logsDir, prefix, startedAt, payload) {
+  const logId = startedAt.replace(/[:.]/g, "-");
+  const content = `${JSON.stringify(payload, null, 2)}\n`;
+  let sequence = 0;
+
+  while (true) {
+    const suffix = sequence === 0 ? "" : `-${sequence + 1}`;
+    const filename = `${prefix}-${logId}${suffix}.json`;
+    const logPath = path.join(logsDir, filename);
+
+    try {
+      await writeFile(logPath, content, { encoding: "utf8", flag: "wx" });
+      return { logId: `${logId}${suffix}`, logPath };
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "EEXIST"
+      ) {
+        sequence += 1;
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+export async function writeSolveSessionLog({
+  logsDir,
+  session,
+  summary,
+  attempts,
+  candidates,
+  workerSummaries,
+  finalCheck
+}) {
+  return await writeSessionLog(logsDir, "solve", summary.finishedAt, {
+    sessionId: session.sessionId,
+    mode: "solve",
+    problem: session.problem.problemText,
+    rawProblem: session.problem.raw,
+    problemSpec: session.problem,
+    engine: session.engine?.name ?? "unknown",
+    iterations: attempts.length,
+    attempts,
+    candidates,
+    workerSummaries: workerSummaries ?? [],
+    finalCheck,
+    selectedCandidateId: summary.selectedCandidateId,
+    stopReason: summary.stopReason ?? null,
+    selector:
+      summary.selectedCandidateId == null
+        ? {
+            name: session.selectorName,
+            reason: "No candidate was selected.",
+            selectedCandidateId: null,
+            score: null,
+            metrics: null
+          }
+        : {
+            name: session.selectorName,
+            reason: summary.selectorReason ?? "Selector details were not captured.",
+            selectedCandidateId: summary.selectedCandidateId,
+            score: summary.selectorScore ?? null,
+            metrics: summary.selectorMetrics ?? null
+          },
+    startedAt: session.startedAt,
+    finishedAt: summary.finishedAt,
+    workdir: session.workdir,
+    runner: buildRunnerSnapshot(session),
+    shellgeiScoreMode: session.shellgeiScoreMode,
+    plan: session.plan ?? null,
+    planner: session.plan?.planner ?? null
+  });
+}

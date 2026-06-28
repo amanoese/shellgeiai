@@ -1,5 +1,5 @@
-import { pruneSavedLogs } from "../../core/logCatalog.js";
-import { formatPruneResult } from "../../formatter/logCatalog.js";
+import { pruneSavedLogs } from "../../io/logs/catalog.js";
+import { formatPruneResult } from "../../io/formatter/logs.js";
 
 export async function runLogsPruneCommand(options) {
   const result = await pruneSavedLogs({

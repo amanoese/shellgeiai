@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { parseCliOptions } from "../src/cliOptions.js";
-import { createSolveSession } from "../src/core/solveSession.js";
+import { createSolveSession } from "../src/solve/session/solveSession.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("default parallelism", () => {
   it("defaults solve CLI options to three workers", () => {
@@ -25,7 +26,8 @@ describe("default parallelism", () => {
           score: { value: 100, breakdown: {} }
         })
       },
-      maxIterations: 1
+      maxIterations: 1,
+      plannerProvider: createTestPlannerProvider()
     });
 
     expect(session.parallelism).toBe(3);

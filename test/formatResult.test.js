@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatResult } from "../src/formatter/formatResult.js";
+import { formatResult } from "../src/io/formatter/formatResult.js";
 
 describe("formatResult", () => {
   it("includes rubric breakdown, notes, penalties, planner provider, and worker variants", () => {
@@ -90,7 +90,7 @@ describe("formatResult", () => {
           command: "awk 'BEGIN{print 42}'",
           shellgeiScore: {
             value: 65,
-            mode: "standard",
+            mode: "simple",
             breakdown: {
               conciseness: 12,
               shellness: 13,
@@ -114,7 +114,7 @@ describe("formatResult", () => {
           command: "printf '42\\n'",
           shellgeiScore: {
             value: 72,
-            mode: "standard",
+            mode: "simple",
             breakdown: {
               conciseness: 13,
               shellness: 14,
