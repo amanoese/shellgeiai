@@ -242,7 +242,7 @@ function looksLikeOptionItem(trimmed) {
 }
 
 function isOptionOnlyTermLine(trimmed) {
-  return /^(?:--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)(?:\s*,\s*--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)*$/.test(
+  return /^(?:--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)(?:\s*,\s*--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)*\s*,?$/.test(
     trimmed
   );
 }
@@ -345,8 +345,18 @@ function extractDefinitionItems(lines, mode, { curated = false } = {}) {
       current = {
         term: trimmed,
         description: [],
+        indent: leadingSpaceCount(line),
         optionOnly: mode === "option" && curated && isOptionOnlyTermLine(trimmed)
       };
+      continue;
+    }
+    if (
+      mode === "pattern" &&
+      curated &&
+      current &&
+      leadingSpaceCount(line) <= current.indent
+    ) {
+      flush();
       continue;
     }
     if (current) {

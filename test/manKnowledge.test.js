@@ -412,6 +412,41 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
+  it("groups multiline aliases when an option-only line ends in a comma", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "alias-tool",
+      section: "1",
+      text: [
+        "OPTIONS",
+        "       -a,",
+        "       --all",
+        "              select every input",
+        "       -b",
+        "              process a separate mode"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:alias-tool:1:option:-a",
+        kind: "option",
+        command: "alias-tool",
+        option: "-a, --all",
+        text: "-a, --all select every input",
+        source: "man alias-tool(1) / OPTIONS"
+      },
+      {
+        id: "man:alias-tool:1:option:-b",
+        kind: "option",
+        command: "alias-tool",
+        option: "-b",
+        text: "-b process a separate mode",
+        source: "man alias-tool(1) / OPTIONS"
+      }
+    ]);
+  });
+
   it("filters generic option-shaped terms from compact patterns", () => {
     const records = extractKnowledgeRecordsFromManPage({
       command: "find",
@@ -618,12 +653,22 @@ describe("man knowledge extraction", () => {
       profile: "all"
     });
 
-    expect(
-      compactRecords.map(({ id, option }) => ({ id, option }))
-    ).toEqual([
-      { id: "man:awk:1:pattern:begin", option: "BEGIN" },
-      { id: "man:awk:1:pattern:regular-expression", option: "/regular expression/" },
-      { id: "man:awk:1:pattern:pattern-pattern", option: "pattern && pattern" }
+    expect(compactRecords.map(({ id, option, text }) => ({ id, option, text }))).toEqual([
+      {
+        id: "man:awk:1:pattern:begin",
+        option: "BEGIN",
+        text: "BEGIN run before reading input"
+      },
+      {
+        id: "man:awk:1:pattern:regular-expression",
+        option: "/regular expression/",
+        text: "/regular expression/ select matching records"
+      },
+      {
+        id: "man:awk:1:pattern:pattern-pattern",
+        option: "pattern && pattern",
+        text: "pattern && pattern combine two patterns"
+      }
     ]);
     expect(allRecords.filter((record) => record.kind === "pattern").map((record) => record.option)).toEqual([
       "of input. A missing action is equivalent to",
