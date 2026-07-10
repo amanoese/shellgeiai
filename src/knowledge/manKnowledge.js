@@ -80,6 +80,7 @@ const CURATED_PATTERN_KEYWORDS = new Set(["BEGIN", "BEGINFILE", "END", "ENDFILE"
 const CURATED_PATTERN_SUBSECTION_TITLES = new Set([
   "ACTIONS",
   "GLOBAL OPTIONS",
+  "I/O STATEMENTS",
   "OPERATORS",
   "PATTERNS",
   "POSITIONAL OPTIONS",
@@ -152,7 +153,7 @@ function isJapaneseHeading(title) {
   ) {
     return false;
   }
-  return /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}0-9０-９\s・／:：()（）]+$/u.test(
+  return /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}A-Za-z0-9０-９\s・／:：()（）]+$/u.test(
     title
   );
 }
@@ -240,6 +241,12 @@ function looksLikeOptionItem(trimmed) {
   return /^--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*/.test(trimmed);
 }
 
+function isOptionOnlyTermLine(trimmed) {
+  return /^(?:--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)(?:\s*,\s*--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)*$/.test(
+    trimmed
+  );
+}
+
 function looksLikeLegacyPatternItem(trimmed) {
   if (!trimmed || trimmed.length > 100) return false;
   if (/[.。]$/.test(trimmed)) return false;
@@ -258,6 +265,8 @@ function looksLikeCuratedPatternItem(trimmed) {
   const normalized = collapseWhitespace(trimmed);
   if (!normalized || normalized.length > 100 || /[.。]$/.test(normalized)) return false;
   if (isCuratedPatternSubsection(normalized)) return false;
+  if (/(?:https?:\/\/|www\.)/i.test(normalized)) return false;
+  if (/\b(?:above|below)\b/i.test(normalized)) return false;
 
   const words = normalized.split(" ");
   if (/^(?:a|an|as|of|see|supported|the|that|these|this|those)\s+/i.test(normalized)) {
@@ -321,13 +330,23 @@ function extractDefinitionItems(lines, mode, { curated = false } = {}) {
     if (!trimmed) {
       continue;
     }
-    if (mode === "pattern" && curated && isCuratedPatternSubsection(trimmed)) {
-      flush();
-      continue;
-    }
     if (shouldStartItem(lines, index, mode, { curated })) {
+      if (
+        mode === "option" &&
+        curated &&
+        current?.optionOnly &&
+        current.description.length === 0 &&
+        isOptionOnlyTermLine(trimmed)
+      ) {
+        current.term = `${current.term} ${trimmed}`;
+        continue;
+      }
       flush();
-      current = { term: trimmed, description: [] };
+      current = {
+        term: trimmed,
+        description: [],
+        optionOnly: mode === "option" && curated && isOptionOnlyTermLine(trimmed)
+      };
       continue;
     }
     if (current) {
@@ -394,14 +413,16 @@ function optionRecords({
 }
 
 function patternRecords({ command, section, title, lines, curated = false }) {
-  return extractDefinitionItems(lines, "pattern", { curated }).map((item) => ({
-    id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
-    kind: "pattern",
-    command,
-    option: item.term,
-    text: item.text,
-    source: sourceFor(command, section, title)
-  }));
+  return extractDefinitionItems(lines, "pattern", { curated })
+    .filter((item) => !curated || !isGenericOptionGroup(optionTokens(item.term)))
+    .map((item) => ({
+      id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
+      kind: "pattern",
+      command,
+      option: item.term,
+      text: item.text,
+      source: sourceFor(command, section, title)
+    }));
 }
 
 function pushUnique(records, record, seen) {

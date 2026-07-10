@@ -382,7 +382,7 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
-  it("extracts each option boundary from the rendered zip option layout", () => {
+  it("groups multiline aliases from the rendered zip option layout", () => {
     const records = extractKnowledgeRecordsFromManPage({
       command: "zip",
       section: "1",
@@ -399,19 +399,48 @@ describe("man knowledge extraction", () => {
     });
 
     expect(records.map(({ id, option, text }) => ({ id, option, text }))).toEqual([
-      { id: "man:zip:1:option:-@", option: "-@", text: "-@" },
       {
-        id: "man:zip:1:option:--names-stdin",
-        option: "--names-stdin",
-        text: "--names-stdin Take the list of input files from standard input. Only one filename per line."
+        id: "man:zip:1:option:-@",
+        option: "-@, --names-stdin",
+        text: "-@ --names-stdin Take the list of input files from standard input. Only one filename per line."
       },
-      { id: "man:zip:1:option:-$", option: "-$", text: "-$" },
       {
-        id: "man:zip:1:option:--volume-label",
-        option: "--volume-label",
-        text: "--volume-label Include the volume label for the drive holding the first file."
+        id: "man:zip:1:option:-$",
+        option: "-$, --volume-label",
+        text: "-$ --volume-label Include the volume label for the drive holding the first file."
       }
     ]);
+  });
+
+  it("filters generic option-shaped terms from compact patterns", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "find",
+      section: "1",
+      text: [
+        "EXPRESSION",
+        "       -help, --help",
+        "              Print a summary of command-line usage.",
+        "       -version, --version",
+        "              Print the version number.",
+        "       -name pattern",
+        "              Match the base of the file name."
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:find:1:pattern:name-pattern",
+        kind: "pattern",
+        command: "find",
+        option: "-name pattern",
+        text: "-name pattern Match the base of the file name.",
+        source: "man find(1) / EXPRESSION"
+      }
+    ]);
+    expect(records.some((record) => /--(?:help|version|debug|usage)\b/.test(record.text))).toBe(
+      false
+    );
   });
 
   it("keeps legacy all-profile option scanning separate from compact extraction", () => {
@@ -564,6 +593,14 @@ describe("man knowledge extraction", () => {
       "              prose introducing find tests",
       "       -size, -uid and -used) as",
       "              a wrapped fragment from the preceding sentence",
+      "       https://www.gnu.org/software/gawk/manual/html_node/Regexp.html",
+      "              a standalone documentation URL",
+      "       Special File Names, below.)",
+      "              a cross-reference fragment",
+      "       turns -1. See https://www.gnu.org/software/gawk/manual/html_node/Time-Functions.html",
+      "              a wrapped URL sentence fragment",
+      "       I/O Statements",
+      "              a documentation subsection title",
       "       pattern && pattern",
       "              combine two patterns"
     ].join("\n");
@@ -599,6 +636,10 @@ describe("man knowledge extraction", () => {
       "The control statements are as follows:",
       "Supported tests:",
       "-size, -uid and -used) as",
+      "https://www.gnu.org/software/gawk/manual/html_node/Regexp.html",
+      "Special File Names, below.)",
+      "turns -1. See https://www.gnu.org/software/gawk/manual/html_node/Time-Functions.html",
+      "I/O Statements",
       "pattern && pattern"
     ]);
   });
@@ -655,6 +696,36 @@ describe("man knowledge extraction", () => {
         option: "-a",
         text: "-a 実際の説明です。",
         source: "man jp-prolonged(1) / オプション"
+      }
+    ]);
+  });
+
+  it("recognizes mixed Latin and Japanese structural headings", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "jp-mixed",
+      section: "1",
+      text: [
+        "オプション",
+        "       -a",
+        "              実際の説明です。",
+        "GNU 拡張",
+        "       -1",
+        "              負数の例です。",
+        "POSIX との互換性",
+        "       -b",
+        "              オプションに似た例です。"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:jp-mixed:1:option:-a",
+        kind: "option",
+        command: "jp-mixed",
+        option: "-a",
+        text: "-a 実際の説明です。",
+        source: "man jp-mixed(1) / オプション"
       }
     ]);
   });
