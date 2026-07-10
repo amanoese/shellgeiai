@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 
 import { normalizeKnowledgeRecord } from "../src/knowledge/dataset.js";
 import {
+  dedupeManKnowledgeRecords,
   extractKnowledgeRecordsFromManPage,
   parseManIndex
 } from "../src/knowledge/manKnowledge.js";
@@ -170,27 +171,24 @@ async function readManPage(options, entry) {
   return stdout;
 }
 
-function dedupeRecords(records) {
-  const seen = new Set();
-  const unique = [];
-  for (const record of records) {
-    if (seen.has(record.id)) continue;
-    seen.add(record.id);
-    unique.push(normalizeKnowledgeRecord(record));
-  }
-  return unique;
-}
-
-export async function buildManKnowledge(options) {
-  const profile = await loadManKnowledgeProfile(options.profile);
-  const entries = await listManEntries(options, profile);
+export async function buildManKnowledge(
+  options,
+  {
+    loadProfile = loadManKnowledgeProfile,
+    listEntries = listManEntries,
+    readPage = readManPage,
+    writeOutput = writeFile
+  } = {}
+) {
+  const profile = await loadProfile(options.profile);
+  const entries = await listEntries(options, profile);
   const limitedEntries = options.limit ? entries.slice(0, options.limit) : entries;
   const records = [];
   let failed = 0;
 
   for (const entry of limitedEntries) {
     try {
-      const text = await readManPage(options, entry);
+      const text = await readPage(options, entry);
       records.push(
         ...extractKnowledgeRecordsFromManPage({
           command: entry.name,
@@ -207,10 +205,14 @@ export async function buildManKnowledge(options) {
     }
   }
 
-  const uniqueRecords = dedupeRecords(records);
+  const normalizedRecords = records.map((record) => normalizeKnowledgeRecord(record));
+  const uniqueRecords = dedupeManKnowledgeRecords(normalizedRecords, { profile: profile.name });
+  if (uniqueRecords.length === 0) {
+    throw new Error("Man knowledge build produced no records.");
+  }
   const output = uniqueRecords.map((record) => JSON.stringify(record)).join("\n");
   await mkdir(path.dirname(options.output), { recursive: true });
-  await writeFile(options.output, output ? `${output}\n` : "", "utf8");
+  await writeOutput(options.output, `${output}\n`, "utf8");
 
   return {
     entries: limitedEntries.length,

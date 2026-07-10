@@ -1,12 +1,60 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  dedupeManKnowledgeRecords,
   extractKnowledgeRecordsFromManPage,
   parseManIndex,
   stripManControlCharacters
 } from "../src/knowledge/manKnowledge.js";
 
 describe("man knowledge extraction", () => {
+  it("deduplicates compact content while preserving legacy id deduplication", () => {
+    const records = [
+      {
+        id: "man:awk:1:option:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "  -F   fs\nset the field separator  ",
+        source: "man awk(1) / OPTIONS"
+      },
+      {
+        id: "man:awk:1:option:--field-separator",
+        kind: "option",
+        command: "awk",
+        option: "--field-separator",
+        text: "-F fs set the field separator",
+        source: "man awk(1) / OPTIONS"
+      },
+      {
+        id: "man:sed:1:option:-F",
+        kind: "option",
+        command: "sed",
+        option: "-F",
+        text: "-F fs set the field separator",
+        source: "man sed(1) / OPTIONS"
+      },
+      {
+        id: "man:awk:1:option:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "duplicate id is ignored by the all profile",
+        source: "man awk(1) / OPTIONS"
+      }
+    ];
+
+    expect(dedupeManKnowledgeRecords(records.slice(0, 3), { profile: "shellgei" })).toEqual([
+      { ...records[0], text: "-F fs set the field separator" },
+      records[2]
+    ]);
+    expect(dedupeManKnowledgeRecords(records, { profile: "all" })).toEqual([
+      { ...records[0], text: "-F fs set the field separator" },
+      records[1],
+      records[2]
+    ]);
+  });
+
   it("parses man index entries for command sections", () => {
     const entries = parseManIndex(
       [

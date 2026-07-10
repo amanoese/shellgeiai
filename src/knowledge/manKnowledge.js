@@ -91,6 +91,24 @@ function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+export function dedupeManKnowledgeRecords(records, { profile = "all" } = {}) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const record of records) {
+    const normalizedRecord = { ...record, text: collapseWhitespace(record.text) };
+    const key =
+      profile === "shellgei"
+        ? `${record.command}\0${record.kind}\0${normalizedRecord.text}`
+        : record.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(normalizedRecord);
+  }
+
+  return unique;
+}
+
 function leadingSpaceCount(line) {
   return line.match(/^\s*/)?.[0].length ?? 0;
 }

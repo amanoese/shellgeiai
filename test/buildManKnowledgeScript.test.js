@@ -1,7 +1,11 @@
+import { readFile, rm, mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import * as buildManKnowledgeScript from "../scripts/build-man-knowledge.js";
 import {
+  buildManKnowledge,
   parseArgs,
   selectManEntries
 } from "../scripts/build-man-knowledge.js";
@@ -27,6 +31,84 @@ const indexText = [
 ].join("\n");
 
 describe("build man knowledge CLI", () => {
+  it("rejects an empty build without writing output", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-empty-man-"));
+    const output = path.join(directory, "man.jsonl");
+    const writeOutput = vi.fn();
+
+    try {
+      await expect(
+        buildManKnowledge(
+          { ...parseArgs([]), output },
+          {
+            loadProfile: vi.fn().mockResolvedValue(shellgeiProfile),
+            listEntries: vi.fn().mockResolvedValue([{ name: "missing", section: "1" }]),
+            readPage: vi.fn().mockResolvedValue("AUTHOR\n       Written by example."),
+            writeOutput
+          }
+        )
+      ).rejects.toThrow("Man knowledge build produced no records.");
+      expect(writeOutput).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("writes stable JSONL and skips unreadable man pages", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-man-"));
+    const output = path.join(directory, "knowledge", "man.jsonl");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const profile = {
+      name: "shellgei",
+      sections: ["1"],
+      commands: ["awk", "missing"],
+      patternCommands: ["awk"]
+    };
+
+    try {
+      const result = await buildManKnowledge(
+        { ...parseArgs([]), output },
+        {
+          loadProfile: vi.fn().mockResolvedValue(profile),
+          listEntries: vi.fn().mockResolvedValue([
+            { name: "awk", section: "1" },
+            { name: "missing", section: "1" }
+          ]),
+          readPage: vi.fn().mockImplementation(async (_options, entry) => {
+            if (entry.name === "missing") throw new Error("not installed");
+            return [
+              "NAME",
+              "       awk - pattern scanning language",
+              "OPTIONS",
+              "       -F fs",
+              "              set the field separator"
+            ].join("\n");
+          })
+        }
+      );
+
+      expect(result).toEqual({
+        entries: 2,
+        failed: 1,
+        output,
+        profile: "shellgei",
+        records: 2
+      });
+      expect(await readFile(output, "utf8")).toBe(
+        [
+          '{"id":"man:awk:1:note:summary","kind":"note","command":"awk","option":"","text":"awk - pattern scanning language","source":"man awk(1) / NAME"}',
+          '{"id":"man:awk:1:option:-F","kind":"option","command":"awk","option":"-F","text":"-F fs set the field separator","source":"man awk(1) / OPTIONS"}',
+          ""
+        ].join("\n")
+      );
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith("skip man 1 missing: not installed");
+    } finally {
+      warn.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("documents the profile and profile-default sections", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 
