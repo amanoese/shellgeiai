@@ -142,7 +142,7 @@ function optionIdValue(option) {
   return String(option ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/[^a-z0-9_?-]+/g, "-")
     .replace(/-+$/, "");
 }
 
@@ -341,7 +341,7 @@ export function extractKnowledgeRecordsFromManPage({
 
     for (const record of optionRecords(context)) pushUnique(records, record, seen);
 
-    if (PATTERN_SECTION_TITLES.has(title)) {
+    if (includePatterns && PATTERN_SECTION_TITLES.has(title)) {
       for (const record of patternRecords(context)) pushUnique(records, record, seen);
     }
   }

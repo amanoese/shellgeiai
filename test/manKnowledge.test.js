@@ -196,4 +196,44 @@ describe("man knowledge extraction", () => {
       }).map((record) => record.kind)
     ).toEqual(["note", "option"]);
   });
+
+  it("omits pattern records from the all profile when patterns are disabled", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "sed",
+      section: "1",
+      text: [
+        "COMMANDS",
+        "       s/regexp/replacement/[flags]",
+        "              Attempt to match regexp against the pattern space."
+      ].join("\n"),
+      profile: "all",
+      includePatterns: false
+    });
+
+    expect(records.map((record) => record.kind)).not.toContain("pattern");
+  });
+
+  it("preserves a question mark in the first grouped option alias ID", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "query",
+      section: "1",
+      text: [
+        "OPTIONS",
+        "       -?, --query",
+        "              display query information"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:query:1:option:-?",
+        kind: "option",
+        command: "query",
+        option: "-?, --query",
+        text: "-?, --query display query information",
+        source: "man query(1) / OPTIONS"
+      }
+    ]);
+  });
 });
