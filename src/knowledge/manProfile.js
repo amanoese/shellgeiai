@@ -3,7 +3,9 @@ import { fileURLToPath } from "node:url";
 
 import { defaultCommandPolicy } from "../execution/safety/commandPolicy.js";
 
-export const SUPPORTED_MAN_PROFILES = new Set(["shellgei", "all"]);
+const supportedManProfiles = Object.freeze(["shellgei", "all"]);
+
+export const SUPPORTED_MAN_PROFILES = new Set(supportedManProfiles);
 
 const shellgeiProfilePath = fileURLToPath(
   new URL("../../data/knowledge/shellgei-man-profile.json", import.meta.url)
@@ -15,6 +17,12 @@ function validateStringArray(profile, fieldName) {
   if (!Array.isArray(values) || values.some((value) => typeof value !== "string" || !value.trim())) {
     throw new Error(
       `Invalid ShellGei man profile: '${fieldName}' must be an array of nonblank strings.`
+    );
+  }
+
+  if (values.some((value) => value !== value.trim())) {
+    throw new Error(
+      `Invalid ShellGei man profile: '${fieldName}' must contain canonical strings without surrounding whitespace.`
     );
   }
 
@@ -57,8 +65,8 @@ function validateShellgeiProfile(profile) {
   }
 }
 
-export async function loadManKnowledgeProfile(name, { readFile = fs.readFile } = {}) {
-  if (!SUPPORTED_MAN_PROFILES.has(name)) {
+export async function loadManKnowledgeProfile(name = "shellgei", { readFile = fs.readFile } = {}) {
+  if (!supportedManProfiles.includes(name)) {
     throw new Error(`Unknown man knowledge profile '${name}'. Use shellgei or all.`);
   }
 

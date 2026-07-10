@@ -212,6 +212,15 @@ describe("man knowledge profiles", () => {
     expect(profile.patternCommands.every((command) => profile.commands.includes(command))).toBe(true);
   });
 
+  it("defaults to the curated ShellGei profile", async () => {
+    await expect(loadManKnowledgeProfile()).resolves.toEqual({
+      name: "shellgei",
+      sections: ["1"],
+      commands: EXPECTED_COMMANDS,
+      patternCommands: EXPECTED_PATTERN_COMMANDS
+    });
+  });
+
   it("loads the unrestricted all profile", async () => {
     await expect(loadManKnowledgeProfile("all")).resolves.toEqual({
       name: "all",
@@ -226,6 +235,18 @@ describe("man knowledge profiles", () => {
     await expect(loadManKnowledgeProfile("unknown")).rejects.toThrow(
       "Unknown man knowledge profile 'unknown'. Use shellgei or all."
     );
+  });
+
+  it("does not trust mutations to the exported supported-profile Set", async () => {
+    SUPPORTED_MAN_PROFILES.add("mutated");
+
+    try {
+      await expect(loadManKnowledgeProfile("mutated")).rejects.toThrow(
+        "Unknown man knowledge profile 'mutated'. Use shellgei or all."
+      );
+    } finally {
+      SUPPORTED_MAN_PROFILES.delete("mutated");
+    }
   });
 
   it("rejects a profile with the wrong name", async () => {
@@ -276,6 +297,18 @@ describe("man knowledge profiles", () => {
       );
     }
   );
+
+  it("rejects surrounding whitespace that could bypass the command policy", async () => {
+    const commands = [...EXPECTED_COMMANDS.slice(0, -1), " rm "];
+
+    await expect(
+      loadManKnowledgeProfile("shellgei", {
+        readFile: profileReader(validProfile({ commands }))
+      })
+    ).rejects.toThrow(
+      "Invalid ShellGei man profile: 'commands' must contain canonical strings without surrounding whitespace."
+    );
+  });
 
   it.each([99, 201])("rejects a profile containing %i commands", async (commandCount) => {
     const commands = Array.from({ length: commandCount }, (_, index) => `command-${index}`);
