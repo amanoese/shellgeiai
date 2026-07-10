@@ -18,7 +18,7 @@ const execFileAsync = promisify(execFile);
 
 const DEFAULT_OUTPUT = "data/knowledge/man.jsonl";
 
-function printHelp() {
+export function printHelp() {
   console.log(`Usage: node scripts/build-man-knowledge.js [options]
 
 Build data/knowledge/man.jsonl from locally installed rendered man pages.
@@ -27,7 +27,7 @@ The script extracts text by deterministic rules only; it does not call an LLM.
 Options:
   --output <path>       JSONL output path (default: ${DEFAULT_OUTPUT})
   --profile <name>     Extraction profile: shellgei or all (default: shellgei)
-  --sections <list>     Comma-separated man sections, or "all" (default: profile)
+  --sections <list>     Comma-separated man sections, or "all" (profile default)
   --commands <list>     Comma-separated command names. Default collects man -k entries.
   --limit <number>      Stop after this many man entries, useful for smoke tests.
   --locale <locale>     Locale for man rendering (default: ja_JP.UTF-8)
