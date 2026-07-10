@@ -632,6 +632,33 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
+  it("recognizes Japanese headings containing the prolonged sound mark", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "jp-prolonged",
+      section: "1",
+      text: [
+        "オプション",
+        "       -a",
+        "              実際の説明です。",
+        "パターン",
+        "       -b",
+        "              オプションに似た例です。"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:jp-prolonged:1:option:-a",
+        kind: "option",
+        command: "jp-prolonged",
+        option: "-a",
+        text: "-a 実際の説明です。",
+        source: "man jp-prolonged(1) / オプション"
+      }
+    ]);
+  });
+
   it("keeps complete normalized option and pattern text", () => {
     const optionDescription = "x".repeat(1300);
     const patternDescription = "y".repeat(1300);

@@ -145,8 +145,14 @@ function canonicalSectionTitle(title) {
 
 function isJapaneseHeading(title) {
   if (title.length > 32 || /[。．.!！?？]$/u.test(title)) return false;
-  if (!/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(title)) return false;
-  return /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}0-9０-９\s・／:：()（）]+$/u.test(
+  if (
+    !/[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}]/u.test(
+      title
+    )
+  ) {
+    return false;
+  }
+  return /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}0-9０-９\s・／:：()（）]+$/u.test(
     title
   );
 }
