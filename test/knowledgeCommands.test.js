@@ -258,7 +258,7 @@ describe("knowledge commands", () => {
   it("searches knowledge records using precomputed vectors", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    const vectorsPath = path.join(dir, "custom.json");
     await fs.writeFile(
       datasetPath,
       [

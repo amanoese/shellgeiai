@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 
 export function sanitizeKnowledgeModelForPath(model) {
   return String(model ?? "")
@@ -88,6 +89,7 @@ export async function openKnowledgeVectorFileWriter(vectorsPath, metadata) {
   let handleOpen = true;
   let settled = false;
   let writtenItems = 0;
+  let vectorDimension = null;
 
   async function closeHandle() {
     if (!handleOpen) return;
@@ -100,11 +102,19 @@ export async function openKnowledgeVectorFileWriter(vectorsPath, metadata) {
       if (settled || !handleOpen) {
         throw new Error("Knowledge vector writer is no longer writable.");
       }
+      const normalizedItem = validateItemShape(item, vectorDimension, (message) =>
+        new Error(`Invalid knowledge vector item: ${message}`)
+      );
       await handle.write(
-        `${JSON.stringify({ type: "item", id: item.id, vector: item.vector })}\n`,
+        `${JSON.stringify({
+          type: "item",
+          id: normalizedItem.id,
+          vector: normalizedItem.vector
+        })}\n`,
         undefined,
         "utf8"
       );
+      vectorDimension ??= normalizedItem.vector.length;
       writtenItems += 1;
     },
     async commit() {
@@ -137,22 +147,35 @@ function lineError(lineNumber, message) {
   return new Error(`Invalid knowledge vector file line ${lineNumber}: ${message}`);
 }
 
-function validateItemRecord(record, lineNumber) {
+function validateItemShape(record, expectedDimension, createError) {
   if (typeof record.id !== "string" || !record.id.trim()) {
-    throw lineError(lineNumber, "item id must be a nonblank string.");
+    throw createError("item id must be a nonblank string.");
   }
   if (!Array.isArray(record.vector)) {
-    throw lineError(lineNumber, "item vector must be an array.");
+    throw createError("item vector must be an array.");
+  }
+  if (record.vector.length === 0) {
+    throw createError("item vector must not be empty.");
   }
   if (record.vector.some((value) => typeof value !== "number" || !Number.isFinite(value))) {
-    throw lineError(lineNumber, "item vector must contain only finite numbers.");
+    throw createError("item vector must contain only finite numbers.");
+  }
+  if (expectedDimension !== null && record.vector.length !== expectedDimension) {
+    throw createError(
+      `item vector dimension ${record.vector.length} does not match expected ${expectedDimension}.`
+    );
   }
   return { id: record.id, vector: record.vector };
+}
+
+function validateItemRecord(record, lineNumber, expectedDimension) {
+  return validateItemShape(record, expectedDimension, (message) => lineError(lineNumber, message));
 }
 
 async function loadKnowledgeVectorJsonl(vectorsPath) {
   const items = [];
   let metadata = null;
+  let vectorDimension = null;
   const lines = readline.createInterface({
     input: createReadStream(vectorsPath, { encoding: "utf8" }),
     crlfDelay: Infinity
@@ -194,7 +217,9 @@ async function loadKnowledgeVectorJsonl(vectorsPath) {
       throw lineError(lineNumber, "duplicate metadata record.");
     }
     if (record.type !== "item") throw lineError(lineNumber, "unknown record type.");
-    items.push(validateItemRecord(record, lineNumber));
+    const item = validateItemRecord(record, lineNumber, vectorDimension);
+    vectorDimension ??= item.vector.length;
+    items.push(item);
   }
 
   if (!metadata) {
@@ -225,9 +250,12 @@ async function loadLegacyKnowledgeVectorFile(vectorsPath) {
     throw new Error("Invalid legacy knowledge vector file: items must be an array.");
   }
 
+  let vectorDimension = null;
   const items = vectorFile.items.map((item, index) => {
     try {
-      return validateItemRecord(item, index + 1);
+      const normalizedItem = validateItemRecord(item, index + 1, vectorDimension);
+      vectorDimension ??= normalizedItem.vector.length;
+      return normalizedItem;
     } catch (error) {
       throw new Error(`Invalid legacy knowledge vector file item ${index + 1}: ${error.message}`);
     }
@@ -242,8 +270,52 @@ async function loadLegacyKnowledgeVectorFile(vectorsPath) {
   };
 }
 
+async function readFirstNonblankLine(vectorsPath) {
+  const handle = await fs.open(vectorsPath, "r");
+  const decoder = new StringDecoder("utf8");
+  const buffer = Buffer.alloc(4096);
+  let pending = "";
+
+  try {
+    while (true) {
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+      if (bytesRead === 0) {
+        pending += decoder.end();
+        return pending.trim() ? pending.replace(/\r$/, "") : null;
+      }
+
+      pending += decoder.write(buffer.subarray(0, bytesRead));
+      let newlineIndex = pending.indexOf("\n");
+      while (newlineIndex !== -1) {
+        const line = pending.slice(0, newlineIndex).replace(/\r$/, "");
+        pending = pending.slice(newlineIndex + 1);
+        if (line.trim()) return line;
+        newlineIndex = pending.indexOf("\n");
+      }
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function detectKnowledgeVectorFormat(vectorsPath) {
+  const firstLine = await readFirstNonblankLine(vectorsPath);
+  if (firstLine === null) return "jsonl";
+
+  let firstRecord;
+  try {
+    firstRecord = JSON.parse(firstLine);
+  } catch {
+    return firstLine.trim() === "{" ? "legacy" : "jsonl";
+  }
+
+  if (firstRecord?.type === "metadata") return "jsonl";
+  if (firstRecord?.version === 1 && Array.isArray(firstRecord.items)) return "legacy";
+  return "jsonl";
+}
+
 export async function loadKnowledgeVectorFile(vectorsPath) {
-  return vectorsPath.endsWith(".json")
+  return (await detectKnowledgeVectorFormat(vectorsPath)) === "legacy"
     ? loadLegacyKnowledgeVectorFile(vectorsPath)
     : loadKnowledgeVectorJsonl(vectorsPath);
 }

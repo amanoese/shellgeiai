@@ -391,6 +391,168 @@ describe("knowledge vector file paths", () => {
     await expect(loadKnowledgeVectorFile(vectorsPath)).resolves.toEqual(legacyFile);
   });
 
+  it("detects large one-line legacy files without relying on extension", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "legacy.cache");
+    const vector = Array(600_000).fill(0);
+    await fs.writeFile(
+      vectorsPath,
+      JSON.stringify({
+        version: 1,
+        model: "legacy-model",
+        dataset: "knowledge.jsonl",
+        createdAt: "2026-06-29T00:00:00.000Z",
+        items: [{ id: "large", vector }]
+      }),
+      "utf8"
+    );
+
+    const loaded = await loadKnowledgeVectorFile(vectorsPath);
+    expect(loaded.version).toBe(1);
+    expect(loaded.items[0].vector).toHaveLength(vector.length);
+  });
+
+  it("detects version 2 JSONL content written to a .json path", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "custom.json");
+
+    await writeKnowledgeVectorFile(vectorsPath, {
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z",
+      items: [{ id: "man:awk:-F", vector: [1, 0] }]
+    });
+
+    await expect(loadKnowledgeVectorFile(vectorsPath)).resolves.toEqual({
+      version: 2,
+      itemCount: 1,
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z",
+      items: [{ id: "man:awk:-F", vector: [1, 0] }]
+    });
+  });
+
+  it("reports an invalid first record by content instead of extension", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "custom.json");
+    await fs.writeFile(vectorsPath, `${JSON.stringify({ type: "footer" })}\n`, "utf8");
+
+    await expect(loadKnowledgeVectorFile(vectorsPath)).rejects.toThrow(
+      "Invalid knowledge vector file line 1: metadata record must be first."
+    );
+  });
+
+  it("reports malformed version 2 content at a .json path", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "custom.json");
+    await fs.writeFile(vectorsPath, '{"type":"metadata"\n', "utf8");
+
+    await expect(loadKnowledgeVectorFile(vectorsPath)).rejects.toThrow(
+      /^Invalid knowledge vector file line 1:/
+    );
+  });
+
+  it.each([
+    { name: "a blank id", item: { id: " ", vector: [1, 0] }, error: "nonblank string" },
+    { name: "a non-array vector", item: { id: "one", vector: "1,0" }, error: "array" },
+    { name: "an empty vector", item: { id: "one", vector: [] }, error: "must not be empty" },
+    { name: "a NaN vector value", item: { id: "one", vector: [1, NaN] }, error: "finite" }
+  ])("rejects $name before writing", async ({ item, error }) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    await fs.writeFile(vectorsPath, "existing-cache\n", "utf8");
+    const writer = await openKnowledgeVectorFileWriter(vectorsPath, {
+      version: 2,
+      itemCount: 1,
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z"
+    });
+
+    await expect(writer.writeItem(item)).rejects.toThrow(error);
+    await writer.abort();
+
+    await expect(fs.readFile(vectorsPath, "utf8")).resolves.toBe("existing-cache\n");
+    expect(await fs.readdir(dir)).toEqual(["knowledge.vectors.jsonl"]);
+  });
+
+  it("rejects inconsistent vector dimensions before writing", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    const writer = await openKnowledgeVectorFileWriter(vectorsPath, {
+      version: 2,
+      itemCount: 2,
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z"
+    });
+
+    await writer.writeItem({ id: "one", vector: [1, 0] });
+    await expect(writer.writeItem({ id: "two", vector: [1, 0, 0] })).rejects.toThrow(
+      "dimension 3 does not match expected 2"
+    );
+    await writer.abort();
+
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it("refuses to commit fewer items than declared", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    const writer = await openKnowledgeVectorFileWriter(vectorsPath, {
+      version: 2,
+      itemCount: 2,
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z"
+    });
+
+    await writer.writeItem({ id: "one", vector: [1, 0] });
+    await expect(writer.commit()).rejects.toThrow("expected 2 items, wrote 1");
+    await writer.abort();
+
+    expect(await fs.readdir(dir)).toEqual([]);
+  });
+
+  it("rejects empty and inconsistent vectors while reading", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-vectors-"));
+    const emptyPath = path.join(dir, "empty.jsonl");
+    const inconsistentPath = path.join(dir, "inconsistent.jsonl");
+    const metadata = {
+      type: "metadata",
+      version: 2,
+      itemCount: 2,
+      model: "test-model",
+      dataset: "knowledge.jsonl",
+      createdAt: "2026-06-30T00:00:00.000Z"
+    };
+    await fs.writeFile(
+      emptyPath,
+      [
+        JSON.stringify({ ...metadata, itemCount: 1 }),
+        JSON.stringify({ type: "item", id: "one", vector: [] }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    await fs.writeFile(
+      inconsistentPath,
+      [
+        JSON.stringify(metadata),
+        JSON.stringify({ type: "item", id: "one", vector: [1, 0] }),
+        JSON.stringify({ type: "item", id: "two", vector: [1, 0, 0] }),
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    await expect(loadKnowledgeVectorFile(emptyPath)).rejects.toThrow("must not be empty");
+    await expect(loadKnowledgeVectorFile(inconsistentPath)).rejects.toThrow(
+      "dimension 3 does not match expected 2"
+    );
+  });
+
   it("loads the packaged default version 2 cache for every seed record", async () => {
     const records = await loadKnowledgeDataset(DEFAULT_KNOWLEDGE_DATASET);
     const vectorFile = await loadKnowledgeVectorFile(DEFAULT_KNOWLEDGE_VECTORS);
