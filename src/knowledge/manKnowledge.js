@@ -20,7 +20,13 @@ const EXCLUDED_SECTION_TITLES = new Set([
   "著作権"
 ]);
 
-const OPTION_SECTION_TITLES = new Set(["OPTION", "OPTIONS", "オプション"]);
+const OPTION_DEFINITION_SECTION_TITLES = new Set([
+  "DESCRIPTION",
+  "OPTION",
+  "OPTIONS",
+  "オプション",
+  "説明"
+]);
 
 const NAME_SECTION_TITLES = new Set(["NAME", "名前"]);
 
@@ -29,13 +35,16 @@ const GENERIC_LONG_OPTIONS = new Set(["--help", "--version", "--debug", "--usage
 const PATTERN_SECTION_TITLES = new Set([
   "ADDRESSES",
   "ARGUMENTS",
+  "COMMAND SYNOPSIS",
   "COMMANDS",
+  "EXPRESSION",
   "EXPRESSIONS",
   "FORMAT",
   "FORMAT SPECIFIERS",
   "LANGUAGE",
   "OPERANDS",
   "PATTERNS",
+  "PATTERNS AND ACTIONS",
   "REGULAR EXPRESSIONS",
   "VARIABLES",
   "アドレス",
@@ -46,6 +55,25 @@ const PATTERN_SECTION_TITLES = new Set([
   "変数",
   "引数"
 ]);
+
+const STRUCTURAL_SECTION_TITLES = new Set([
+  ...EXCLUDED_SECTION_TITLES,
+  ...NAME_SECTION_TITLES,
+  ...OPTION_DEFINITION_SECTION_TITLES,
+  ...PATTERN_SECTION_TITLES,
+  "ENVIRONMENT",
+  "EXAMPLE",
+  "EXAMPLES",
+  "EXIT STATUS",
+  "FILES",
+  "終了ステータス",
+  "環境変数",
+  "ファイル",
+  "例"
+]);
+
+const MAX_DEFINITION_TERM_INDENT = 12;
+const MAX_RECORD_TEXT_LENGTH = 1200;
 
 function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -100,14 +128,17 @@ export function parseManIndex(indexText, { sections = [...DEFAULT_COMMAND_SECTIO
   return entries;
 }
 
+function canonicalSectionTitle(title) {
+  return collapseWhitespace(title).toUpperCase();
+}
+
 function isHeading(line) {
   if (!line || leadingSpaceCount(line) > 0) return false;
   const trimmed = line.trim();
   if (trimmed.length < 2 || trimmed.length > 80) return false;
+  if (STRUCTURAL_SECTION_TITLES.has(canonicalSectionTitle(trimmed))) return true;
   if (/^[A-Z][A-Z0-9 _/().-]*$/.test(trimmed)) return true;
-  return /^(名前|書式|説明|オプション|コマンド|アドレス|式|正規表現|変数|引数|関連項目|著者|バグ|著作権)$/.test(
-    trimmed
-  );
+  return false;
 }
 
 function splitSections(text) {
@@ -141,9 +172,12 @@ function slugify(value) {
 function optionIdValue(option) {
   return String(option ?? "")
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_?-]+/g, "-")
+    .replace(/[^A-Za-z0-9_?@$-]+/g, "-")
     .replace(/-+$/, "");
+}
+
+function patternIdValue(term) {
+  return encodeURIComponent(collapseWhitespace(term));
 }
 
 function sourceFor(command, section, title) {
@@ -177,13 +211,13 @@ function commandSummaryRecord({ command, section, title, lines }) {
 }
 
 function looksLikeOptionItem(trimmed) {
-  return /^--?[A-Za-z0-9?][A-Za-z0-9?_.-]*/.test(trimmed);
+  return /^--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*/.test(trimmed);
 }
 
 function looksLikePatternItem(trimmed) {
   if (!trimmed || trimmed.length > 100) return false;
   if (/[.。]$/.test(trimmed)) return false;
-  return /[A-Za-z0-9_$][A-Za-z0-9_$~,/()[\]{}=+*?<>|.-]*/.test(trimmed);
+  return /\S/u.test(trimmed);
 }
 
 function hasIndentedDescription(lines, index) {
@@ -200,8 +234,10 @@ function shouldStartItem(lines, index, mode) {
   const line = lines[index];
   const trimmed = line.trim();
   if (!trimmed) return false;
-  if (mode === "option") return looksLikeOptionItem(trimmed);
-  return looksLikePatternItem(trimmed) && leadingSpaceCount(line) <= 8 && hasIndentedDescription(lines, index);
+  const hasDefinitionStructure =
+    leadingSpaceCount(line) <= MAX_DEFINITION_TERM_INDENT && hasIndentedDescription(lines, index);
+  if (mode === "option") return looksLikeOptionItem(trimmed) && hasDefinitionStructure;
+  return looksLikePatternItem(trimmed) && hasDefinitionStructure;
 }
 
 function extractDefinitionItems(lines, mode) {
@@ -240,7 +276,7 @@ function extractDefinitionItems(lines, mode) {
 }
 
 function optionTokens(term) {
-  return [...term.matchAll(/(^|[\s,])(--?[A-Za-z0-9?][A-Za-z0-9?_.-]*)/g)].map(
+  return [...term.matchAll(/(^|[\s,])(--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*)/g)].map(
     (match) => match[2]
   );
 }
@@ -268,7 +304,7 @@ function optionRecords({
         kind: "option",
         command,
         option: options.join(", "),
-        text: item.text,
+        text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
         source: sourceFor(command, section, title)
       });
       continue;
@@ -280,7 +316,7 @@ function optionRecords({
         kind: "option",
         command,
         option,
-        text: item.text,
+        text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
         source: sourceFor(command, section, title)
       });
     }
@@ -290,11 +326,11 @@ function optionRecords({
 
 function patternRecords({ command, section, title, lines }) {
   return extractDefinitionItems(lines, "pattern").map((item) => ({
-    id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
+    id: `man:${command}:${section}:pattern:${patternIdValue(item.term)}`,
     kind: "pattern",
     command,
     option: item.term,
-    text: item.text,
+    text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
     source: sourceFor(command, section, title)
   }));
 }
@@ -318,20 +354,23 @@ export function extractKnowledgeRecordsFromManPage({
 
   for (const manSection of splitSections(text)) {
     const title = manSection.title;
+    const canonicalTitle = canonicalSectionTitle(title);
     const context = { command, section, title, lines: manSection.lines };
 
-    if (isShellgeiProfile && NAME_SECTION_TITLES.has(title)) {
+    if (isShellgeiProfile && NAME_SECTION_TITLES.has(canonicalTitle)) {
       pushUnique(records, commandSummaryRecord(context), seen);
       continue;
     }
-    if (EXCLUDED_SECTION_TITLES.has(title)) continue;
+    if (EXCLUDED_SECTION_TITLES.has(canonicalTitle)) continue;
 
     if (isShellgeiProfile) {
-      for (const record of optionRecords({ ...context, groupAliases: true, excludeGeneric: true })) {
-        pushUnique(records, record, seen);
+      if (OPTION_DEFINITION_SECTION_TITLES.has(canonicalTitle)) {
+        for (const record of optionRecords({ ...context, groupAliases: true, excludeGeneric: true })) {
+          pushUnique(records, record, seen);
+        }
       }
 
-      if (includePatterns && PATTERN_SECTION_TITLES.has(title)) {
+      if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
         for (const record of patternRecords(context)) pushUnique(records, record, seen);
       }
       continue;
@@ -339,9 +378,11 @@ export function extractKnowledgeRecordsFromManPage({
 
     pushUnique(records, sectionRecord(context), seen);
 
-    for (const record of optionRecords(context)) pushUnique(records, record, seen);
+    if (OPTION_DEFINITION_SECTION_TITLES.has(canonicalTitle)) {
+      for (const record of optionRecords(context)) pushUnique(records, record, seen);
+    }
 
-    if (includePatterns && PATTERN_SECTION_TITLES.has(title)) {
+    if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
       for (const record of patternRecords(context)) pushUnique(records, record, seen);
     }
   }
