@@ -95,7 +95,7 @@ shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
 
 `knowledge search <query>` は同じ dataset / vectors / model 設定で検索結果を確認するためのコマンドです。`--top-k <number>` で表示件数を変更できます。
 
-ローカルにインストール済みの man ページから、決定的なルールだけで追加 dataset `data/knowledge/man.jsonl` を生成できます。LLM による要約や言い換えは行いません。既定の `shellgei` profile は section 1 の 151 commands を対象に、短い option と長い option の alias を同じ record にまとめ、`--help`、`--version`、`--debug`、`--usage` と、著者・著作権・関連項目などの section 全体を除外します。
+以下の man dataset 生成は、repository を clone して `npm install` した後に repository root で実行する、source checkout 向けの開発 workflow です。ローカルにインストール済みの man ページから、決定的なルールだけで追加 dataset `data/knowledge/man.jsonl` を生成できます。LLM による要約や言い換えは行いません。既定の `shellgei` profile は section 1 の 151 commands を対象に、短い option と長い option の alias を同じ record にまとめ、`--help`、`--version`、`--debug`、`--usage` と、著者・著作権・関連項目などの section 全体を除外します。
 
 ```bash
 npm run knowledge:man

@@ -50,6 +50,7 @@
     "data",
     "!data/knowledge/man.jsonl",
     "!data/knowledge/man.vectors.jsonl",
+    "!data/knowledge/man.vectors.json",
     "README.md",
     "LICENSE"
   ],

@@ -28,7 +28,7 @@ describe("knowledge commands", () => {
   it("builds a vector file from a JSONL dataset", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.json");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
     await fs.writeFile(
       datasetPath,
       [
@@ -73,8 +73,22 @@ describe("knowledge commands", () => {
     expect(embedder.embed).toHaveBeenCalledWith("検索クエリ: warmup");
     expect(embedder.embed).toHaveBeenCalledWith("検索文書: awk -F: CSV columns");
     expect(embedder.embed).toHaveBeenCalledWith("検索文書: sort | uniq -c counts frequency");
+    await expect(fs.readFile(vectorsPath, "utf8")).resolves.toBe(
+      [
+        JSON.stringify({
+          type: "metadata",
+          version: 2,
+          model: "test-model",
+          dataset: datasetPath,
+          createdAt: "2026-06-29T00:00:00.000Z"
+        }),
+        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
+        JSON.stringify({ type: "item", id: "pattern:count", vector: [0, 1] }),
+        ""
+      ].join("\n")
+    );
     await expect(loadKnowledgeVectorFile(vectorsPath)).resolves.toMatchObject({
-      version: 1,
+      version: 2,
       model: "test-model",
       dataset: datasetPath,
       createdAt: "2026-06-29T00:00:00.000Z",
@@ -110,14 +124,59 @@ describe("knowledge commands", () => {
         now: () => "2026-06-29T00:00:00.000Z"
       })
     ).resolves.toMatchObject({
-      vectorsPath: path.join(dir, "knowledge.vectors.json")
+      vectorsPath: path.join(dir, "knowledge.vectors.jsonl")
     });
+  });
+
+  it("closes the incremental vector writer when a build fails", async () => {
+    const dir = await createTempDir();
+    const datasetPath = path.join(dir, "knowledge.jsonl");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    await fs.writeFile(
+      datasetPath,
+      `${JSON.stringify({
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "awk -F: CSV columns",
+        source: "test"
+      })}\n`,
+      "utf8"
+    );
+    const writer = {
+      writeItem: vi.fn(async () => {
+        throw new Error("vector write failed");
+      }),
+      close: vi.fn(async () => {})
+    };
+    const openVectorWriter = vi.fn(async () => writer);
+    const embedder = { embed: vi.fn(async () => [1, 0]) };
+
+    await expect(
+      buildKnowledgeVectors({
+        datasetPath,
+        vectorsPath,
+        embedder,
+        model: "test-model",
+        now: () => "2026-06-29T00:00:00.000Z",
+        openVectorWriter
+      })
+    ).rejects.toThrow("vector write failed");
+
+    expect(openVectorWriter).toHaveBeenCalledWith(vectorsPath, {
+      version: 2,
+      model: "test-model",
+      dataset: datasetPath,
+      createdAt: "2026-06-29T00:00:00.000Z"
+    });
+    expect(writer.close).toHaveBeenCalledOnce();
   });
 
   it("searches knowledge records using precomputed vectors", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.json");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
     await fs.writeFile(
       datasetPath,
       [
@@ -142,16 +201,18 @@ describe("knowledge commands", () => {
     );
     await fs.writeFile(
       vectorsPath,
-      `${JSON.stringify({
-        version: 1,
-        model: "test-model",
-        dataset: datasetPath,
-        createdAt: "2026-06-29T00:00:00.000Z",
-        items: [
-          { id: "man:awk:-F", vector: [1, 0] },
-          { id: "pattern:count", vector: [0, 1] }
-        ]
-      })}\n`,
+      [
+        JSON.stringify({
+          type: "metadata",
+          version: 2,
+          model: "test-model",
+          dataset: datasetPath,
+          createdAt: "2026-06-29T00:00:00.000Z"
+        }),
+        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
+        JSON.stringify({ type: "item", id: "pattern:count", vector: [0, 1] }),
+        ""
+      ].join("\n"),
       "utf8"
     );
 

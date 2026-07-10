@@ -127,7 +127,7 @@ describe("createSolveSession", () => {
   it("uses precomputed knowledge vectors when worker knowledge is enabled", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.json");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
     await fs.writeFile(
       datasetPath,
       `${JSON.stringify({
@@ -142,13 +142,17 @@ describe("createSolveSession", () => {
     );
     await fs.writeFile(
       vectorsPath,
-      `${JSON.stringify({
-        version: 1,
-        model: "test-model",
-        dataset: datasetPath,
-        createdAt: "2026-06-29T00:00:00.000Z",
-        items: [{ id: "man:awk:-F", vector: [1, 0] }]
-      })}\n`,
+      [
+        JSON.stringify({
+          type: "metadata",
+          version: 2,
+          model: "test-model",
+          dataset: datasetPath,
+          createdAt: "2026-06-29T00:00:00.000Z"
+        }),
+        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
+        ""
+      ].join("\n"),
       "utf8"
     );
     const embedder = {

@@ -6,7 +6,7 @@ import {
   attachKnowledgeVectors,
   defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists,
-  writeKnowledgeVectorFile
+  openKnowledgeVectorFileWriter
 } from "./vectorFile.js";
 
 export const DEFAULT_KNOWLEDGE_DATASET = "data/knowledge/shellgei-basic.jsonl";
@@ -30,30 +30,35 @@ export async function buildKnowledgeVectors({
   vectorsPath,
   embedder,
   model = DEFAULT_KNOWLEDGE_MODEL,
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  openVectorWriter = openKnowledgeVectorFileWriter
 } = {}) {
   const resolvedVectorsPath =
     vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
   await prepareKnowledgeModel({ embedder: activeEmbedder, model });
   const records = await loadKnowledgeDataset(datasetPath);
-  const items = [];
-  for (const record of records) {
-    items.push({
-      id: record.id,
-      vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
-    });
-  }
-  await writeKnowledgeVectorFile(resolvedVectorsPath, {
-    version: 1,
+  const writer = await openVectorWriter(resolvedVectorsPath, {
+    version: 2,
     model,
     dataset: datasetPath,
-    createdAt: now(),
-    items
+    createdAt: now()
   });
+
+  try {
+    for (const record of records) {
+      await writer.writeItem({
+        id: record.id,
+        vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
+      });
+    }
+  } finally {
+    await writer.close();
+  }
+
   return {
     datasetPath,
-    itemCount: items.length,
+    itemCount: records.length,
     model,
     vectorsPath: resolvedVectorsPath
   };

@@ -35,6 +35,7 @@ describe("npm publish metadata", () => {
       "data",
       "!data/knowledge/man.jsonl",
       "!data/knowledge/man.vectors.jsonl",
+      "!data/knowledge/man.vectors.json",
       "README.md",
       "LICENSE"
     ]);
@@ -48,6 +49,7 @@ describe("npm publish metadata", () => {
 
     expect(ignoredPaths).toContain("data/knowledge/man.jsonl");
     expect(ignoredPaths).toContain("data/knowledge/man.vectors.jsonl");
+    expect(ignoredPaths).toContain("data/knowledge/man.vectors.json");
   });
 
   it("exposes execution modules from the grouped src hierarchy", async () => {
