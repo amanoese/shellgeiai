@@ -382,6 +382,108 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
+  it("extracts each option boundary from the rendered zip option layout", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "zip",
+      section: "1",
+      text: [
+        "OPTIONS",
+        "       -@",
+        "       --names-stdin",
+        "              Take the list of input files from standard input. Only one filename per line.",
+        "       -$",
+        "       --volume-label",
+        "              Include the volume label for the drive holding the first file."
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records.map(({ id, option, text }) => ({ id, option, text }))).toEqual([
+      { id: "man:zip:1:option:-@", option: "-@", text: "-@" },
+      {
+        id: "man:zip:1:option:--names-stdin",
+        option: "--names-stdin",
+        text: "--names-stdin Take the list of input files from standard input. Only one filename per line."
+      },
+      { id: "man:zip:1:option:-$", option: "-$", text: "-$" },
+      {
+        id: "man:zip:1:option:--volume-label",
+        option: "--volume-label",
+        text: "--volume-label Include the volume label for the drive holding the first file."
+      }
+    ]);
+  });
+
+  it("keeps legacy all-profile option scanning separate from compact extraction", () => {
+    const text = [
+      "COMMANDS",
+      "       -x, --execute",
+      "              execute a command",
+      "OPTIONS",
+      "       -q quiet operation"
+    ].join("\n");
+
+    const allRecords = extractKnowledgeRecordsFromManPage({
+      command: "legacy",
+      section: "1",
+      text,
+      profile: "all",
+      includePatterns: false
+    });
+    const compactRecords = extractKnowledgeRecordsFromManPage({
+      command: "legacy",
+      section: "1",
+      text,
+      profile: "shellgei",
+      includePatterns: false
+    });
+
+    expect(
+      allRecords
+        .filter((record) => record.kind === "option")
+        .map(({ id, option, text }) => ({ id, option, text }))
+    ).toEqual([
+      {
+        id: "man:legacy:1:option:-x",
+        option: "-x",
+        text: "-x, --execute execute a command"
+      },
+      {
+        id: "man:legacy:1:option:--execute",
+        option: "--execute",
+        text: "-x, --execute execute a command"
+      },
+      { id: "man:legacy:1:option:-q", option: "-q", text: "-q quiet operation" }
+    ]);
+    expect(compactRecords.map(({ id, option }) => ({ id, option }))).toEqual([
+      { id: "man:legacy:1:option:-q", option: "-q" }
+    ]);
+  });
+
+  it("deduplicates grouped aliases while preserving declaration order", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "checker",
+      section: "1",
+      text: [
+        "OPTIONS",
+        "       --check, --check=diagnose-first, -c",
+        "              check the input before processing"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:checker:1:option:--check",
+        kind: "option",
+        command: "checker",
+        option: "--check, -c",
+        text: "--check, --check=diagnose-first, -c check the input before processing",
+        source: "man checker(1) / OPTIONS"
+      }
+    ]);
+  });
+
   it("keeps legacy pattern IDs and disambiguates only collisions", () => {
     const records = extractKnowledgeRecordsFromManPage({
       command: "matcher",
@@ -423,8 +525,8 @@ describe("man knowledge extraction", () => {
         "              a real option",
         "              -1 is a negative value",
         "              -b is mentioned as an argument",
-        "       -z",
-        "       This is not an indented option definition.",
+        "              -z",
+        "              This is not a top-level option definition.",
         "EXAMPLES",
         "       -1",
         "              a negative example",
@@ -436,6 +538,97 @@ describe("man knowledge extraction", () => {
 
     expect(records.map(({ id, option }) => ({ id, option }))).toEqual([
       { id: "man:sample:1:option:-a", option: "-a" }
+    ]);
+  });
+
+  it("filters prose and subsection labels from compact pattern records", () => {
+    const text = [
+      "PATTERNS AND ACTIONS",
+      "       of input. A missing action is equivalent to",
+      "              wrapped prose from the preceding paragraph",
+      "       Patterns",
+      "              a subsection label",
+      "       BEGIN",
+      "              run before reading input",
+      "       /regular expression/",
+      "              select matching records",
+      "       Actions",
+      "              another subsection label",
+      "       Tests Tests return a true or false value",
+      "              prose introducing find-style tests",
+      "       as those in egrep(1). See https://example.invalid",
+      "              wrapped manual cross-reference prose",
+      "       The control statements are as follows:",
+      "              prose introducing control statements",
+      "       Supported tests:",
+      "              prose introducing find tests",
+      "       -size, -uid and -used) as",
+      "              a wrapped fragment from the preceding sentence",
+      "       pattern && pattern",
+      "              combine two patterns"
+    ].join("\n");
+
+    const compactRecords = extractKnowledgeRecordsFromManPage({
+      command: "awk",
+      section: "1",
+      text,
+      profile: "shellgei"
+    });
+    const allRecords = extractKnowledgeRecordsFromManPage({
+      command: "awk",
+      section: "1",
+      text,
+      profile: "all"
+    });
+
+    expect(
+      compactRecords.map(({ id, option }) => ({ id, option }))
+    ).toEqual([
+      { id: "man:awk:1:pattern:begin", option: "BEGIN" },
+      { id: "man:awk:1:pattern:regular-expression", option: "/regular expression/" },
+      { id: "man:awk:1:pattern:pattern-pattern", option: "pattern && pattern" }
+    ]);
+    expect(allRecords.filter((record) => record.kind === "pattern").map((record) => record.option)).toEqual([
+      "of input. A missing action is equivalent to",
+      "Patterns",
+      "BEGIN",
+      "/regular expression/",
+      "Actions",
+      "Tests Tests return a true or false value",
+      "as those in egrep(1). See https://example.invalid",
+      "The control statements are as follows:",
+      "Supported tests:",
+      "-size, -uid and -used) as",
+      "pattern && pattern"
+    ]);
+  });
+
+  it("uses short Japanese headings such as 注意 as structural boundaries", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "jp-boundary",
+      section: "1",
+      text: [
+        "オプション",
+        "       -a",
+        "              実際の説明です。",
+        "注意",
+        "       -1",
+        "              負数の例です。",
+        "       -b",
+        "              オプションに似た注意書きです。"
+      ].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toEqual([
+      {
+        id: "man:jp-boundary:1:option:-a",
+        kind: "option",
+        command: "jp-boundary",
+        option: "-a",
+        text: "-a 実際の説明です。",
+        source: "man jp-boundary(1) / オプション"
+      }
     ]);
   });
 

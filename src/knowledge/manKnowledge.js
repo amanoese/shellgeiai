@@ -73,6 +73,18 @@ const STRUCTURAL_SECTION_TITLES = new Set([
 ]);
 
 const MAX_DEFINITION_TERM_INDENT = 12;
+const MAX_CURATED_PATTERN_TERM_INDENT = 20;
+
+const CURATED_PATTERN_KEYWORDS = new Set(["BEGIN", "BEGINFILE", "END", "ENDFILE"]);
+
+const CURATED_PATTERN_SUBSECTION_TITLES = new Set([
+  "ACTIONS",
+  "GLOBAL OPTIONS",
+  "OPERATORS",
+  "PATTERNS",
+  "POSITIONAL OPTIONS",
+  "TESTS"
+]);
 
 function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -131,12 +143,21 @@ function canonicalSectionTitle(title) {
   return collapseWhitespace(title).toUpperCase();
 }
 
+function isJapaneseHeading(title) {
+  if (title.length > 32 || /[。．.!！?？]$/u.test(title)) return false;
+  if (!/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(title)) return false;
+  return /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}0-9０-９\s・／:：()（）]+$/u.test(
+    title
+  );
+}
+
 function isHeading(line) {
   if (!line || leadingSpaceCount(line) > 0) return false;
   const trimmed = line.trim();
   if (trimmed.length < 2 || trimmed.length > 80) return false;
   if (STRUCTURAL_SECTION_TITLES.has(canonicalSectionTitle(trimmed))) return true;
   if (/^[A-Z][A-Z0-9 _/().-]*$/.test(trimmed)) return true;
+  if (isJapaneseHeading(trimmed)) return true;
   return false;
 }
 
@@ -213,10 +234,36 @@ function looksLikeOptionItem(trimmed) {
   return /^--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*/.test(trimmed);
 }
 
-function looksLikePatternItem(trimmed) {
+function looksLikeLegacyPatternItem(trimmed) {
   if (!trimmed || trimmed.length > 100) return false;
   if (/[.。]$/.test(trimmed)) return false;
-  return /\S/u.test(trimmed);
+  return /[A-Za-z0-9_$][A-Za-z0-9_$~,/()[\]{}=+*?<>|.-]*/.test(trimmed);
+}
+
+function isCuratedPatternSubsection(trimmed) {
+  const canonical = canonicalSectionTitle(trimmed);
+  return (
+    CURATED_PATTERN_SUBSECTION_TITLES.has(canonical) ||
+    /^(?:ACTIONS|PATTERNS|TESTS)\b/.test(canonical)
+  );
+}
+
+function looksLikeCuratedPatternItem(trimmed) {
+  const normalized = collapseWhitespace(trimmed);
+  if (!normalized || normalized.length > 100 || /[.。]$/.test(normalized)) return false;
+  if (isCuratedPatternSubsection(normalized)) return false;
+
+  const words = normalized.split(" ");
+  if (/^(?:a|an|as|of|see|supported|the|that|these|this|those)\s+/i.test(normalized)) {
+    return false;
+  }
+  if (words.length > 4) return false;
+  if (CURATED_PATTERN_KEYWORDS.has(normalized)) return true;
+  if (/[/~,$()[\]{}=+*?<>|!^%\\&]/.test(normalized)) return true;
+  if (/^--?\S+(?:\s+\S+){0,2}$/.test(normalized)) return true;
+  if (/^\S+-\S+$/.test(normalized)) return true;
+  if (/^[^\x00-\x7F\s]{1,32}$/u.test(normalized)) return true;
+  return /^(?:arithmetic|boolean|regular|relational) expression$/i.test(normalized);
 }
 
 function hasIndentedDescription(lines, index) {
@@ -229,17 +276,28 @@ function hasIndentedDescription(lines, index) {
   return false;
 }
 
-function shouldStartItem(lines, index, mode) {
+function shouldStartItem(lines, index, mode, { curated = false } = {}) {
   const line = lines[index];
   const trimmed = line.trim();
   if (!trimmed) return false;
-  const hasDefinitionStructure =
-    leadingSpaceCount(line) <= MAX_DEFINITION_TERM_INDENT && hasIndentedDescription(lines, index);
-  if (mode === "option") return looksLikeOptionItem(trimmed) && hasDefinitionStructure;
-  return looksLikePatternItem(trimmed) && hasDefinitionStructure;
+  if (mode === "option") {
+    if (!curated) return looksLikeOptionItem(trimmed);
+    return looksLikeOptionItem(trimmed) && leadingSpaceCount(line) <= MAX_DEFINITION_TERM_INDENT;
+  }
+  if (!curated) {
+    return (
+      looksLikeLegacyPatternItem(trimmed) &&
+      leadingSpaceCount(line) <= 8 &&
+      hasIndentedDescription(lines, index)
+    );
+  }
+  return (
+    looksLikeCuratedPatternItem(trimmed) &&
+    leadingSpaceCount(line) <= MAX_CURATED_PATTERN_TERM_INDENT
+  );
 }
 
-function extractDefinitionItems(lines, mode) {
+function extractDefinitionItems(lines, mode, { curated = false } = {}) {
   const items = [];
   let current = null;
 
@@ -257,7 +315,11 @@ function extractDefinitionItems(lines, mode) {
     if (!trimmed) {
       continue;
     }
-    if (shouldStartItem(lines, index, mode)) {
+    if (mode === "pattern" && curated && isCuratedPatternSubsection(trimmed)) {
+      flush();
+      continue;
+    }
+    if (shouldStartItem(lines, index, mode, { curated })) {
       flush();
       current = { term: trimmed, description: [] };
       continue;
@@ -275,9 +337,10 @@ function extractDefinitionItems(lines, mode) {
 }
 
 function optionTokens(term) {
-  return [...term.matchAll(/(^|[\s,])(--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*)/g)].map(
+  const tokens = [...term.matchAll(/(^|[\s,])(--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*)/g)].map(
     (match) => match[2]
   );
+  return tokens.filter((option, index) => tokens.indexOf(option) === index);
 }
 
 function isGenericOptionGroup(options) {
@@ -290,10 +353,11 @@ function optionRecords({
   title,
   lines,
   groupAliases = false,
-  excludeGeneric = false
+  excludeGeneric = false,
+  curated = false
 }) {
   const records = [];
-  for (const item of extractDefinitionItems(lines, "option")) {
+  for (const item of extractDefinitionItems(lines, "option", { curated })) {
     const options = optionTokens(item.term);
     if (excludeGeneric && isGenericOptionGroup(options)) continue;
 
@@ -323,8 +387,8 @@ function optionRecords({
   return records;
 }
 
-function patternRecords({ command, section, title, lines }) {
-  return extractDefinitionItems(lines, "pattern").map((item) => ({
+function patternRecords({ command, section, title, lines, curated = false }) {
+  return extractDefinitionItems(lines, "pattern", { curated }).map((item) => ({
     id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
     kind: "pattern",
     command,
@@ -390,22 +454,27 @@ export function extractKnowledgeRecordsFromManPage({
 
     if (isShellgeiProfile) {
       if (OPTION_DEFINITION_SECTION_TITLES.has(canonicalTitle)) {
-        for (const record of optionRecords({ ...context, groupAliases: true, excludeGeneric: true })) {
+        for (const record of optionRecords({
+          ...context,
+          groupAliases: true,
+          excludeGeneric: true,
+          curated: true
+        })) {
           pushUnique(records, record, seen);
         }
       }
 
       if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
-        for (const record of patternRecords(context)) pushPatternRecord(records, record, seen);
+        for (const record of patternRecords({ ...context, curated: true })) {
+          pushPatternRecord(records, record, seen);
+        }
       }
       continue;
     }
 
     pushUnique(records, sectionRecord(context), seen);
 
-    if (OPTION_DEFINITION_SECTION_TITLES.has(canonicalTitle)) {
-      for (const record of optionRecords(context)) pushUnique(records, record, seen);
-    }
+    for (const record of optionRecords(context)) pushUnique(records, record, seen);
 
     if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
       for (const record of patternRecords(context)) pushPatternRecord(records, record, seen);
