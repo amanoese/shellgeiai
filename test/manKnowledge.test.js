@@ -100,7 +100,7 @@ describe("man knowledge extraction", () => {
         source: "man sed(1) / ADDRESSES"
       },
       {
-        id: "man:sed:1:pattern:first~step",
+        id: "man:sed:1:pattern:first-step",
         kind: "pattern",
         command: "sed",
         option: "first~step",
@@ -108,7 +108,7 @@ describe("man knowledge extraction", () => {
         source: "man sed(1) / ADDRESSES"
       },
       {
-        id: "man:sed:1:pattern:addr1%2Caddr2",
+        id: "man:sed:1:pattern:addr1-addr2",
         kind: "pattern",
         command: "sed",
         option: "addr1,addr2",
@@ -124,7 +124,7 @@ describe("man knowledge extraction", () => {
         source: "man sed(1) / COMMANDS"
       },
       {
-        id: "man:sed:1:pattern:s%2Fregexp%2Freplacement%2F%5Bflags%5D",
+        id: "man:sed:1:pattern:s-regexp-replacement-flags",
         kind: "pattern",
         command: "sed",
         option: "s/regexp/replacement/[flags]",
@@ -177,7 +177,7 @@ describe("man knowledge extraction", () => {
         source: "man sed(1) / OPTIONS"
       },
       {
-        id: "man:sed:1:pattern:s%2Fregexp%2Freplacement%2F%5Bflags%5D",
+        id: "man:sed:1:pattern:s-regexp-replacement-flags",
         kind: "pattern",
         command: "sed",
         option: "s/regexp/replacement/[flags]",
@@ -303,24 +303,24 @@ describe("man knowledge extraction", () => {
 
     expect(sedRecords.map(({ id, option, source }) => ({ id, option, source }))).toEqual([
       {
-        id: "man:sed:1:pattern:first~step",
+        id: "man:sed:1:pattern:first-step",
         option: "first~step",
         source: "man sed(1) / Addresses"
       },
       {
-        id: "man:sed:1:pattern:s%2Fregexp%2Freplacement%2F%5Bflags%5D",
+        id: "man:sed:1:pattern:s-regexp-replacement-flags",
         option: "s/regexp/replacement/[flags]",
         source: "man sed(1) / COMMAND SYNOPSIS"
       }
     ]);
     expect(awkRecords.map(({ id, option }) => ({ id, option }))).toEqual([
       {
-        id: "man:awk:1:pattern:%2Fregular%20expression%2F",
+        id: "man:awk:1:pattern:regular-expression",
         option: "/regular expression/"
       }
     ]);
     expect(findRecords.map(({ id, option }) => ({ id, option }))).toEqual([
-      { id: "man:find:1:pattern:-name%20pattern", option: "-name pattern" }
+      { id: "man:find:1:pattern:name-pattern", option: "-name pattern" }
     ]);
   });
 
@@ -382,7 +382,7 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
-  it("uses collision-free pattern IDs for punctuation and non-ASCII terms", () => {
+  it("keeps legacy pattern IDs and disambiguates only collisions", () => {
     const records = extractKnowledgeRecordsFromManPage({
       command: "matcher",
       section: "1",
@@ -392,19 +392,24 @@ describe("man knowledge extraction", () => {
         "              slash form",
         "       a-b",
         "              dash form",
+        "       a-b",
+        "              alternate dash form",
+        "       a/b",
+        "              slash form",
         "       日本語",
-        "              非 ASCII の形式"
+        "              非 ASCII の形式",
+        "       別形式",
+        "              別の非 ASCII 形式"
       ].join("\n"),
       profile: "shellgei"
     });
 
     expect(records.map(({ id, option }) => ({ id, option }))).toEqual([
-      { id: "man:matcher:1:pattern:a%2Fb", option: "a/b" },
-      { id: "man:matcher:1:pattern:a-b", option: "a-b" },
-      {
-        id: "man:matcher:1:pattern:%E6%97%A5%E6%9C%AC%E8%AA%9E",
-        option: "日本語"
-      }
+      { id: "man:matcher:1:pattern:a-b", option: "a/b" },
+      { id: "man:matcher:1:pattern:a-b:a-b", option: "a-b" },
+      { id: "man:matcher:1:pattern:a-b:a-b:2", option: "a-b" },
+      { id: "man:matcher:1:pattern:item", option: "日本語" },
+      { id: "man:matcher:1:pattern:item:%E5%88%A5%E5%BD%A2%E5%BC%8F", option: "別形式" }
     ]);
   });
 
@@ -434,21 +439,39 @@ describe("man knowledge extraction", () => {
     ]);
   });
 
-  it("caps option and pattern text at 1200 characters", () => {
+  it("keeps complete normalized option and pattern text", () => {
+    const optionDescription = "x".repeat(1300);
+    const patternDescription = "y".repeat(1300);
     const records = extractKnowledgeRecordsFromManPage({
       command: "bounded",
       section: "1",
       text: [
         "OPTIONS",
         "       -a",
-        `              ${"x".repeat(1300)}`,
+        `              ${optionDescription}`,
         "PATTERNS",
         "       a/b",
-        `              ${"y".repeat(1300)}`
+        `              ${patternDescription}`
       ].join("\n"),
       profile: "shellgei"
     });
 
-    expect(records.map((record) => record.text.length)).toEqual([1200, 1200]);
+    expect(records.map((record) => record.text)).toEqual([
+      `-a ${optionDescription}`,
+      `a/b ${patternDescription}`
+    ]);
+  });
+
+  it("caps the NAME summary at 1200 characters", () => {
+    const records = extractKnowledgeRecordsFromManPage({
+      command: "bounded",
+      section: "1",
+      text: ["NAME", `       bounded - ${"summary".repeat(200)}`].join("\n"),
+      profile: "shellgei"
+    });
+
+    expect(records).toHaveLength(1);
+    expect(records[0].kind).toBe("note");
+    expect(records[0].text).toHaveLength(1200);
   });
 });

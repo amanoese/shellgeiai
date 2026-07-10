@@ -73,7 +73,6 @@ const STRUCTURAL_SECTION_TITLES = new Set([
 ]);
 
 const MAX_DEFINITION_TERM_INDENT = 12;
-const MAX_RECORD_TEXT_LENGTH = 1200;
 
 function collapseWhitespace(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
@@ -176,7 +175,7 @@ function optionIdValue(option) {
     .replace(/-+$/, "");
 }
 
-function patternIdValue(term) {
+function patternCollisionSuffix(term) {
   return encodeURIComponent(collapseWhitespace(term));
 }
 
@@ -304,7 +303,7 @@ function optionRecords({
         kind: "option",
         command,
         option: options.join(", "),
-        text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
+        text: item.text,
         source: sourceFor(command, section, title)
       });
       continue;
@@ -316,7 +315,7 @@ function optionRecords({
         kind: "option",
         command,
         option,
-        text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
+        text: item.text,
         source: sourceFor(command, section, title)
       });
     }
@@ -326,11 +325,11 @@ function optionRecords({
 
 function patternRecords({ command, section, title, lines }) {
   return extractDefinitionItems(lines, "pattern").map((item) => ({
-    id: `man:${command}:${section}:pattern:${patternIdValue(item.term)}`,
+    id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
     kind: "pattern",
     command,
     option: item.term,
-    text: item.text.slice(0, MAX_RECORD_TEXT_LENGTH),
+    text: item.text,
     source: sourceFor(command, section, title)
   }));
 }
@@ -339,6 +338,32 @@ function pushUnique(records, record, seen) {
   if (!record || seen.has(record.id)) return;
   seen.add(record.id);
   records.push(record);
+}
+
+function hasSamePatternContent(left, right) {
+  return left?.kind === "pattern" && left.option === right.option && left.text === right.text;
+}
+
+function pushPatternRecord(records, record, seen) {
+  const existing = records.find((candidate) => candidate.id === record.id);
+  if (!existing) {
+    pushUnique(records, record, seen);
+    return;
+  }
+  if (hasSamePatternContent(existing, record)) return;
+
+  const disambiguatedBaseId = `${record.id}:${patternCollisionSuffix(record.option)}`;
+  let disambiguatedId = disambiguatedBaseId;
+  let suffix = 2;
+
+  while (seen.has(disambiguatedId)) {
+    const disambiguatedExisting = records.find((candidate) => candidate.id === disambiguatedId);
+    if (hasSamePatternContent(disambiguatedExisting, record)) return;
+    disambiguatedId = `${disambiguatedBaseId}:${suffix}`;
+    suffix += 1;
+  }
+
+  pushUnique(records, { ...record, id: disambiguatedId }, seen);
 }
 
 export function extractKnowledgeRecordsFromManPage({
@@ -371,7 +396,7 @@ export function extractKnowledgeRecordsFromManPage({
       }
 
       if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
-        for (const record of patternRecords(context)) pushUnique(records, record, seen);
+        for (const record of patternRecords(context)) pushPatternRecord(records, record, seen);
       }
       continue;
     }
@@ -383,7 +408,7 @@ export function extractKnowledgeRecordsFromManPage({
     }
 
     if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
-      for (const record of patternRecords(context)) pushUnique(records, record, seen);
+      for (const record of patternRecords(context)) pushPatternRecord(records, record, seen);
     }
   }
 
