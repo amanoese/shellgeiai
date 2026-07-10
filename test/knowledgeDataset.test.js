@@ -39,6 +39,26 @@ describe("knowledge dataset", () => {
     });
   });
 
+  it("normalizes man section records", () => {
+    expect(
+      normalizeKnowledgeRecord({
+        id: "man:awk:1:section:patterns",
+        kind: "section",
+        command: "awk",
+        option: "",
+        text: "PATTERNS セクションは awk の入力行を選択する条件を説明する。",
+        source: "man awk(1) / PATTERNS"
+      })
+    ).toEqual({
+      id: "man:awk:1:section:patterns",
+      kind: "section",
+      command: "awk",
+      option: "",
+      text: "PATTERNS セクションは awk の入力行を選択する条件を説明する。",
+      source: "man awk(1) / PATTERNS"
+    });
+  });
+
   it("loads seed JSONL dataset", async () => {
     const records = await loadKnowledgeDataset("data/knowledge/shellgei-basic.jsonl");
     expect(records.length).toBeGreaterThanOrEqual(85);

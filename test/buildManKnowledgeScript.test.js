@@ -40,6 +40,12 @@ describe("build man knowledge CLI", () => {
       expect(help).toContain(
         '--sections <list>     Comma-separated man sections, or "all" (profile default)'
       );
+      expect(help).toContain(
+        "--commands <list>     Comma-separated commands; replaces profile command list."
+      );
+      expect(help).toContain(
+        "The all profile discovers commands with man -k by default."
+      );
     } finally {
       log.mockRestore();
     }
@@ -60,6 +66,22 @@ describe("build man knowledge CLI", () => {
     );
   });
 
+  it.each([
+    ["--commands", "--commands must contain at least one command."],
+    ["--sections", "--sections must contain at least one section."]
+  ])("rejects an empty %s list", (option, message) => {
+    expect(() => parseArgs([option, ","])).toThrow(message);
+  });
+
+  it.each(["1.5", "1abc", "0", "-1"])(
+    "rejects invalid limit token %s",
+    (limit) => {
+      expect(() => parseArgs(["--limit", limit])).toThrow(
+        "--limit must be a positive integer."
+      );
+    }
+  );
+
   it("uses explicit commands instead of the profile command list", () => {
     expect(
       selectManEntries({
@@ -67,6 +89,35 @@ describe("build man knowledge CLI", () => {
         profile: shellgeiProfile
       })
     ).toEqual([{ name: "awk", section: "1" }]);
+  });
+
+  it.each([
+    {
+      label: "explicit all-profile commands with concrete sections",
+      options: { commands: ["awk"], sections: ["1"] },
+      profile: allProfile,
+      expected: false
+    },
+    {
+      label: "an effective null command list",
+      options: { commands: null, sections: ["1"] },
+      profile: allProfile,
+      expected: true
+    },
+    {
+      label: "all sections",
+      options: { commands: ["awk"], sections: "all" },
+      profile: shellgeiProfile,
+      expected: true
+    },
+    {
+      label: "profile commands with concrete sections",
+      options: { commands: null, sections: ["1"] },
+      profile: shellgeiProfile,
+      expected: false
+    }
+  ])("requests a man index for $label: $expected", ({ options, profile, expected }) => {
+    expect(buildManKnowledgeScript.needsManIndex({ options, profile })).toBe(expected);
   });
 
   it("selects sections 1 and 8 from the man index for the all profile", () => {
@@ -90,6 +141,45 @@ describe("build man knowledge CLI", () => {
         indexText
       })
     ).toEqual([{ name: "passwd", section: "5" }]);
+  });
+
+  it("stable-deduplicates explicit commands and concrete sections", () => {
+    expect(
+      selectManEntries({
+        options: {
+          commands: ["sed", "awk", "sed"],
+          sections: ["8", "1", "8"]
+        },
+        profile: shellgeiProfile
+      })
+    ).toEqual([
+      { name: "sed", section: "8" },
+      { name: "sed", section: "1" },
+      { name: "awk", section: "8" },
+      { name: "awk", section: "1" }
+    ]);
+  });
+
+  it("groups all-section index matches in explicit command order", () => {
+    const unorderedIndex = [
+      "awk (1)              - pattern scanning and processing language",
+      "sed (8)              - stream editor administration entry",
+      "sed (1)              - stream editor",
+      "awk (8)              - pattern scanning administration entry"
+    ].join("\n");
+
+    expect(
+      selectManEntries({
+        options: { commands: ["sed", "awk", "sed"], sections: "all" },
+        profile: shellgeiProfile,
+        indexText: unorderedIndex
+      })
+    ).toEqual([
+      { name: "sed", section: "8" },
+      { name: "sed", section: "1" },
+      { name: "awk", section: "1" },
+      { name: "awk", section: "8" }
+    ]);
   });
 
   it("uses explicit sections instead of the profile sections", () => {

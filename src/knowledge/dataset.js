@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-export const supportedKinds = new Set(["option", "pattern", "note"]);
+export const supportedKinds = new Set(["option", "pattern", "section", "note"]);
 
 function trimmedString(value) {
   return String(value ?? "").trim();

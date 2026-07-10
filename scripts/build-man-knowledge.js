@@ -28,7 +28,8 @@ Options:
   --output <path>       JSONL output path (default: ${DEFAULT_OUTPUT})
   --profile <name>     Extraction profile: shellgei or all (default: shellgei)
   --sections <list>     Comma-separated man sections, or "all" (profile default)
-  --commands <list>     Comma-separated command names. Default collects man -k entries.
+  --commands <list>     Comma-separated commands; replaces profile command list.
+                        The all profile discovers commands with man -k by default.
   --limit <number>      Stop after this many man entries, useful for smoke tests.
   --locale <locale>     Locale for man rendering (default: ja_JP.UTF-8)
   --man <path>          man executable path/name (default: man)
@@ -44,11 +45,21 @@ function readOption(argv, index, name) {
   return value;
 }
 
-function parseList(value) {
-  return String(value)
+function parseList(value, option, itemName) {
+  const items = String(value)
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+  if (items.length === 0) {
+    throw new Error(`${option} must contain at least one ${itemName}.`);
+  }
+
+  return items;
+}
+
+function stableUnique(values) {
+  return [...new Set(values)];
 }
 
 export function parseArgs(argv) {
@@ -78,14 +89,15 @@ export function parseArgs(argv) {
       index += 1;
     } else if (arg === "--sections") {
       const value = readOption(argv, index, arg);
-      options.sections = value === "all" ? "all" : parseList(value);
+      options.sections = value === "all" ? "all" : parseList(value, arg, "section");
       index += 1;
     } else if (arg === "--commands") {
-      options.commands = parseList(readOption(argv, index, arg));
+      options.commands = parseList(readOption(argv, index, arg), arg, "command");
       index += 1;
     } else if (arg === "--limit") {
-      options.limit = Number.parseInt(readOption(argv, index, arg), 10);
-      if (!Number.isInteger(options.limit) || options.limit < 1) {
+      const value = readOption(argv, index, arg);
+      options.limit = Number.parseInt(value, 10);
+      if (!/^\d+$/.test(value) || !Number.isSafeInteger(options.limit) || options.limit < 1) {
         throw new Error("--limit must be a positive integer.");
       }
       index += 1;
@@ -111,17 +123,23 @@ export function selectManEntries({ options, profile, indexText = "" }) {
     const entries = parseManIndex(indexText, { sections: "all" });
     if (commands === null) return entries;
 
-    const selectedCommands = new Set(commands);
-    return entries.filter(({ name }) => selectedCommands.has(name));
+    return stableUnique(commands).flatMap((command) =>
+      entries.filter(({ name }) => name === command)
+    );
   }
 
   if (commands !== null) {
-    return commands.flatMap((name) =>
-      sections.map((section) => ({ name, section }))
+    return stableUnique(commands).flatMap((name) =>
+      stableUnique(sections).map((section) => ({ name, section }))
     );
   }
 
   return parseManIndex(indexText, { sections });
+}
+
+export function needsManIndex({ options, profile }) {
+  const commands = options.commands ?? profile.commands;
+  return options.sections === "all" || commands === null;
 }
 
 async function runMan(manCommand, args, locale) {
@@ -139,7 +157,7 @@ async function runMan(manCommand, args, locale) {
 
 async function listManEntries(options, profile) {
   let indexText = "";
-  if (profile.commands === null || options.sections === "all") {
+  if (needsManIndex({ options, profile })) {
     const { stdout } = await runMan(options.manCommand, ["-k", "."], options.locale);
     indexText = stdout;
   }
