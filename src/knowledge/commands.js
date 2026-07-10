@@ -40,6 +40,7 @@ export async function buildKnowledgeVectors({
   const records = await loadKnowledgeDataset(datasetPath);
   const writer = await openVectorWriter(resolvedVectorsPath, {
     version: 2,
+    itemCount: records.length,
     model,
     dataset: datasetPath,
     createdAt: now()
@@ -52,8 +53,14 @@ export async function buildKnowledgeVectors({
         vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
       });
     }
-  } finally {
-    await writer.close();
+    await writer.commit();
+  } catch (error) {
+    try {
+      await writer.abort();
+    } catch (abortError) {
+      throw new AggregateError([error, abortError], "Unable to build knowledge vector file.");
+    }
+    throw error;
   }
 
   return {

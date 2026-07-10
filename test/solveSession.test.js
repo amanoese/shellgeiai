@@ -6,6 +6,8 @@ import { reportSessionPhase } from "../src/solve/session/progress.js";
 import { createSolveSession } from "../src/solve/session/solveSession.js";
 import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
+import { DEFAULT_KNOWLEDGE_VECTORS } from "../src/knowledge/commands.js";
+import { loadKnowledgeVectorFile } from "../src/knowledge/vectorFile.js";
 
 describe("SESSION_PHASES", () => {
   it("defines ordered main solve phases", () => {
@@ -146,6 +148,7 @@ describe("createSolveSession", () => {
         JSON.stringify({
           type: "metadata",
           version: 2,
+          itemCount: 1,
           model: "test-model",
           dataset: datasetPath,
           createdAt: "2026-06-29T00:00:00.000Z"
@@ -183,6 +186,29 @@ describe("createSolveSession", () => {
     expect(session.plan.workerTasks[0].knowledgeHints).toEqual([
       expect.objectContaining({ id: "man:awk:-F", score: 1 })
     ]);
+    expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
+    expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
+  });
+
+  it("uses the packaged default JSONL cache for worker knowledge", async () => {
+    const vectorFile = await loadKnowledgeVectorFile(DEFAULT_KNOWLEDGE_VECTORS);
+    const embedder = { embed: vi.fn(async () => vectorFile.items[0].vector) };
+
+    const session = await createSolveSession({
+      problemInput: "CSV の 3列目を合計する",
+      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+      runner: { name: "mock" },
+      judge: {
+        judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } })
+      },
+      maxIterations: 1,
+      parallelism: 2,
+      knowledgeMode: "worker",
+      knowledgeEmbedder: embedder,
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(session.plan.workerTasks[0].knowledgeHints.length).toBeGreaterThan(0);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
   });

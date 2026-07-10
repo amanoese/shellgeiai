@@ -42,6 +42,8 @@ describe("npm publish metadata", () => {
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "scripts/build-man-knowledge.js"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-man-profile.json"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.jsonl"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.json"))).toBe(false);
   });
 
   it("excludes locally generated man knowledge artifacts", () => {
