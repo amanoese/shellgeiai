@@ -27,8 +27,27 @@ describe("npm publish metadata", () => {
 });
 
   it("limits publish files to runtime assets and package docs", () => {
-    expect(packageJson.files).toEqual(["src", "wasm", "policies", "data", "README.md", "LICENSE"]);
+    expect(packageJson.files).toEqual([
+      "src",
+      "scripts",
+      "wasm",
+      "policies",
+      "data",
+      "!data/knowledge/man.jsonl",
+      "!data/knowledge/man.vectors.jsonl",
+      "README.md",
+      "LICENSE"
+    ]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "scripts/build-man-knowledge.js"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-man-profile.json"))).toBe(true);
+  });
+
+  it("excludes locally generated man knowledge artifacts", () => {
+    const ignoredPaths = readFileSync(path.join(repoRoot, ".gitignore"), "utf8").split(/\r?\n/);
+
+    expect(ignoredPaths).toContain("data/knowledge/man.jsonl");
+    expect(ignoredPaths).toContain("data/knowledge/man.vectors.jsonl");
   });
 
   it("exposes execution modules from the grouped src hierarchy", async () => {

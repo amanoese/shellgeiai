@@ -89,11 +89,29 @@ shellgeiai knowledge build --knowledge-model sirasagi62/ruri-v3-30m-ONNX
 shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
 ```
 
-`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.json` を作ります。vectors file 内には model 名も記録されます。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.jsonl` を作ります。vectors file は metadata 行と item 行の JSONL で、build 中に record ごとに追記されます。`--knowledge worker` はこの vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
 
 `solve` と `knowledge prepare/build` の embedding model は `--knowledge-model <model>` で指定できます。環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` でも既定値を上書きでき、CLI オプションが環境変数より優先されます。互換性のため `knowledge prepare/build --model <model>` も使えます。Transformers.js 対応の ONNX が無い model は失敗することがあります。
 
 `knowledge search <query>` は同じ dataset / vectors / model 設定で検索結果を確認するためのコマンドです。`--top-k <number>` で表示件数を変更できます。
+
+ローカルにインストール済みの man ページから、決定的なルールだけで追加 dataset `data/knowledge/man.jsonl` を生成できます。LLM による要約や言い換えは行いません。既定の `shellgei` profile は section 1 の 151 commands を対象に、短い option と長い option の alias を同じ record にまとめ、`--help`、`--version`、`--debug`、`--usage` と、著者・著作権・関連項目などの section 全体を除外します。
+
+```bash
+npm run knowledge:man
+npm run knowledge:man -- --commands awk,sed --sections 1
+npm run knowledge:man -- --profile all --sections all --limit 20
+```
+
+`--commands` は profile の command list を置き換えますが、record の抽出・除外ルールは選択中の profile のままです。section 全文の record と option alias ごとの record を含む従来の完全抽出が必要な場合は `--profile all` を指定してください。
+
+生成した dataset の vectors は次のコマンドで作成できます。
+
+```bash
+shellgeiai knowledge build --dataset data/knowledge/man.jsonl --vectors data/knowledge/man.vectors.jsonl
+```
+
+man の表示 locale は既定で `ja_JP.UTF-8` です。日本語 man が利用できない場合は、その環境で利用可能な man ページの言語に fallback します。必要なら `--locale <locale>` で明示できます。生成した `man.jsonl` と `man.vectors.jsonl` はローカル成果物であり、Git と npm package の対象外です。
 
 ## 安全性
 
