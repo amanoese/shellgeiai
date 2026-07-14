@@ -149,7 +149,7 @@ describe("createSolveSession", () => {
           type: "metadata",
           version: 2,
           itemCount: 1,
-          model: "test-model",
+          model: "sirasagi62/ruri-v3-30m-ONNX",
           dataset: datasetPath,
           createdAt: "2026-06-29T00:00:00.000Z"
         }),
@@ -188,6 +188,55 @@ describe("createSolveSession", () => {
     ]);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
+  });
+
+  it("rejects precomputed vectors built for a different knowledge model", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
+    const datasetPath = path.join(dir, "knowledge.jsonl");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    await fs.writeFile(
+      datasetPath,
+      `${JSON.stringify({
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "awk -F: CSV columns",
+        source: "test"
+      })}\n`,
+      "utf8"
+    );
+    await fs.writeFile(
+      vectorsPath,
+      `${JSON.stringify({
+        type: "metadata",
+        version: 2,
+        itemCount: 1,
+        model: "different-model",
+        dataset: datasetPath,
+        createdAt: "2026-07-14T00:00:00.000Z"
+      })}\n${JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] })}\n`,
+      "utf8"
+    );
+
+    await expect(
+      createSolveSession({
+        problemInput: "CSV の 3列目を合計する",
+        engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+        runner: { name: "mock" },
+        judge: {
+          judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } })
+        },
+        maxIterations: 1,
+        parallelism: 2,
+        knowledgeMode: "worker",
+        knowledgeModel: "active-model",
+        knowledgeDatasetPath: datasetPath,
+        knowledgeVectorsPath: vectorsPath,
+        knowledgeEmbedder: { embed: vi.fn(async () => [1, 0]) },
+        plannerProvider: createTestPlannerProvider()
+      })
+    ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset");
   });
 
   it("uses the packaged default JSONL cache for worker knowledge", async () => {

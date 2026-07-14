@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import { StringDecoder } from "node:string_decoder";
+import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 
 export function sanitizeKnowledgeModelForPath(model) {
   return String(model ?? "")
@@ -17,7 +18,30 @@ export function defaultKnowledgeVectorsPath(datasetPath, model) {
   const basePath = datasetPath.endsWith(".jsonl")
     ? datasetPath.replace(/\.jsonl$/, "")
     : datasetPath;
+  if (model && model !== DEFAULT_KNOWLEDGE_MODEL) {
+    return `${basePath}.vectors.${sanitizeKnowledgeModelForPath(model)}.jsonl`;
+  }
   return `${basePath}.vectors.jsonl`;
+}
+
+export function assertKnowledgeVectorFileCompatibility(
+  vectorFile,
+  { datasetPath, model }
+) {
+  const activeDataset = path.resolve(datasetPath);
+  const vectorDataset =
+    typeof vectorFile?.dataset === "string" && vectorFile.dataset.trim()
+      ? path.resolve(vectorFile.dataset)
+      : null;
+
+  if (vectorFile?.model === model && vectorDataset === activeDataset) {
+    return;
+  }
+
+  throw new Error(
+    "Knowledge vector file is incompatible with the active model or dataset. " +
+      `Rebuild it with \`shellgeiai knowledge build --dataset ${datasetPath} --knowledge-model ${model}\`.`
+  );
 }
 
 export async function writeKnowledgeVectorFile(vectorsPath, vectorFile) {

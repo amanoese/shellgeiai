@@ -6,6 +6,7 @@ import { runLogsSearchCommand } from "./commands/logsSearch.js";
 import { runLogsShowCommand } from "./commands/logsShow.js";
 import {
   runKnowledgeBuildCommand,
+  runKnowledgeManCommand,
   runKnowledgePrepareCommand,
   runKnowledgeSearchCommand
 } from "./commands/knowledge.js";
@@ -15,6 +16,7 @@ import {
   DEFAULT_KNOWLEDGE_MODEL,
   KNOWLEDGE_MODEL_ENV
 } from "../knowledge/modelConfig.js";
+import { SUPPORTED_MAN_PROFILES } from "../knowledge/manProfile.js";
 
 const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
@@ -206,6 +208,32 @@ export function createCliProgram() {
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
     .option("--vectors <path>", "knowledge vectors file")
     .action((options) => runKnowledgeBuildCommand(options));
+
+  knowledge
+    .command("man")
+    .description("build knowledge JSONL from local man pages")
+    .option("--output <path>", "JSONL output path")
+    .option(
+      "--profile <name>",
+      "man extraction profile",
+      (value) =>
+        parseChoice(
+          value,
+          SUPPORTED_MAN_PROFILES,
+          "Invalid --profile value. Use shellgei or all."
+        ),
+      "shellgei"
+    )
+    .option("--sections <list>", "comma-separated man sections, or all")
+    .option("--commands <list>", "comma-separated commands")
+    .option(
+      "--limit <number>",
+      "maximum man entries to process",
+      (value) => parsePositiveInteger(value, "Invalid --limit value. Use positive integer.")
+    )
+    .option("--locale <locale>", "locale for man rendering")
+    .option("--man <path>", "man executable path or name")
+    .action((options) => runKnowledgeManCommand(options));
 
   knowledge
     .command("search")

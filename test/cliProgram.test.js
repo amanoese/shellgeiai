@@ -50,10 +50,12 @@ describe("createCliProgram", () => {
     expect(help).toContain("prepare:");
     expect(help).toContain("build:");
     expect(help).toContain("search:");
+    expect(help).toContain("man:");
     expect(help).toContain("--knowledge-model");
     expect(help).toContain("SHELLGEIAI_KNOWLEDGE_MODEL");
     expect(help).toContain("--dataset");
     expect(help).toContain("--vectors");
     expect(help).toContain("--top-k");
+    expect(help).toContain("--profile");
   });
 });

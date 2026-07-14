@@ -87,15 +87,16 @@ shellgeiai knowledge prepare
 shellgeiai knowledge build
 shellgeiai knowledge build --knowledge-model sirasagi62/ruri-v3-30m-ONNX
 shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
+shellgeiai knowledge man --profile shellgei
 ```
 
-`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.jsonl` を作ります。vectors file は metadata 行と item 行の version 2 JSONL で、build 中に record ごとに一時ファイルへ追記し、完了後に公開されます。明示的に指定した旧 version 1 の `.vectors.json` も移行用に読み込めます。`--knowledge worker` は vectors file があれば優先して使い、なければ実行時 embedding に fallback します。
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.jsonl` を作ります。vectors file は metadata 行と item 行の version 2 JSONL で、build 中に record ごとに一時ファイルへ追記し、完了後に公開されます。明示的に指定した旧 version 1 の `.vectors.json` も移行用に読み込めます。`--knowledge worker` は dataset と model が一致する vectors file を優先して使い、存在しなければ実行時 embedding に fallback します。不一致の vectors file を明示指定した場合は、再buildを促すエラーで停止します。
 
 `solve` と `knowledge prepare/build` の embedding model は `--knowledge-model <model>` で指定できます。環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` でも既定値を上書きでき、CLI オプションが環境変数より優先されます。互換性のため `knowledge prepare/build --model <model>` も使えます。Transformers.js 対応の ONNX が無い model は失敗することがあります。
 
 `knowledge search <query>` は同じ dataset / vectors / model 設定で検索結果を確認するためのコマンドです。`--top-k <number>` で表示件数を変更できます。
 
-以下の man dataset 生成は、repository を clone して `npm install` した後に repository root で実行する、source checkout 向けの開発 workflow です。ローカルにインストール済みの man ページから、決定的なルールだけで追加 dataset `data/knowledge/man.jsonl` を生成できます。LLM による要約や言い換えは行いません。既定の `shellgei` profile は section 1 の 151 commands を対象に、短い option と長い option の alias を同じ record にまとめ、`--help`、`--version`、`--debug`、`--usage` と、著者・著作権・関連項目などの section 全体を除外します。
+`knowledge man` は、ローカルにインストール済みの man ページから、決定的なルールだけで追加 dataset `data/knowledge/man.jsonl` を生成します。既定の `shellgei` profile はシェル芸で使う section 1 の 151 commands に絞ります。`--profile all` を指定すると man index 全体を対象にします。短い option と長い option の alias は同じ record にまとめ、`--help`、`--version`、`--debug`、`--usage` と、著者・著作権・関連項目などの section 全体を除外します。LLM による要約や言い換えは行いません。`npm run knowledge:man` は source checkout で使える同等の開発用ショートカットです。生成後は同じ model を指定して vectors を作成してください。
 
 ```bash
 npm run knowledge:man
@@ -108,6 +109,7 @@ npm run knowledge:man -- --profile all --sections all --limit 20
 生成した dataset の vectors は次のコマンドで作成できます。
 
 ```bash
+shellgeiai knowledge man --profile shellgei
 shellgeiai knowledge build --dataset data/knowledge/man.jsonl --vectors data/knowledge/man.vectors.jsonl
 ```
 

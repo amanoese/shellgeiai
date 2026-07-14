@@ -6,6 +6,7 @@ import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
 import {
   attachKnowledgeVectors,
+  assertKnowledgeVectorFileCompatibility,
   defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists
 } from "../../knowledge/vectorFile.js";
@@ -72,6 +73,12 @@ export async function createSolveSession(options) {
   } else if (session.knowledgeMode === "worker") {
     const records = await loadKnowledgeDataset(session.knowledgeDatasetPath);
     const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
+    if (vectorFile) {
+      assertKnowledgeVectorFileCompatibility(vectorFile, {
+        datasetPath: session.knowledgeDatasetPath,
+        model: session.knowledgeModel
+      });
+    }
     const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
     session.knowledgeRetriever = createKnowledgeRetriever({
       mode: session.knowledgeMode,

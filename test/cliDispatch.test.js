@@ -6,6 +6,7 @@ const commands = vi.hoisted(() => ({
   runLogsSearchCommand: vi.fn(),
   runLogsShowCommand: vi.fn(),
   runKnowledgeBuildCommand: vi.fn(),
+  runKnowledgeManCommand: vi.fn(),
   runKnowledgePrepareCommand: vi.fn(),
   runKnowledgeSearchCommand: vi.fn(),
   runSolveCommand: vi.fn()
@@ -25,6 +26,7 @@ vi.mock("../src/cli/commands/logsShow.js", () => ({
 }));
 vi.mock("../src/cli/commands/knowledge.js", () => ({
   runKnowledgeBuildCommand: commands.runKnowledgeBuildCommand,
+  runKnowledgeManCommand: commands.runKnowledgeManCommand,
   runKnowledgePrepareCommand: commands.runKnowledgePrepareCommand,
   runKnowledgeSearchCommand: commands.runKnowledgeSearchCommand
 }));
@@ -101,6 +103,14 @@ describe("runCli", () => {
         dataset: "custom.jsonl",
         knowledgeModel: "env-model"
       })
+    );
+  });
+
+  it("dispatches knowledge man with the curated profile", async () => {
+    await runCli(["knowledge", "man", "--profile", "shellgei"]);
+
+    expect(commands.runKnowledgeManCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: "shellgei" })
     );
   });
 

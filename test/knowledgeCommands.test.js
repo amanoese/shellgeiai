@@ -102,7 +102,7 @@ describe("knowledge commands", () => {
     });
   });
 
-  it("uses stable default vector file path", async () => {
+  it("uses a model-specific default vector file path", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
     await fs.writeFile(
@@ -127,8 +127,51 @@ describe("knowledge commands", () => {
         now: () => "2026-06-29T00:00:00.000Z"
       })
     ).resolves.toMatchObject({
-      vectorsPath: path.join(dir, "knowledge.vectors.jsonl")
+      vectorsPath: path.join(dir, "knowledge.vectors.owner.custom-model.jsonl")
     });
+  });
+
+  it.each([
+    { label: "another model", model: "other-model", dataset: "active" },
+    { label: "another dataset", model: "active-model", dataset: "other" }
+  ])("rejects precomputed vectors built for $label", async ({ model, dataset }) => {
+    const dir = await createTempDir();
+    const datasetPath = path.join(dir, "knowledge.jsonl");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    await fs.writeFile(
+      datasetPath,
+      `${JSON.stringify({
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "awk -F: CSV columns",
+        source: "test"
+      })}\n`,
+      "utf8"
+    );
+    await fs.writeFile(
+      vectorsPath,
+      `${JSON.stringify({
+        type: "metadata",
+        version: 2,
+        itemCount: 1,
+        model,
+        dataset: dataset === "active" ? datasetPath : path.join(dir, "other.jsonl"),
+        createdAt: "2026-07-14T00:00:00.000Z"
+      })}\n${JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] })}\n`,
+      "utf8"
+    );
+
+    await expect(
+      searchKnowledge({
+        query: "CSV",
+        datasetPath,
+        vectorsPath,
+        model: "active-model",
+        embedder: { embed: vi.fn(async () => [1, 0]) }
+      })
+    ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset");
   });
 
   it("commits the incremental vector writer after a successful build", async () => {

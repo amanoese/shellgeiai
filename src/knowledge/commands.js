@@ -4,6 +4,7 @@ import { createRuriEmbedder } from "./ruriEmbedder.js";
 import { searchKnowledgeRecords } from "./vectorSearch.js";
 import {
   attachKnowledgeVectors,
+  assertKnowledgeVectorFileCompatibility,
   defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists,
   openKnowledgeVectorFileWriter
@@ -84,6 +85,9 @@ export async function searchKnowledge({
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
   const records = await loadKnowledgeDataset(datasetPath);
   const vectorFile = await loadKnowledgeVectorFileIfExists(resolvedVectorsPath);
+  if (vectorFile) {
+    assertKnowledgeVectorFileCompatibility(vectorFile, { datasetPath, model });
+  }
   const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
   const results = await searchKnowledgeRecords({
     query: `検索クエリ: ${query}`,

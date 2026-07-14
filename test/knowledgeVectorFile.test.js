@@ -17,13 +17,22 @@ import {
 } from "../src/knowledge/vectorFile.js";
 
 describe("knowledge vector file paths", () => {
-  it("uses a stable default vectors path next to the dataset", () => {
+  it("uses the legacy default vectors path for the default model", () => {
     expect(
       defaultKnowledgeVectorsPath(
         "data/knowledge/shellgei-basic.jsonl",
         "sirasagi62/ruri-v3-30m-ONNX"
       )
     ).toBe("data/knowledge/shellgei-basic.vectors.jsonl");
+  });
+
+  it("uses a model-specific default vectors path for a nondefault model", () => {
+    expect(
+      defaultKnowledgeVectorsPath(
+        "data/knowledge/shellgei-basic.jsonl",
+        "owner/custom-model"
+      )
+    ).toBe("data/knowledge/shellgei-basic.vectors.owner.custom-model.jsonl");
   });
 
   it("loads vector JSONL files with metadata and item lines", async () => {

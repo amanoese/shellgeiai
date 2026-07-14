@@ -4,6 +4,10 @@ import {
   searchKnowledge
 } from "../../knowledge/commands.js";
 import { defaultKnowledgeVectorsPath } from "../../knowledge/vectorFile.js";
+import {
+  buildManKnowledge,
+  parseArgs as parseManKnowledgeArgs
+} from "../../../scripts/build-man-knowledge.js";
 
 function resolveModel(options) {
   return options.model ?? options.knowledgeModel;
@@ -28,6 +32,29 @@ export async function runKnowledgeBuildCommand(options) {
   process.stdout.write(
     `Knowledge vectors built: ${result.itemCount} items -> ${result.vectorsPath}\n`
   );
+}
+
+function toManKnowledgeArgs(options) {
+  const optionNames = ["output", "profile", "sections", "commands", "limit", "locale"];
+  const args = [];
+
+  for (const optionName of optionNames) {
+    if (options[optionName] == null) continue;
+    args.push(`--${optionName}`, String(options[optionName]));
+  }
+  if (options.man != null) args.push("--man", String(options.man));
+  return args;
+}
+
+export async function runKnowledgeManCommand(
+  options,
+  {
+    buildManKnowledge: build = buildManKnowledge,
+    parseManKnowledgeArgs: parse = parseManKnowledgeArgs
+  } = {}
+) {
+  const result = await build(parse(toManKnowledgeArgs(options)));
+  process.stdout.write(`Man knowledge built: ${result.records} records -> ${result.output}\n`);
 }
 
 function formatKnowledgeSearchResult(record, index) {
