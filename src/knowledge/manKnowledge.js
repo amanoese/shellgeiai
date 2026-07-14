@@ -97,10 +97,7 @@ export function dedupeManKnowledgeRecords(records, { profile = "all" } = {}) {
 
   for (const record of records) {
     const normalizedRecord = { ...record, text: collapseWhitespace(record.text) };
-    const key =
-      profile === "shellgei"
-        ? `${record.command}\0${record.kind}\0${normalizedRecord.text}`
-        : record.id;
+    const key = profile === "shellgei" ? normalizedRecord.text : record.id;
     if (seen.has(key)) continue;
     seen.add(key);
     unique.push(normalizedRecord);

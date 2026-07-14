@@ -45,8 +45,7 @@ describe("man knowledge extraction", () => {
     ];
 
     expect(dedupeManKnowledgeRecords(records.slice(0, 3), { profile: "shellgei" })).toEqual([
-      { ...records[0], text: "-F fs set the field separator" },
-      records[2]
+      { ...records[0], text: "-F fs set the field separator" }
     ]);
     expect(dedupeManKnowledgeRecords(records, { profile: "all" })).toEqual([
       { ...records[0], text: "-F fs set the field separator" },
