@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -8,6 +9,10 @@ import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { DEFAULT_KNOWLEDGE_VECTORS } from "../src/knowledge/commands.js";
 import { loadKnowledgeVectorFile } from "../src/knowledge/vectorFile.js";
+
+function fingerprint(content) {
+  return createHash("sha256").update(content).digest("hex");
+}
 
 describe("SESSION_PHASES", () => {
   it("defines ordered main solve phases", () => {
@@ -130,18 +135,15 @@ describe("createSolveSession", () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-    await fs.writeFile(
-      datasetPath,
-      `${JSON.stringify({
+    const datasetContent = `${JSON.stringify({
         id: "man:awk:-F",
         kind: "option",
         command: "awk",
         option: "-F",
         text: "awk -F: CSV columns",
         source: "test"
-      })}\n`,
-      "utf8"
-    );
+      })}\n`;
+    await fs.writeFile(datasetPath, datasetContent, "utf8");
     await fs.writeFile(
       vectorsPath,
       [
@@ -151,6 +153,7 @@ describe("createSolveSession", () => {
           itemCount: 1,
           model: "sirasagi62/ruri-v3-30m-ONNX",
           dataset: datasetPath,
+          datasetFingerprint: fingerprint(datasetContent),
           createdAt: "2026-06-29T00:00:00.000Z"
         }),
         JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),

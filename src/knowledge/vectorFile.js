@@ -26,7 +26,7 @@ export function defaultKnowledgeVectorsPath(datasetPath, model) {
 
 export function assertKnowledgeVectorFileCompatibility(
   vectorFile,
-  { datasetPath, model }
+  { datasetPath, datasetFingerprint, model }
 ) {
   const activeDataset = path.resolve(datasetPath);
   const vectorDataset =
@@ -34,12 +34,17 @@ export function assertKnowledgeVectorFileCompatibility(
       ? path.resolve(vectorFile.dataset)
       : null;
 
-  if (vectorFile?.model === model && vectorDataset === activeDataset) {
+  if (
+    vectorFile?.model === model &&
+    vectorDataset === activeDataset &&
+    typeof vectorFile.datasetFingerprint === "string" &&
+    vectorFile.datasetFingerprint === datasetFingerprint
+  ) {
     return;
   }
 
   throw new Error(
-    "Knowledge vector file is incompatible with the active model or dataset. " +
+    "Knowledge vector file is incompatible with the active model or dataset fingerprint. " +
       `Rebuild it with \`shellgeiai knowledge build --dataset ${datasetPath} --knowledge-model ${model}\`.`
   );
 }
@@ -51,6 +56,7 @@ export async function writeKnowledgeVectorFile(vectorsPath, vectorFile) {
     itemCount: items.length,
     model: vectorFile.model,
     dataset: vectorFile.dataset,
+    datasetFingerprint: vectorFile.datasetFingerprint,
     createdAt: vectorFile.createdAt
   });
 
@@ -93,6 +99,7 @@ export async function openKnowledgeVectorFileWriter(vectorsPath, metadata) {
         itemCount: metadata.itemCount,
         model: metadata.model,
         dataset: metadata.dataset,
+        datasetFingerprint: metadata.datasetFingerprint,
         createdAt: metadata.createdAt
       })}\n`,
       undefined,
@@ -232,6 +239,9 @@ async function loadKnowledgeVectorJsonl(vectorsPath) {
         itemCount: record.itemCount,
         model: record.model,
         dataset: record.dataset,
+        ...(typeof record.datasetFingerprint === "string"
+          ? { datasetFingerprint: record.datasetFingerprint }
+          : {}),
         createdAt: record.createdAt
       };
       continue;

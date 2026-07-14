@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -12,6 +13,10 @@ import { loadKnowledgeVectorFile } from "../src/knowledge/vectorFile.js";
 
 async function createTempDir() {
   return fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-knowledge-"));
+}
+
+function fingerprint(content) {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 describe("knowledge commands", () => {
@@ -30,8 +35,7 @@ describe("knowledge commands", () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-    await fs.writeFile(
-      datasetPath,
+    const datasetContent =
       [
         JSON.stringify({
           id: "man:awk:-F",
@@ -49,9 +53,8 @@ describe("knowledge commands", () => {
           text: "sort | uniq -c counts frequency",
           source: "test"
         })
-      ].join("\n"),
-      "utf8"
-    );
+      ].join("\n");
+    await fs.writeFile(datasetPath, datasetContent, "utf8");
     const embedder = {
       embed: vi.fn(async (text) => (text.includes("awk") ? [1, 0] : [0, 1]))
     };
@@ -82,6 +85,7 @@ describe("knowledge commands", () => {
           itemCount: 2,
           model: "test-model",
           dataset: datasetPath,
+          datasetFingerprint: fingerprint(datasetContent),
           createdAt: "2026-06-29T00:00:00.000Z"
         }),
         JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
@@ -94,6 +98,7 @@ describe("knowledge commands", () => {
       itemCount: 2,
       model: "test-model",
       dataset: datasetPath,
+      datasetFingerprint: fingerprint(datasetContent),
       createdAt: "2026-06-29T00:00:00.000Z",
       items: [
         { id: "man:awk:-F", vector: [1, 0] },
@@ -132,9 +137,10 @@ describe("knowledge commands", () => {
   });
 
   it.each([
-    { label: "another model", model: "other-model", dataset: "active" },
-    { label: "another dataset", model: "active-model", dataset: "other" }
-  ])("rejects precomputed vectors built for $label", async ({ model, dataset }) => {
+    { label: "another model", model: "other-model", dataset: "active", fingerprint: "current" },
+    { label: "another dataset", model: "active-model", dataset: "other", fingerprint: "current" },
+    { label: "a historical v2 cache without a fingerprint", model: "active-model", dataset: "active", fingerprint: null }
+  ])("rejects precomputed vectors built for $label", async ({ model, dataset, fingerprint: cacheFingerprint }) => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
@@ -158,6 +164,7 @@ describe("knowledge commands", () => {
         itemCount: 1,
         model,
         dataset: dataset === "active" ? datasetPath : path.join(dir, "other.jsonl"),
+        ...(cacheFingerprint ? { datasetFingerprint: fingerprint(await fs.readFile(datasetPath)) } : {}),
         createdAt: "2026-07-14T00:00:00.000Z"
       })}\n${JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] })}\n`,
       "utf8"
@@ -212,6 +219,7 @@ describe("knowledge commands", () => {
       itemCount: 1,
       model: "test-model",
       dataset: datasetPath,
+      datasetFingerprint: fingerprint(await fs.readFile(datasetPath)),
       createdAt: "2026-06-29T00:00:00.000Z"
     });
     expect(writer.commit).toHaveBeenCalledOnce();
@@ -260,6 +268,7 @@ describe("knowledge commands", () => {
       itemCount: 1,
       model: "test-model",
       dataset: datasetPath,
+      datasetFingerprint: fingerprint(await fs.readFile(datasetPath)),
       createdAt: "2026-06-29T00:00:00.000Z"
     });
     expect(writer.commit).not.toHaveBeenCalled();
@@ -298,12 +307,58 @@ describe("knowledge commands", () => {
     expect(await fs.readdir(dir)).toEqual(["knowledge.jsonl", "knowledge.vectors.jsonl"]);
   });
 
+  it("rejects a stale cache when the dataset changes at the same path", async () => {
+    const dir = await createTempDir();
+    const datasetPath = path.join(dir, "knowledge.jsonl");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+    const oldDataset = `${JSON.stringify({
+      id: "man:awk:-F",
+      kind: "option",
+      command: "awk",
+      option: "-F",
+      text: "awk -F: old CSV columns",
+      source: "test"
+    })}\n`;
+    const updatedDataset = `${JSON.stringify({
+      id: "man:awk:-F",
+      kind: "option",
+      command: "awk",
+      option: "-F",
+      text: "awk -F: updated CSV columns",
+      source: "test"
+    })}\n`;
+    await fs.writeFile(datasetPath, oldDataset, "utf8");
+    await fs.writeFile(
+      vectorsPath,
+      `${JSON.stringify({
+        type: "metadata",
+        version: 2,
+        itemCount: 1,
+        model: "test-model",
+        dataset: datasetPath,
+        datasetFingerprint: fingerprint(oldDataset),
+        createdAt: "2026-07-14T00:00:00.000Z"
+      })}\n${JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] })}\n`,
+      "utf8"
+    );
+    await fs.writeFile(datasetPath, updatedDataset, "utf8");
+
+    await expect(
+      searchKnowledge({
+        query: "CSV",
+        datasetPath,
+        vectorsPath,
+        model: "test-model",
+        embedder: { embed: vi.fn(async () => [1, 0]) }
+      })
+    ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset fingerprint");
+  });
+
   it("searches knowledge records using precomputed vectors", async () => {
     const dir = await createTempDir();
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "custom.json");
-    await fs.writeFile(
-      datasetPath,
+    const datasetContent =
       [
         JSON.stringify({
           id: "man:awk:-F",
@@ -321,9 +376,8 @@ describe("knowledge commands", () => {
           text: "sort | uniq -c counts frequency",
           source: "test"
         })
-      ].join("\n"),
-      "utf8"
-    );
+      ].join("\n");
+    await fs.writeFile(datasetPath, datasetContent, "utf8");
     await fs.writeFile(
       vectorsPath,
       [
@@ -333,6 +387,7 @@ describe("knowledge commands", () => {
           itemCount: 2,
           model: "test-model",
           dataset: datasetPath,
+          datasetFingerprint: fingerprint(datasetContent),
           createdAt: "2026-06-29T00:00:00.000Z"
         }),
         JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),

@@ -90,7 +90,7 @@ shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
 shellgeiai knowledge man --profile shellgei
 ```
 
-`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.jsonl` を作ります。vectors file は metadata 行と item 行の version 2 JSONL で、build 中に record ごとに一時ファイルへ追記し、完了後に公開されます。明示的に指定した旧 version 1 の `.vectors.json` も移行用に読み込めます。`--knowledge worker` は dataset と model が一致する vectors file を優先して使い、存在しなければ実行時 embedding に fallback します。不一致の vectors file を明示指定した場合は、再buildを促すエラーで停止します。
+`prepare` は embedding model の warmup を行います。既定 model は Transformers.js / ONNX 対応の `sirasagi62/ruri-v3-30m-ONNX` です。`build` は warmup 後に dataset を embedding し、既定では `data/knowledge/shellgei-basic.vectors.jsonl` を作ります。vectors file は metadata 行と item 行の version 2 JSONL で、build 中に record ごとに一時ファイルへ追記し、完了後に公開されます。明示的に指定した旧 version 1 の `.vectors.json` も移行用に読み込めます。`--knowledge worker` は dataset の path・内容 fingerprint と model が一致する vectors file を優先して使い、存在しなければ実行時 embedding に fallback します。不一致、または fingerprint を持たない旧 cache を明示指定した場合は、再buildを促すエラーで停止します。
 
 `solve` と `knowledge prepare/build` の embedding model は `--knowledge-model <model>` で指定できます。環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` でも既定値を上書きでき、CLI オプションが環境変数より優先されます。互換性のため `knowledge prepare/build --model <model>` も使えます。Transformers.js 対応の ONNX が無い model は失敗することがあります。
 

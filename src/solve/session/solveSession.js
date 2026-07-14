@@ -1,6 +1,6 @@
 import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
-import { loadKnowledgeDataset } from "../../knowledge/dataset.js";
+import { loadKnowledgeDatasetWithFingerprint } from "../../knowledge/dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
@@ -71,11 +71,13 @@ export async function createSolveSession(options) {
   if (options.knowledgeRetriever) {
     session.knowledgeRetriever = options.knowledgeRetriever;
   } else if (session.knowledgeMode === "worker") {
-    const records = await loadKnowledgeDataset(session.knowledgeDatasetPath);
+    const { records, fingerprint: datasetFingerprint } =
+      await loadKnowledgeDatasetWithFingerprint(session.knowledgeDatasetPath);
     const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
     if (vectorFile) {
       assertKnowledgeVectorFileCompatibility(vectorFile, {
         datasetPath: session.knowledgeDatasetPath,
+        datasetFingerprint,
         model: session.knowledgeModel
       });
     }

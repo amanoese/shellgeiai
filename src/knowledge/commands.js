@@ -1,4 +1,4 @@
-import { loadKnowledgeDataset } from "./dataset.js";
+import { loadKnowledgeDatasetWithFingerprint } from "./dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { createRuriEmbedder } from "./ruriEmbedder.js";
 import { searchKnowledgeRecords } from "./vectorSearch.js";
@@ -38,12 +38,14 @@ export async function buildKnowledgeVectors({
     vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
   await prepareKnowledgeModel({ embedder: activeEmbedder, model });
-  const records = await loadKnowledgeDataset(datasetPath);
+  const { records, fingerprint: datasetFingerprint } =
+    await loadKnowledgeDatasetWithFingerprint(datasetPath);
   const writer = await openVectorWriter(resolvedVectorsPath, {
     version: 2,
     itemCount: records.length,
     model,
     dataset: datasetPath,
+    datasetFingerprint,
     createdAt: now()
   });
 
@@ -83,10 +85,15 @@ export async function searchKnowledge({
   const resolvedVectorsPath =
     vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
-  const records = await loadKnowledgeDataset(datasetPath);
+  const { records, fingerprint: datasetFingerprint } =
+    await loadKnowledgeDatasetWithFingerprint(datasetPath);
   const vectorFile = await loadKnowledgeVectorFileIfExists(resolvedVectorsPath);
   if (vectorFile) {
-    assertKnowledgeVectorFileCompatibility(vectorFile, { datasetPath, model });
+    assertKnowledgeVectorFileCompatibility(vectorFile, {
+      datasetPath,
+      datasetFingerprint,
+      model
+    });
   }
   const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
   const results = await searchKnowledgeRecords({

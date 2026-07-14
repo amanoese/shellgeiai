@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 export const supportedKinds = new Set(["option", "pattern", "section", "note"]);
@@ -36,8 +37,7 @@ export function normalizeKnowledgeRecord(record) {
   };
 }
 
-export async function loadKnowledgeDataset(datasetPath) {
-  const content = await readFile(datasetPath, "utf8");
+function parseKnowledgeDataset(content) {
   const records = [];
 
   for (const [index, line] of content.split(/\r?\n/).entries()) {
@@ -53,4 +53,16 @@ export async function loadKnowledgeDataset(datasetPath) {
   }
 
   return records;
+}
+
+export async function loadKnowledgeDatasetWithFingerprint(datasetPath) {
+  const content = await readFile(datasetPath, "utf8");
+  return {
+    records: parseKnowledgeDataset(content),
+    fingerprint: createHash("sha256").update(content).digest("hex")
+  };
+}
+
+export async function loadKnowledgeDataset(datasetPath) {
+  return (await loadKnowledgeDatasetWithFingerprint(datasetPath)).records;
 }
