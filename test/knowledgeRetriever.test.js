@@ -144,38 +144,77 @@ describe("knowledge retrieval", () => {
     })).rejects.toThrow("Cannot compare embedding vectors with different dimensions.");
   });
 
-  it("returns empty hints when mode is off", async () => {
-    const retriever = createKnowledgeRetriever({ mode: "off", records: [], embedder: fakeEmbedder });
-    await expect(retriever.retrieveForWorker({ problem: "CSV", task: { strategy: "awk-worker" } })).resolves.toEqual([]);
+  it("retrieves broad planner hints with at most one result per command", async () => {
+    const calls = [];
+    const retriever = createKnowledgeRetriever({
+      records: [
+        { id: "awk-1", command: "awk", option: "-F", text: "awk one", source: "seed", vector: [1, 0] },
+        { id: "awk-2", command: "awk", option: "-v", text: "awk two", source: "seed", vector: [1, 0] },
+        { id: "sort-1", command: "sort", option: "-k", text: "sort one", source: "seed", vector: [1, 0] },
+        { id: "uniq-1", command: "uniq", option: "-c", text: "uniq one", source: "seed", vector: [1, 0] },
+        { id: "cut-1", command: "cut", option: "-d", text: "cut one", source: "seed", vector: [1, 0] },
+        { id: "sed-1", command: "sed", option: "-n", text: "sed one", source: "seed", vector: [1, 0] }
+      ],
+      embedder: {
+        async embed(text) {
+          calls.push(text);
+          return [1, 0];
+        }
+      }
+    });
+
+    const hints = await retriever.retrieveForPlanner({
+      problem: "値を集計する",
+      expectedOutput: "頻度順の一覧"
+    });
+
+    expect(hints.map((record) => record.id)).toEqual([
+      "awk-1",
+      "sort-1",
+      "uniq-1",
+      "cut-1",
+      "sed-1"
+    ]);
+    expect(hints[0]).toEqual({
+      id: "awk-1",
+      command: "awk",
+      option: "-F",
+      text: "awk one",
+      source: "seed"
+    });
+    expect(calls).toEqual(["検索クエリ: 値を集計する\n期待する出力: 頻度順の一覧"]);
   });
 
-  it("returns compact worker hints when mode is worker", async () => {
+  it("returns at most five generic search results and two per command", async () => {
+    const calls = [];
     const retriever = createKnowledgeRetriever({
-      mode: "worker",
       records: [
-        { id: "awk", kind: "option", command: "awk", option: "-F", text: "awk -F: CSV の列を処理する", source: "seed" },
-        { id: "sort", kind: "option", command: "sort", option: "-k", text: "sort -k: 指定列で並べ替える", source: "seed" }
+        { id: "awk-1", command: "awk", text: "awk one", vector: [1, 0] },
+        { id: "awk-2", command: "awk", text: "awk two", vector: [1, 0] },
+        { id: "awk-3", command: "awk", text: "awk three", vector: [1, 0] },
+        { id: "sort-1", command: "sort", text: "sort one", vector: [1, 0] },
+        { id: "uniq-1", command: "uniq", text: "uniq one", vector: [1, 0] },
+        { id: "cut-1", command: "cut", text: "cut one", vector: [1, 0] },
+        { id: "sed-1", command: "sed", text: "sed one", vector: [1, 0] }
       ],
-      embedder: fakeEmbedder,
-      topK: 1
-    });
-
-    const hints = await retriever.retrieveForWorker({
-      problem: "CSV の 3列目を合計する",
-      task: { strategy: "awk-worker" }
-    });
-
-    expect(hints).toEqual([
-      {
-        id: "awk",
-        kind: "option",
-        command: "awk",
-        option: "-F",
-        text: "awk -F: CSV の列を処理する",
-        source: "seed",
-        score: 1
+      embedder: {
+        async embed(text) {
+          calls.push(text);
+          return [1, 0];
+        }
       }
+    });
+
+    const results = await retriever.search({ query: "集計" });
+
+    expect(results.map((record) => record.id)).toEqual([
+      "awk-1",
+      "awk-2",
+      "sort-1",
+      "uniq-1",
+      "cut-1"
     ]);
+    expect(calls).toEqual(["検索クエリ: 集計"]);
   });
 
   it("uses precomputed record vectors without embedding documents", async () => {

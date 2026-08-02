@@ -97,28 +97,9 @@ export async function createSolveSession(options) {
 
   reportSessionPhase(session, "planning", "Building execution plan.");
   const plan = {
-    ...(await enrichWorkerTasksWithKnowledge(session, await createExecutionPlan(session))),
+    ...(await createExecutionPlan(session)),
     knowledgeMode: session.knowledgeMode
   };
 
   return { ...session, plan };
-}
-
-async function enrichWorkerTasksWithKnowledge(session, plan) {
-  if (session.knowledgeMode !== "worker") return plan;
-
-  const retriever = session.knowledgeRetriever;
-  if (!retriever) return plan;
-
-  const workerTasks = await Promise.all(
-    plan.workerTasks.map(async (task) => ({
-      ...task,
-      knowledgeHints: await retriever.retrieveForWorker({
-        problem: session.problem.problemText,
-        task
-      })
-    }))
-  );
-
-  return { ...plan, workerTasks };
 }

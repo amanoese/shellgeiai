@@ -93,21 +93,9 @@ describe("createSolveSession", () => {
     expect(session.knowledgeMode).toBe("all");
   });
 
-  it("adds knowledge hints to worker tasks when worker knowledge is enabled", async () => {
+  it("does not search or inject hints while initializing worker knowledge", async () => {
     const knowledgeRetriever = {
-      async retrieveForWorker({ task }) {
-        return [
-          {
-            id: `hint:${task.workerId}`,
-            kind: "option",
-            command: "awk",
-            option: "-F",
-            text: "awk -F: CSV の列を処理する",
-            source: "test",
-            score: 1
-          }
-        ];
-      }
+      search: vi.fn(async () => [])
     };
 
     const session = await createSolveSession({
@@ -123,9 +111,8 @@ describe("createSolveSession", () => {
     });
 
     expect(session.plan.workerTasks).toHaveLength(2);
-    expect(session.plan.workerTasks[0].knowledgeHints).toEqual([
-      expect.objectContaining({ id: "hint:worker-1", text: "awk -F: CSV の列を処理する" })
-    ]);
+    expect(knowledgeRetriever.search).not.toHaveBeenCalled();
+    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
   });
 
   it("reports initializing, problem-parsing, planning while building a session", async () => {
@@ -146,7 +133,7 @@ describe("createSolveSession", () => {
   ).toEqual(["initializing", "problem-parsing", "planning"]);
   });
 
-  it("uses precomputed knowledge vectors when worker knowledge is enabled", async () => {
+  it("prepares precomputed vectors without initial worker hint retrieval", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
@@ -201,8 +188,13 @@ describe("createSolveSession", () => {
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.plan.workerTasks[0].knowledgeHints).toEqual([
-      expect.objectContaining({ id: "man:awk:-F", score: 1 })
+    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
+    expect(embedder.embed).not.toHaveBeenCalled();
+
+    const hints = await session.knowledgeRetriever.search({ query: "CSV" });
+
+    expect(hints).toEqual([
+      expect.objectContaining({ id: "man:awk:-F" })
     ]);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
@@ -257,7 +249,7 @@ describe("createSolveSession", () => {
     ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset");
   });
 
-  it("uses the packaged default JSONL cache for worker knowledge", async () => {
+  it("prepares the packaged default JSONL cache for on-demand worker knowledge", async () => {
     const vectorFile = await loadKnowledgeVectorFile(DEFAULT_KNOWLEDGE_VECTORS);
     const embedder = { embed: vi.fn(async () => vectorFile.items[0].vector) };
 
@@ -275,12 +267,17 @@ describe("createSolveSession", () => {
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.plan.workerTasks[0].knowledgeHints.length).toBeGreaterThan(0);
+    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
+    expect(embedder.embed).not.toHaveBeenCalled();
+
+    const hints = await session.knowledgeRetriever.search({ query: "CSV" });
+
+    expect(hints.length).toBeGreaterThan(0);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
   });
 
-  it("passes selected knowledge model to worker knowledge embedder", async () => {
+  it("passes selected knowledge model to the on-demand knowledge embedder", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
     await fs.writeFile(

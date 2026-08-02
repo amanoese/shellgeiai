@@ -224,8 +224,9 @@ describe("solveProblem", () => {
     expect(seenTasks[0].knowledgeHints).toBeUndefined();
   });
 
-  it("passes worker knowledge hints to the engine when enabled", async () => {
+  it("does not initially inject worker knowledge hints into the engine", async () => {
     const seenHints = [];
+    const search = vi.fn(async () => []);
     const result = await solveProblem({
       problemInput: "CSV の 3列目を合計する",
       engine: {
@@ -256,25 +257,15 @@ describe("solveProblem", () => {
       parallelism: 2,
       knowledgeMode: "worker",
       knowledgeRetriever: {
-        async retrieveForWorker() {
-          return [
-            {
-              id: "man:awk:-F",
-              kind: "option",
-              command: "awk",
-              option: "-F",
-              text: "awk -F: CSV 列処理",
-              source: "test",
-              score: 1
-            }
-          ];
-        }
+        search
       },
       plannerProvider: createTestPlannerProvider()
     });
 
     expect(result.finalCheck.passed).toBe(true);
-    expect(seenHints[0]).toEqual([expect.objectContaining({ id: "man:awk:-F" })]);
+    expect(seenHints.length).toBeGreaterThan(0);
+    expect(seenHints.every((hints) => hints === undefined)).toBe(true);
+    expect(search).not.toHaveBeenCalled();
   });
 
   it("keeps final formatted output while reporting session phases", async () => {
