@@ -78,6 +78,21 @@ describe("createSolveSession", () => {
     expect(session.knowledgeMode).toBe("off");
   });
 
+  it("normalizes programmatic on knowledge mode to all", async () => {
+    const session = await createSolveSession({
+      problemInput: "print 42",
+      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+      runner: { name: "mock" },
+      judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+      maxIterations: 1,
+      knowledgeMode: "on",
+      knowledgeRetriever: { retrieveForWorker: async () => [] },
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(session.knowledgeMode).toBe("all");
+  });
+
   it("adds knowledge hints to worker tasks when worker knowledge is enabled", async () => {
     const knowledgeRetriever = {
       async retrieveForWorker({ task }) {

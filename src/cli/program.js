@@ -13,6 +13,10 @@ import {
 import { runSolveCommand } from "./commands/solve.js";
 import { DEFAULT_KNOWLEDGE_DATASET } from "../knowledge/commands.js";
 import {
+  normalizeKnowledgeMode,
+  SUPPORTED_KNOWLEDGE_MODES
+} from "../knowledge/mode.js";
+import {
   DEFAULT_KNOWLEDGE_MODEL,
   KNOWLEDGE_MODEL_ENV
 } from "../knowledge/modelConfig.js";
@@ -22,7 +26,6 @@ const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
 const supportedProgressModes = new Set(["off", "plain", "jsonl", "bar"]);
 const supportedScoreModes = new Set(["simple", "artistry", "robustness"]);
-const supportedKnowledgeModes = new Set(["off", "worker"]);
 
 function parsePositiveInteger(value, message) {
   const parsed = Number(value);
@@ -55,6 +58,16 @@ function parseChoice(value, supported, message) {
     throw new InvalidArgumentError(message);
   }
   return value;
+}
+
+function parseKnowledgeMode(value) {
+  return normalizeKnowledgeMode(
+    parseChoice(
+      value,
+      SUPPORTED_KNOWLEDGE_MODES,
+      "Invalid --knowledge value. Use off, planner, worker, all, or on."
+    )
+  );
 }
 
 function knowledgeModelOption(flags = "--knowledge-model <model>") {
@@ -150,13 +163,8 @@ export function createCliProgram() {
     )
     .option(
       "--knowledge <mode>",
-      "knowledge mode",
-      (value) =>
-        parseChoice(
-          value,
-          supportedKnowledgeModes,
-          "Invalid --knowledge value. Use off or worker."
-        ),
+      "knowledge mode: off, planner, worker, all, or on",
+      parseKnowledgeMode,
       "off"
     )
     .addOption(knowledgeModelOption())

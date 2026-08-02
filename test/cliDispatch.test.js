@@ -83,6 +83,37 @@ describe("runCli", () => {
     );
   });
 
+  it.each(["planner", "worker", "all", "on"])(
+    "dispatches solve with %s knowledge mode",
+    async (knowledge) => {
+      await runCli(["solve", "print 42", "--knowledge", knowledge]);
+
+      expect(commands.runSolveCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ knowledge: knowledge === "on" ? "all" : knowledge })
+      );
+    }
+  );
+
+  it("reports the exact error for an invalid knowledge mode", async () => {
+    let errorOutput = "";
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((text) => {
+        errorOutput += text;
+        return true;
+      });
+
+    try {
+      await runCli(["solve", "print 42", "--knowledge", "invalid"]);
+    } finally {
+      stderrWrite.mockRestore();
+    }
+
+    expect(errorOutput).toContain(
+      "Invalid --knowledge value. Use off, planner, worker, all, or on."
+    );
+  });
+
   it("lets solve CLI knowledge model override the environment model", async () => {
     await withKnowledgeModelEnv("env-model", () =>
       runCli(["solve", "print 42", "--knowledge-model", "cli-model"])

@@ -39,6 +39,7 @@ describe("createCliProgram", () => {
     expect(solve.helpInformation()).toContain("--shellgei-score-mode");
     expect(solve.helpInformation()).toContain("--knowledge-model");
     expect(solve.helpInformation()).toContain("SHELLGEIAI_KNOWLEDGE_MODEL");
+    expect(solve.helpInformation()).toContain("off, planner, worker, all, or on");
   });
 
   it("summarizes knowledge subcommand options in knowledge help", () => {

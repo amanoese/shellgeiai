@@ -2,6 +2,7 @@ import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
 import { loadKnowledgeDatasetWithFingerprint } from "../../knowledge/dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
+import { normalizeKnowledgeMode } from "../../knowledge/mode.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
 import {
@@ -49,7 +50,7 @@ export async function createSolveSession(options) {
     parallelism,
     selectorName: options.selector ?? "first-pass-wins",
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
-    knowledgeMode: options.knowledgeMode ?? "off",
+    knowledgeMode: normalizeKnowledgeMode(options.knowledgeMode),
     knowledgeModel: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL,
     knowledgeDatasetPath: options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
     knowledgeVectorsPath:
