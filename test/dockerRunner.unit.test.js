@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const spawnMock = vi.fn();
 const commandExistsMock = vi.fn();
 
-vi.mock("node:child_process", () => ({
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal()),
   spawn: spawnMock
 }));
 
@@ -29,6 +30,12 @@ describe("DockerRunner", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("preserves child_process exports not replaced by the DockerRunner mock", async () => {
+    const { execFile } = await import("node:child_process");
+
+    expect(execFile).toBeTypeOf("function");
   });
 
   it("times out only after the child closes", async () => {
