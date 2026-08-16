@@ -9,6 +9,7 @@ import {
 } from "../../knowledge/mode.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
+import { createSearchKnowledgeTool } from "../../knowledge/searchKnowledgeTool.js";
 import {
   attachKnowledgeVectors,
   assertKnowledgeVectorFileCompatibility,
@@ -19,6 +20,7 @@ import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
 import { createExecutionPlan } from "../planning/planner.js";
+import { createToolRegistry } from "../../tools/toolRegistry.js";
 import { reportSessionPhase } from "./progress.js";
 
 export async function createSolveSession(options) {
@@ -73,6 +75,12 @@ export async function createSolveSession(options) {
     plannerProvider: options.plannerProvider
   };
 
+  if (usesWorkerKnowledge(session.knowledgeMode) && session.engine?.capabilities?.toolCalling !== true) {
+    throw new Error(
+      `Engine "${session.engine?.name ?? "unknown"}" does not support Tool Calling required by --knowledge ${session.knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`
+    );
+  }
+
   if (options.knowledgeRetriever) {
     session.knowledgeRetriever = options.knowledgeRetriever;
   } else if (
@@ -98,6 +106,13 @@ export async function createSolveSession(options) {
           model: session.knowledgeModel
         })
     });
+  }
+
+  if (usesWorkerKnowledge(session.knowledgeMode)) {
+    session.toolRegistry = createToolRegistry();
+    session.toolRegistry.register(
+      createSearchKnowledgeTool({ retriever: session.knowledgeRetriever })
+    );
   }
 
   session.plannerKnowledgeHints = usesPlannerKnowledge(session.knowledgeMode)

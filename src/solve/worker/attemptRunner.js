@@ -3,10 +3,12 @@ import { isSafeCommand } from "../../execution/safety/checker.js";
 import {
   buildJudgeInput,
   createAbortedAttempt,
+  createGenerationFailedAttempt,
   createJudgedAttempt,
   createUnsafeAttempt
 } from "./attemptFactory.js";
 import { getRemainingBudgetMs, getWorkerStopReason } from "./stopReason.js";
+import { generateWorkerCommand, WorkerToolLoopError } from "./toolLoop.js";
 
 function reportWorkerState(session, task, state) {
   reportSolveProgress(session, {
@@ -32,14 +34,46 @@ function reportAttemptFinished(session, task, iteration, command, passed, reason
 export async function runWorkerAttempt({ session, task, control, workerState, iteration, attempts }) {
   workerState.phase = "planning";
   reportWorkerState(session, task, "planning");
-  const engineResult = await session.engine.generateCommand({
+  const context = {
     problem: session.problem.problemText,
     attempts,
     workdir: session.workdir,
     workerId: task.workerId,
     strategy: task.strategy,
     workerTask: task
-  });
+  };
+  let generated;
+  try {
+    generated = await generateWorkerCommand({
+      engine: session.engine,
+      context,
+      toolRegistry: session.toolRegistry
+    });
+  } catch (error) {
+    if (!(error instanceof WorkerToolLoopError)) {
+      throw error;
+    }
+
+    const attempt = createGenerationFailedAttempt({
+      task,
+      iteration,
+      reason: error.message,
+      toolCalls: error.toolCalls
+    });
+    workerState.phase = "idle";
+    reportWorkerState(session, task, "idle");
+    reportAttemptFinished(session, task, iteration, "", false, error.message);
+    return {
+      attempt,
+      state: "idle",
+      stopReason: "",
+      explanation: "",
+      command: "",
+      passed: false,
+      reason: error.message
+    };
+  }
+  const { engineResult, toolCalls } = generated;
 
   reportSolveProgress(session, {
     type: "attempt-started",
@@ -57,7 +91,8 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       iteration,
       command: engineResult.command,
       explanation: engineResult.explanation,
-      reason: safety.reason
+      reason: safety.reason,
+      toolCalls
     });
     reportAttemptFinished(session, task, iteration, engineResult.command, false, safety.reason);
     return {
@@ -109,7 +144,8 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
         command: engineResult.command,
         runResult,
         explanation: engineResult.explanation,
-        reason: abortedReason
+        reason: abortedReason,
+        toolCalls
       });
       reportAttemptFinished(session, task, iteration, engineResult.command, false, abortedReason);
       return {
@@ -132,7 +168,8 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       command: engineResult.command,
       runResult,
       explanation: engineResult.explanation,
-      decision
+      decision,
+      toolCalls
     });
     reportAttemptFinished(session, task, iteration, engineResult.command, decision.passed, decision.reason);
     return {
@@ -152,7 +189,8 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       iteration,
       command: engineResult.command,
       explanation: engineResult.explanation,
-      reason: message
+      reason: message,
+      toolCalls
     });
     reportAttemptFinished(session, task, iteration, engineResult.command, false, message);
     return {

@@ -25,7 +25,7 @@ export function buildJudgeInput(command, runResult, problem) {
   };
 }
 
-export function createUnsafeAttempt({ task, iteration, command, explanation, reason }) {
+export function createUnsafeAttempt({ task, iteration, command, explanation, reason, toolCalls = [] }) {
   return {
     attemptId: createAttemptId(task, iteration),
     workerId: task.workerId,
@@ -33,11 +33,20 @@ export function createUnsafeAttempt({ task, iteration, command, explanation, rea
     passed: false,
     failureReason: reason,
     explanation,
-    score: createZeroScore()
+    score: createZeroScore(),
+    toolCalls
   };
 }
 
-export function createAbortedAttempt({ task, iteration, command, runResult, explanation, reason }) {
+export function createAbortedAttempt({
+  task,
+  iteration,
+  command,
+  runResult,
+  explanation,
+  reason,
+  toolCalls = []
+}) {
   return {
     attemptId: createAttemptId(task, iteration),
     workerId: task.workerId,
@@ -53,11 +62,20 @@ export function createAbortedAttempt({ task, iteration, command, runResult, expl
     durationMs: runResult.durationMs,
     runnerFailure: runResult.failure ?? null,
     runnerCleanup: runResult.cleanup ?? null,
-    score: createZeroScore()
+    score: createZeroScore(),
+    toolCalls
   };
 }
 
-export function createJudgedAttempt({ task, iteration, command, runResult, explanation, decision }) {
+export function createJudgedAttempt({
+  task,
+  iteration,
+  command,
+  runResult,
+  explanation,
+  decision,
+  toolCalls = []
+}) {
   return {
     attemptId: createAttemptId(task, iteration),
     workerId: task.workerId,
@@ -73,7 +91,31 @@ export function createJudgedAttempt({ task, iteration, command, runResult, expla
     durationMs: runResult.durationMs,
     score: decision.score,
     runnerFailure: runResult.failure ?? null,
-    runnerCleanup: runResult.cleanup ?? null
+    runnerCleanup: runResult.cleanup ?? null,
+    toolCalls
+  };
+}
+
+export function createGenerationFailedAttempt({ task, iteration, reason, toolCalls = [] }) {
+  return {
+    attemptId: createAttemptId(task, iteration),
+    workerId: task.workerId,
+    command: "",
+    stdout: "",
+    stderr: "",
+    exitCode: null,
+    timedOut: false,
+    aborted: false,
+    passed: false,
+    explanation: "",
+    failureReason: reason,
+    durationMs: 0,
+    runnerFailure: null,
+    runnerCleanup: null,
+    score: createZeroScore(),
+    state: "idle",
+    stopReason: "",
+    toolCalls
   };
 }
 

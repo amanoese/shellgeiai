@@ -78,19 +78,77 @@ describe("createSolveSession", () => {
     expect(session.knowledgeMode).toBe("off");
   });
 
-  it("normalizes programmatic on knowledge mode to all", async () => {
+  it("normalizes programmatic on knowledge mode to all before capability validation", async () => {
+    await expect(
+      createSolveSession({
+        problemInput: "print 42",
+        engine: { name: "legacy", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+        runner: { name: "mock" },
+        judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+        maxIterations: 1,
+        knowledgeMode: "on",
+        knowledgeRetriever: { retrieveForPlanner: async () => [] },
+        plannerProvider: createTestPlannerProvider()
+      })
+    ).rejects.toThrow(
+      'Engine "legacy" does not support Tool Calling required by --knowledge all. Use a Tool Calling capable engine, or select --knowledge planner/off.'
+    );
+  });
+
+  it.each([
+    { label: "false", capabilities: { toolCalling: false }, engineName: "legacy" },
+    { label: "missing", capabilities: undefined, engineName: undefined }
+  ])(
+    "rejects worker knowledge when Tool Calling capability is $label before retrieval and planning",
+    async ({ capabilities, engineName }) => {
+      const retrieveForPlanner = vi.fn(async () => []);
+      const plannerProvider = createTestPlannerProvider();
+      const buildPlan = vi.spyOn(plannerProvider, "buildPlan");
+
+      await expect(
+        createSolveSession({
+          problemInput: "print 42",
+          engine: {
+            ...(engineName ? { name: engineName } : {}),
+            ...(capabilities ? { capabilities } : {}),
+            generateCommand: async () => ({ command: "printf '42\\n'" })
+          },
+          runner: { name: "mock" },
+          judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+          maxIterations: 1,
+          knowledgeMode: "all",
+          knowledgeRetriever: { retrieveForPlanner, search: vi.fn() },
+          plannerProvider
+        })
+      ).rejects.toThrow(
+        `Engine "${engineName ?? "unknown"}" does not support Tool Calling required by --knowledge all. Use a Tool Calling capable engine, or select --knowledge planner/off.`
+      );
+      expect(retrieveForPlanner).not.toHaveBeenCalled();
+      expect(buildPlan).not.toHaveBeenCalled();
+    }
+  );
+
+  it("registers only search_knowledge for capable worker knowledge sessions", async () => {
+    const knowledgeRetriever = { search: vi.fn(async () => []) };
     const session = await createSolveSession({
       problemInput: "print 42",
-      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+      engine: {
+        name: "tool-engine",
+        capabilities: { toolCalling: true },
+        generateTurn: vi.fn()
+      },
       runner: { name: "mock" },
       judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
       maxIterations: 1,
-      knowledgeMode: "on",
-      knowledgeRetriever: { retrieveForPlanner: async () => [] },
+      knowledgeMode: "worker",
+      knowledgeRetriever,
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.knowledgeMode).toBe("all");
+    expect(session.toolRegistry.definitions().map((definition) => definition.name)).toEqual([
+      "search_knowledge"
+    ]);
+    expect(session.knowledgeRetriever).toBe(knowledgeRetriever);
   });
 
   it("retrieves planner knowledge before planning without injecting worker hints", async () => {
@@ -189,7 +247,11 @@ describe("createSolveSession", () => {
 
       const session = await createSolveSession({
         problemInput: "CSV の 3列目を合計する",
-        engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+        engine: {
+          name: "mock",
+          capabilities: { toolCalling: true },
+          generateTurn: async () => ({ type: "command", command: "printf '42\\n'" })
+        },
         runner: { name: "mock" },
         judge: {
           judge: async () => ({
