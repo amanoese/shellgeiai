@@ -2,6 +2,7 @@ import path from "node:path";
 
 export class MockEngine {
   name = "mock";
+  capabilities = Object.freeze({ toolCalling: false });
 
   async generateCommand(context) {
     const lowerProblem = context.problem.toLowerCase();
