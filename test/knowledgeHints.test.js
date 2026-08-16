@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_KNOWLEDGE_RESULT_FIELD_CHARS,
   MAX_KNOWLEDGE_RESULT_TEXT_CHARS,
   formatKnowledgeRecords
 } from "../src/knowledge/hints.js";
@@ -59,5 +60,26 @@ describe("knowledge hint formatting", () => {
 
     expect(boundary.text).toBe(boundaryText);
     expect(truncated.text).toBe(`${boundaryText}...`);
+  });
+
+  it("bounds every exposed string field", () => {
+    const oversized = "x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS + 1);
+    const [formatted] = formatKnowledgeRecords([
+      {
+        id: oversized,
+        command: oversized,
+        option: oversized,
+        text: oversized,
+        source: oversized
+      }
+    ]);
+
+    expect(formatted).toEqual({
+      id: `${"x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS)}...`,
+      command: `${"x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS)}...`,
+      option: `${"x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS)}...`,
+      text: `${"x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS)}...`,
+      source: `${"x".repeat(MAX_KNOWLEDGE_RESULT_FIELD_CHARS)}...`
+    });
   });
 });

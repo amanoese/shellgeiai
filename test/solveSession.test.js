@@ -149,6 +149,73 @@ describe("createSolveSession", () => {
     expect(session.plan.workerTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
   });
 
+  it.each([
+    { knowledgeMode: "planner", retrievesForPlanner: true },
+    { knowledgeMode: "worker", retrievesForPlanner: false },
+    { knowledgeMode: "all", retrievesForPlanner: true }
+  ])(
+    "automatically initializes and routes $knowledgeMode knowledge",
+    async ({ knowledgeMode, retrievesForPlanner }) => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-mode-"));
+      const datasetPath = path.join(dir, "knowledge.jsonl");
+      const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
+      const datasetContent = `${JSON.stringify({
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: "awk -F: CSV columns",
+        source: "test"
+      })}\n`;
+      await fs.writeFile(datasetPath, datasetContent, "utf8");
+      await fs.writeFile(
+        vectorsPath,
+        [
+          JSON.stringify({
+            type: "metadata",
+            version: 2,
+            itemCount: 1,
+            model: "test-ruri-model",
+            dataset: datasetPath,
+            datasetFingerprint: fingerprint(datasetContent),
+            createdAt: "2026-08-02T00:00:00.000Z"
+          }),
+          JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+      const embed = vi.fn(async () => [1, 0]);
+
+      const session = await createSolveSession({
+        problemInput: "CSV の 3列目を合計する",
+        engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
+        runner: { name: "mock" },
+        judge: {
+          judge: async () => ({
+            passed: true,
+            reason: "ok",
+            score: { value: 100, breakdown: {} }
+          })
+        },
+        maxIterations: 1,
+        parallelism: 2,
+        knowledgeMode,
+        knowledgeModel: "test-ruri-model",
+        knowledgeDatasetPath: datasetPath,
+        knowledgeVectorsPath: vectorsPath,
+        knowledgeEmbedder: { embed },
+        plannerProvider: createTestPlannerProvider()
+      });
+
+      expect(session.knowledgeRetriever).toBeDefined();
+      expect(session.plan.knowledgeMode).toBe(knowledgeMode);
+      expect(session.plannerKnowledgeHints.length > 0).toBe(retrievesForPlanner);
+      expect(embed).toHaveBeenCalledTimes(retrievesForPlanner ? 1 : 0);
+      expect(session.plan.workerTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
+    }
+  );
+
   it("reports initializing, problem-parsing, planning while building a session", async () => {
     const events = [];
 

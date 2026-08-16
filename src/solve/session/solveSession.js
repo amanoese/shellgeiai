@@ -91,14 +91,12 @@ export async function createSolveSession(options) {
     }
     const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
     session.knowledgeRetriever = createKnowledgeRetriever({
-      mode: session.knowledgeMode,
       records: recordsWithVectors,
       embedder:
         options.knowledgeEmbedder ??
         (options.knowledgeEmbedderFactory ?? createRuriEmbedder)({
           model: session.knowledgeModel
-        }),
-      topK: 10
+        })
     });
   }
 
