@@ -3,6 +3,335 @@ import { describe, expect, it, vi } from "vitest";
 import { OpenAIEngine, __testUtils } from "../src/providers/engines/openaiEngine.js";
 
 describe("OpenAIEngine", () => {
+  it("advertises tool calling support", () => {
+    const engine = new OpenAIEngine({ apiKey: "test-key" });
+
+    expect(engine.capabilities).toEqual({ toolCalling: true });
+  });
+
+  it("returns a common Tool call turn", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"CSV 3列目 合計"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+    const context = {
+      problem: "CSV の 3列目を合計する",
+      attempts: [],
+      workdir: "/tmp/workdir"
+    };
+    const tools = [
+      {
+        name: "search_knowledge",
+        description: "Search command knowledge.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"]
+        }
+      }
+    ];
+
+    await expect(engine.generateTurn({ context, tools })).resolves.toEqual({
+      type: "tool_calls",
+      calls: [
+        {
+          id: "call-1",
+          name: "search_knowledge",
+          arguments: { query: "CSV 3列目 合計" }
+        }
+      ],
+      continuation: { responseId: "resp-1" }
+    });
+  });
+
+  it("translates common Tool definitions for the initial OpenAI request", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"CSV 3列目 合計"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      model: "gpt-test",
+      client: { responses: { create } }
+    });
+    const context = {
+      problem: "CSV の 3列目を合計する",
+      attempts: [],
+      workdir: "/tmp/workdir"
+    };
+    const parameters = {
+      type: "object",
+      properties: { query: { type: "string" } },
+      required: ["query"]
+    };
+
+    await engine.generateTurn({
+      context,
+      tools: [
+        {
+          name: "search_knowledge",
+          description: "Search command knowledge.",
+          parameters
+        }
+      ]
+    });
+
+    expect(create.mock.calls[0][0].tools).toEqual([
+      {
+        type: "function",
+        name: "search_knowledge",
+        description: "Search command knowledge.",
+        parameters,
+        strict: true
+      }
+    ]);
+  });
+
+  it("returns a common command turn for a direct command response", async () => {
+    const create = vi.fn(async () => ({
+      output_text: '{"command":"awk -F, \'{s+=$3} END{print s}\'","explanation":"Sum column 3."}'
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).resolves.toEqual({
+      type: "command",
+      command: "awk -F, '{s+=$3} END{print s}'",
+      explanation: "Sum column 3."
+    });
+  });
+
+  it("continues from Tool results without resending the initial prompt", async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "resp-1",
+        output: [
+          {
+            type: "function_call",
+            call_id: "call-1",
+            name: "search_knowledge",
+            arguments: '{"query":"CSV 3列目 合計"}'
+          }
+        ]
+      })
+      .mockResolvedValueOnce({
+        id: "resp-2",
+        output_text:
+          '{"command":"awk -F, \'{s+=$3} END{print s}\'","explanation":"Sum column 3."}'
+      });
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      model: "gpt-test",
+      client: { responses: { create } }
+    });
+    const context = {
+      problem: "CSV の 3列目を合計する",
+      attempts: [],
+      workdir: "/tmp/workdir"
+    };
+    const tools = [
+      {
+        name: "search_knowledge",
+        description: "Search command knowledge.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"]
+        }
+      }
+    ];
+
+    await engine.generateTurn({ context, tools });
+    const turn = await engine.generateTurn({
+      context,
+      tools,
+      continuation: { responseId: "resp-1" },
+      toolResults: [{ callId: "call-1", result: { ok: true, value: { records: [] } } }]
+    });
+
+    expect(turn).toEqual({
+      type: "command",
+      command: "awk -F, '{s+=$3} END{print s}'",
+      explanation: "Sum column 3."
+    });
+    expect(create.mock.calls[1][0]).toMatchObject({
+      model: "gpt-test",
+      previous_response_id: "resp-1",
+      input: [
+        {
+          type: "function_call_output",
+          call_id: "call-1",
+          output: JSON.stringify({ ok: true, value: { records: [] } })
+        }
+      ]
+    });
+    expect(create.mock.calls[1][0].input).toHaveLength(1);
+  });
+
+  it("preserves the order of multiple Tool calls", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"CSV"}'
+        },
+        {
+          type: "function_call",
+          call_id: "call-2",
+          name: "search_knowledge",
+          arguments: '{"query":"awk sum column"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).resolves.toEqual({
+      type: "tool_calls",
+      calls: [
+        { id: "call-1", name: "search_knowledge", arguments: { query: "CSV" } },
+        {
+          id: "call-2",
+          name: "search_knowledge",
+          arguments: { query: "awk sum column" }
+        }
+      ],
+      continuation: { responseId: "resp-1" }
+    });
+  });
+
+  it("throws a stable provider-contract error for malformed Tool arguments", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).rejects.toThrow("The OpenAI engine returned invalid Tool call arguments.");
+  });
+
+  it("rejects Tool arguments that are not an object", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: "[]"
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).rejects.toThrow("The OpenAI engine returned invalid Tool call arguments.");
+  });
+
+  it("rejects responses containing both a command and Tool calls", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      output_text: '{"command":"printf ok","explanation":"Print ok."}',
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"printf"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "print ok",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).rejects.toThrow("The OpenAI engine returned both a command and Tool calls.");
+  });
+
   it("builds the response request and parses JSON output", async () => {
     const create = vi.fn(async () => ({
       output_text: '{"command":"printf \\"123\\\\n\\"","explanation":"Print a known value."}'
@@ -45,6 +374,7 @@ describe("OpenAIEngine", () => {
     });
     expect(create).toHaveBeenCalledTimes(1);
     expect(create.mock.calls[0][0]).toMatchObject({ model: "gpt-test" });
+    expect(create.mock.calls[0][0]).not.toHaveProperty("tools");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("worker-2");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("wrong output");
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("awk-centric");
