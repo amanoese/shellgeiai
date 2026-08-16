@@ -167,17 +167,47 @@
  */
 
 /**
+ * Tool implementation registered with the provider-neutral ToolRegistry.
+ * @typedef {Object} ToolRegistration
+ * @property {string} name
+ * @property {string} description
+ * @property {import("zod").ZodType} inputSchema
+ * @property {(input: Object) => unknown | Promise<unknown>} execute
+ */
+
+/**
  * Provider-neutral Tool execution boundary owned by solve orchestration.
  * @typedef {Object} ToolRegistry
+ * @property {(tool: ToolRegistration) => void} register
  * @property {() => ToolDefinition[]} definitions
  * @property {(call: ToolExecutionCall) => Promise<{ok: boolean, value?: unknown, error?: {code: string, message: string}, validatedArguments: Object}>} execute
  */
 
 /**
- * Knowledge fields exposed on a solve session before and during planning/execution.
+ * @typedef {Object} KnowledgeRetriever
+ * @property {(input: {problem: string, expectedOutput?: string}) => Promise<PlannerKnowledgeHint[]>} [retrieveForPlanner]
+ * @property {(input: {query: string}) => Promise<PlannerKnowledgeHint[]>} [search]
+ */
+
+/**
+ * @typedef {Object} KnowledgeEmbedder
+ * @property {(text: string) => Promise<number[]>} embed
+ */
+
+/**
+ * @typedef {(options: {model: string}) => KnowledgeEmbedder} KnowledgeEmbedderFactory
+ */
+
+/**
+ * Session fields consumed by Planner providers and knowledge-enabled Worker orchestration.
  * @typedef {Object} SolveSession
+ * @property {ProblemSpec} problem
+ * @property {"single" | "parallel"} mode
+ * @property {number} parallelism
+ * @property {number} maxIterations
  * @property {KnowledgeMode} knowledgeMode
  * @property {PlannerKnowledgeHint[]} plannerKnowledgeHints
+ * @property {KnowledgeRetriever} [knowledgeRetriever]
  * @property {ToolRegistry} [toolRegistry]
  * @property {ExecutionPlan} [plan]
  */
@@ -208,6 +238,9 @@
  * @property {string} [knowledgeModel]
  * @property {string} [knowledgeDatasetPath]
  * @property {string} [knowledgeVectorsPath]
+ * @property {KnowledgeRetriever} [knowledgeRetriever]
+ * @property {KnowledgeEmbedder} [knowledgeEmbedder]
+ * @property {KnowledgeEmbedderFactory} [knowledgeEmbedderFactory]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: SolveSession): Promise<unknown>}} [plannerProvider]
  */
