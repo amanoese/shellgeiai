@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { OpenAIEngine, __testUtils } from "../src/providers/engines/openaiEngine.js";
+import { createToolRegistry } from "../src/tools/toolRegistry.js";
 
 describe("OpenAIEngine", () => {
   it("advertises tool calling support", () => {
@@ -142,6 +144,37 @@ describe("OpenAIEngine", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["null", null],
+    ["an array", []]
+  ])("rejects %s as a root Tool schema", async (_label, parameters) => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "print ok",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: [
+          {
+            name: "invalid_tool",
+            description: "Invalid schema.",
+            parameters
+          }
+        ]
+      })
+    ).rejects.toThrow(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("rejects nested object schemas incompatible with OpenAI strict mode", async () => {
     const create = vi.fn();
     const engine = new OpenAIEngine({
@@ -174,6 +207,44 @@ describe("OpenAIEngine", () => {
             }
           }
         ]
+      })
+    ).rejects.toThrow(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-strict recursive schemas stored in Registry-generated definitions", async () => {
+    const sharedNode = z
+      .object({
+        value: z.string(),
+        child: z.lazy(() => sharedNode).optional()
+      })
+      .strict()
+      .meta({ id: "SharedNode" });
+    const registry = createToolRegistry();
+    registry.register({
+      name: "inspect_tree",
+      description: "Inspect a recursive tree.",
+      inputSchema: z.object({ node: z.lazy(() => sharedNode) }).strict(),
+      execute: async () => ({})
+    });
+    const tools = registry.definitions();
+    const create = vi.fn();
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    expect(tools[0].parameters.$defs.SharedNode.required).toEqual(["value"]);
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "Inspect a recursive tree",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools
       })
     ).rejects.toThrow(
       "The OpenAI engine received a Tool schema incompatible with strict mode."

@@ -14,6 +14,8 @@ function buildSystemPrompt() {
 
 const MAX_KNOWLEDGE_HINTS = 10;
 const MAX_KNOWLEDGE_HINT_TEXT_CHARS = 300;
+const STRICT_TOOL_SCHEMA_ERROR =
+  "The OpenAI engine received a Tool schema incompatible with strict mode.";
 
 function truncateHintText(text) {
   const value = typeof text === "string" ? text : "";
@@ -175,53 +177,69 @@ function isObjectSchema(schema) {
   );
 }
 
-function assertOpenAIStrictNestedSchema(schema) {
-  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    return;
+function assertOpenAIStrictSchema(rootSchema) {
+  const visited = new Set();
+
+  function visit(schema, isRoot = false) {
+    if (!schema || typeof schema !== "object") {
+      if (isRoot) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+      return;
+    }
+    if (visited.has(schema)) {
+      return;
+    }
+    visited.add(schema);
+    if (Array.isArray(schema)) {
+      if (isRoot) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+      for (const item of schema) {
+        visit(item);
+      }
+      return;
+    }
+
+    if (isRoot || isObjectSchema(schema) || Object.hasOwn(schema, "properties")) {
+      const properties = schema.properties;
+      const required = schema.required;
+      const propertyNames =
+        properties && typeof properties === "object" && !Array.isArray(properties)
+          ? Object.keys(properties)
+          : null;
+      const requiredNames = Array.isArray(required) ? new Set(required) : null;
+
+      if (
+        (isRoot ? schema.type !== "object" : !isObjectSchema(schema)) ||
+        propertyNames === null ||
+        schema.additionalProperties !== false ||
+        requiredNames === null ||
+        requiredNames.size !== propertyNames.length ||
+        !propertyNames.every((name) => requiredNames.has(name))
+      ) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+    }
+
+    for (const schemaMap of [schema.properties, schema.$defs, schema.definitions]) {
+      if (schemaMap && typeof schemaMap === "object" && !Array.isArray(schemaMap)) {
+        for (const childSchema of Object.values(schemaMap)) {
+          visit(childSchema);
+        }
+      }
+    }
+    for (const childSchema of [
+      schema.items,
+      schema.anyOf,
+      schema.oneOf,
+      schema.allOf
+    ]) {
+      visit(childSchema);
+    }
   }
 
-  if (isObjectSchema(schema) || Object.hasOwn(schema, "properties")) {
-    assertOpenAIStrictObjectSchema(schema, false);
-  }
-
-  const nestedSchemas = [
-    schema.items,
-    ...(schema.anyOf ?? []),
-    ...(schema.oneOf ?? [])
-  ];
-  for (const nestedSchema of nestedSchemas.flat()) {
-    assertOpenAIStrictNestedSchema(nestedSchema);
-  }
-}
-
-function assertOpenAIStrictObjectSchema(schema, isRoot = true) {
-  const properties = schema?.properties;
-  const required = schema?.required;
-  const propertyNames =
-    properties && typeof properties === "object" && !Array.isArray(properties)
-      ? Object.keys(properties)
-      : null;
-  const requiredNames = Array.isArray(required) ? new Set(required) : null;
-
-  if (
-    !schema ||
-    typeof schema !== "object" ||
-    Array.isArray(schema) ||
-    (isRoot ? schema.type !== "object" : !isObjectSchema(schema)) ||
-    propertyNames === null ||
-    schema.additionalProperties !== false ||
-    requiredNames === null ||
-    requiredNames.size !== propertyNames.length ||
-    !propertyNames.every((name) => requiredNames.has(name))
-  ) {
-    throw new Error(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
-    );
-  }
-
-  for (const propertySchema of Object.values(properties)) {
-    assertOpenAIStrictNestedSchema(propertySchema);
-  }
+  visit(rootSchema, true);
 }
 
 function isNonJsonResponseError(error) {
@@ -339,7 +357,7 @@ export class OpenAIEngine {
 
   async generateTurn({ context, tools, continuation, toolResults = [] }) {
     const openaiTools = tools.map(({ name, description, parameters }) => {
-      assertOpenAIStrictObjectSchema(parameters);
+      assertOpenAIStrictSchema(parameters);
       return {
         type: "function",
         name,
