@@ -86,33 +86,67 @@ describe("createSolveSession", () => {
       judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
       maxIterations: 1,
       knowledgeMode: "on",
-      knowledgeRetriever: { retrieveForWorker: async () => [] },
+      knowledgeRetriever: { retrieveForPlanner: async () => [] },
       plannerProvider: createTestPlannerProvider()
     });
 
     expect(session.knowledgeMode).toBe("all");
   });
 
-  it("does not search or inject hints while initializing worker knowledge", async () => {
+  it("retrieves planner knowledge before planning without injecting worker hints", async () => {
+    const events = [];
+    const plannerKnowledgeHints = [
+      {
+        id: "man:awk:-F",
+        command: "awk",
+        option: "-F",
+        text: "Split input fields.",
+        source: "test"
+      }
+    ];
     const knowledgeRetriever = {
-      search: vi.fn(async () => [])
+      retrieveForPlanner: vi.fn(async (input) => {
+        events.push({ type: "retrieve", input });
+        return plannerKnowledgeHints;
+      })
+    };
+    const basePlannerProvider = createTestPlannerProvider();
+    const plannerProvider = {
+      ...basePlannerProvider,
+      buildPlan: vi.fn(async (plannerSession) => {
+        events.push({
+          type: "plan",
+          plannerKnowledgeHints: plannerSession.plannerKnowledgeHints
+        });
+        return basePlannerProvider.buildPlan(plannerSession);
+      })
     };
 
     const session = await createSolveSession({
-      problemInput: "CSV の 3列目を合計する",
+      problemInput: "expected_output:\n42\n---\nCSV の 3列目を合計する",
       engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
       runner: { name: "mock" },
       judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
       maxIterations: 1,
       parallelism: 2,
-      knowledgeMode: "worker",
+      knowledgeMode: "planner",
       knowledgeRetriever,
-      plannerProvider: createTestPlannerProvider()
+      plannerProvider
     });
 
+    expect(events).toEqual([
+      {
+        type: "retrieve",
+        input: {
+          problem: "CSV の 3列目を合計する",
+          expectedOutput: "42"
+        }
+      },
+      { type: "plan", plannerKnowledgeHints }
+    ]);
+    expect(session.plannerKnowledgeHints).toEqual(plannerKnowledgeHints);
     expect(session.plan.workerTasks).toHaveLength(2);
-    expect(knowledgeRetriever.search).not.toHaveBeenCalled();
-    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
+    expect(session.plan.workerTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
   });
 
   it("reports initializing, problem-parsing, planning while building a session", async () => {
@@ -133,7 +167,7 @@ describe("createSolveSession", () => {
   ).toEqual(["initializing", "problem-parsing", "planning"]);
   });
 
-  it("prepares precomputed vectors without initial worker hint retrieval", async () => {
+  it("retrieves planner hints from precomputed vectors without recomputing document embeddings", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
     const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
@@ -181,19 +215,14 @@ describe("createSolveSession", () => {
       },
       maxIterations: 1,
       parallelism: 2,
-      knowledgeMode: "worker",
+      knowledgeMode: "planner",
       knowledgeDatasetPath: datasetPath,
       knowledgeVectorsPath: vectorsPath,
       knowledgeEmbedder: embedder,
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
-    expect(embedder.embed).not.toHaveBeenCalled();
-
-    const hints = await session.knowledgeRetriever.search({ query: "CSV" });
-
-    expect(hints).toEqual([
+    expect(session.plannerKnowledgeHints).toEqual([
       expect.objectContaining({ id: "man:awk:-F" })
     ]);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
@@ -239,7 +268,7 @@ describe("createSolveSession", () => {
         },
         maxIterations: 1,
         parallelism: 2,
-        knowledgeMode: "worker",
+        knowledgeMode: "planner",
         knowledgeModel: "active-model",
         knowledgeDatasetPath: datasetPath,
         knowledgeVectorsPath: vectorsPath,
@@ -249,7 +278,7 @@ describe("createSolveSession", () => {
     ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset");
   });
 
-  it("prepares the packaged default JSONL cache for on-demand worker knowledge", async () => {
+  it("retrieves planner hints from the packaged cache without recomputing document embeddings", async () => {
     const vectorFile = await loadKnowledgeVectorFile(DEFAULT_KNOWLEDGE_VECTORS);
     const embedder = { embed: vi.fn(async () => vectorFile.items[0].vector) };
 
@@ -262,42 +291,50 @@ describe("createSolveSession", () => {
       },
       maxIterations: 1,
       parallelism: 2,
-      knowledgeMode: "worker",
+      knowledgeMode: "planner",
       knowledgeEmbedder: embedder,
       plannerProvider: createTestPlannerProvider()
     });
 
-    expect(session.plan.workerTasks[0]).not.toHaveProperty("knowledgeHints");
-    expect(embedder.embed).not.toHaveBeenCalled();
-
-    const hints = await session.knowledgeRetriever.search({ query: "CSV" });
-
-    expect(hints.length).toBeGreaterThan(0);
+    expect(session.plannerKnowledgeHints.length).toBeGreaterThan(0);
     expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
     expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
   });
 
-  it("passes selected knowledge model to the on-demand knowledge embedder", async () => {
+  it("passes the selected knowledge model while retrieving cached planner hints", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
     const datasetPath = path.join(dir, "knowledge.jsonl");
+    const datasetContent = `${JSON.stringify({
+      id: "man:awk:-F",
+      kind: "option",
+      command: "awk",
+      option: "-F",
+      text: "awk -F: CSV columns",
+      source: "test"
+    })}\n`;
+    await fs.writeFile(datasetPath, datasetContent, "utf8");
+    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
     await fs.writeFile(
-      datasetPath,
-      `${JSON.stringify({
-        id: "man:awk:-F",
-        kind: "option",
-        command: "awk",
-        option: "-F",
-        text: "awk -F: CSV columns",
-        source: "test"
-      })}\n`,
+      vectorsPath,
+      [
+        JSON.stringify({
+          type: "metadata",
+          version: 2,
+          itemCount: 1,
+          model: "test-ruri-model",
+          dataset: datasetPath,
+          datasetFingerprint: fingerprint(datasetContent),
+          createdAt: "2026-08-02T00:00:00.000Z"
+        }),
+        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
+        ""
+      ].join("\n"),
       "utf8"
     );
+    const embed = vi.fn(async () => [1, 0]);
+    const createKnowledgeEmbedder = vi.fn(() => ({ embed }));
 
-    const createKnowledgeEmbedder = vi.fn(() => ({
-      embed: vi.fn(async () => [1, 0])
-    }));
-
-    await createSolveSession({
+    const session = await createSolveSession({
       problemInput: "print 42",
       engine: {
         name: "mock",
@@ -313,10 +350,10 @@ describe("createSolveSession", () => {
       },
       maxIterations: 1,
       parallelism: 2,
-      knowledgeMode: "worker",
+      knowledgeMode: "planner",
       knowledgeModel: "test-ruri-model",
       knowledgeDatasetPath: datasetPath,
-      knowledgeVectorsPath: path.join(dir, "missing.vectors.json"),
+      knowledgeVectorsPath: vectorsPath,
       knowledgeEmbedderFactory: createKnowledgeEmbedder,
       plannerProvider: createTestPlannerProvider()
     });
@@ -324,5 +361,10 @@ describe("createSolveSession", () => {
     expect(createKnowledgeEmbedder).toHaveBeenCalledWith({
       model: "test-ruri-model"
     });
+    expect(session.plannerKnowledgeHints).toEqual([
+      expect.objectContaining({ id: "man:awk:-F" })
+    ]);
+    expect(embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
+    expect(embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
   });
 });

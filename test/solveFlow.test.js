@@ -221,51 +221,8 @@ describe("solveProblem", () => {
     });
 
     expect(result.finalCheck.passed).toBe(true);
-    expect(seenTasks[0].knowledgeHints).toBeUndefined();
-  });
-
-  it("does not initially inject worker knowledge hints into the engine", async () => {
-    const seenHints = [];
-    const search = vi.fn(async () => []);
-    const result = await solveProblem({
-      problemInput: "CSV の 3列目を合計する",
-      engine: {
-        name: "mock",
-        generateCommand: async ({ workerTask }) => {
-          seenHints.push(workerTask.knowledgeHints);
-          return { command: "printf '42\\n'", explanation: "ok" };
-        }
-      },
-      runner: {
-        name: "mock",
-        run: async () => ({
-          stdout: "42\n",
-          stderr: "",
-          exitCode: 0,
-          timedOut: false,
-          durationMs: 1
-        })
-      },
-      judge: {
-        judge: async () => ({
-          passed: true,
-          reason: "ok",
-          score: { value: 100, breakdown: {} }
-        })
-      },
-      maxIterations: 1,
-      parallelism: 2,
-      knowledgeMode: "worker",
-      knowledgeRetriever: {
-        search
-      },
-      plannerProvider: createTestPlannerProvider()
-    });
-
-    expect(result.finalCheck.passed).toBe(true);
-    expect(seenHints.length).toBeGreaterThan(0);
-    expect(seenHints.every((hints) => hints === undefined)).toBe(true);
-    expect(search).not.toHaveBeenCalled();
+    expect(seenTasks.length).toBeGreaterThan(0);
+    expect(seenTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
   });
 
   it("keeps final formatted output while reporting session phases", async () => {

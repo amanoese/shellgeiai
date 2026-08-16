@@ -2,7 +2,11 @@ import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
 import { loadKnowledgeDatasetWithFingerprint } from "../../knowledge/dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
-import { normalizeKnowledgeMode } from "../../knowledge/mode.js";
+import {
+  normalizeKnowledgeMode,
+  usesPlannerKnowledge,
+  usesWorkerKnowledge
+} from "../../knowledge/mode.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
 import {
@@ -71,7 +75,10 @@ export async function createSolveSession(options) {
 
   if (options.knowledgeRetriever) {
     session.knowledgeRetriever = options.knowledgeRetriever;
-  } else if (session.knowledgeMode === "worker") {
+  } else if (
+    usesPlannerKnowledge(session.knowledgeMode) ||
+    usesWorkerKnowledge(session.knowledgeMode)
+  ) {
     const { records, fingerprint: datasetFingerprint } =
       await loadKnowledgeDatasetWithFingerprint(session.knowledgeDatasetPath);
     const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
@@ -94,6 +101,13 @@ export async function createSolveSession(options) {
       topK: 10
     });
   }
+
+  session.plannerKnowledgeHints = usesPlannerKnowledge(session.knowledgeMode)
+    ? await session.knowledgeRetriever.retrieveForPlanner({
+        problem: session.problem.problemText,
+        expectedOutput: session.problem.expectedOutput
+      })
+    : [];
 
   reportSessionPhase(session, "planning", "Building execution plan.");
   const plan = {
