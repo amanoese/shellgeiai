@@ -252,6 +252,50 @@ describe("OpenAIEngine", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("rejects non-strict tuple items stored in Registry-generated prefixItems", async () => {
+    const registry = createToolRegistry();
+    registry.register({
+      name: "inspect_tuple",
+      description: "Inspect tuple entries.",
+      inputSchema: z
+        .object({
+          entries: z.tuple([
+            z
+              .object({
+                value: z.string(),
+                optional: z.string().optional()
+              })
+              .strict()
+          ])
+        })
+        .strict(),
+      execute: async () => ({})
+    });
+    const tools = registry.definitions();
+    const create = vi.fn();
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    expect(tools[0].parameters.properties.entries.prefixItems[0].required).toEqual([
+      "value"
+    ]);
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "Inspect tuple entries",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools
+      })
+    ).rejects.toThrow(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("returns a common command turn for a direct command response", async () => {
     const create = vi.fn(async () => ({
       output_text: '{"command":"awk -F, \'{s+=$3} END{print s}\'","explanation":"Sum column 3."}'

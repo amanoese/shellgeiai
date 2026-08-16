@@ -194,7 +194,13 @@ function assertOpenAIStrictSchema(rootSchema) {
       }
     }
 
-    for (const schemaMap of [schema.properties, schema.$defs, schema.definitions]) {
+    for (const schemaMap of [
+      schema.properties,
+      schema.$defs,
+      schema.definitions,
+      schema.dependentSchemas,
+      schema.patternProperties
+    ]) {
       if (schemaMap && typeof schemaMap === "object" && !Array.isArray(schemaMap)) {
         for (const childSchema of Object.values(schemaMap)) {
           visit(childSchema);
@@ -203,6 +209,13 @@ function assertOpenAIStrictSchema(rootSchema) {
     }
     for (const childSchema of [
       schema.items,
+      schema.prefixItems,
+      schema.contains,
+      schema.not,
+      schema.if,
+      schema.then,
+      schema.else,
+      schema.propertyNames,
       schema.anyOf,
       schema.oneOf,
       schema.allOf
