@@ -86,6 +86,8 @@ Worker への古い無条件の knowledge hint 注入は廃止しました。`wo
 
 現在、native Tool Calling に対応する engine は `OpenAIEngine`（`--engine openai`）だけです。Tool Calling 非対応 engine でも `off` / `planner` は利用できますが、`worker` / `all` は Planner 実行前に説明的なエラーで停止します。
 
+再現性のため、session log の Planner prompt / raw response metadata には bounded な Planner reference text が含まれる場合があります。一方、Worker Tool result の record 本文や完全な result value、provider call ID、continuation は保存せず、検証済み引数、成否、件数、record ID だけを attempt summary に残します。
+
 ```bash
 shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge off
 shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge planner

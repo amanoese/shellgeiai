@@ -97,7 +97,12 @@ describe("createSolveSession", () => {
 
   it.each([
     { label: "false", capabilities: { toolCalling: false }, engineName: "legacy" },
-    { label: "missing", capabilities: undefined, engineName: undefined }
+    { label: "missing", capabilities: undefined, engineName: undefined },
+    {
+      label: "true without generateTurn",
+      capabilities: { toolCalling: true },
+      engineName: "incomplete-tool-engine"
+    }
   ])(
     "rejects worker knowledge when Tool Calling capability is $label before retrieval and planning",
     async ({ capabilities, engineName }) => {

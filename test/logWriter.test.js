@@ -161,6 +161,7 @@ describe("writeSolveSessionLog", () => {
     tempDirs.push(logsDir);
     const session = buildSolveSession();
     const workerRetrievedRecordText = "SECRET WORKER TOOL RECORD TEXT";
+    const plannerReferenceText = "BOUNDED PLANNER REFERENCE TEXT";
     session.knowledgeMode = "all";
     session.plan = {
       ...session.plan,
@@ -170,7 +171,7 @@ describe("writeSolveSessionLog", () => {
         attemptedProvider: "llm",
         fallbackReason: null,
         promptVersion: "2026-08-02-llm-planner-v2",
-        prompt: "Planner used bounded, untrusted knowledge references."
+        prompt: `Planner used bounded, untrusted knowledge references: ${plannerReferenceText}`
       },
       workerTasks: [
         {
@@ -252,7 +253,15 @@ describe("writeSolveSessionLog", () => {
         }
       ],
       candidates: [],
-      workerSummaries: [],
+      workerSummaries: [
+        {
+          workerId: "worker-1",
+          attemptCount: 1,
+          passed: true,
+          state: "completed",
+          reason: "ok"
+        }
+      ],
       finalCheck: { passed: true, reason: "ok" }
     });
 
@@ -269,8 +278,11 @@ describe("writeSolveSessionLog", () => {
     expect(logContent.plan.workerTasks[0].assignedVariant.toolSuggestions).toEqual([
       expect.objectContaining({ suggestedTools: ["awk"] })
     ]);
-    expect(logContent.attempts[0].toolCalls).toEqual(toolCalls);
-    expect(toolCalls).toEqual([
+    expect(logContent.planner.prompt).toContain(plannerReferenceText);
+    expect(logContent.workerSummaries).toEqual([
+      expect.objectContaining({ workerId: "worker-1", attemptCount: 1 })
+    ]);
+    expect(logContent.attempts[0].toolCalls).toEqual([
       {
         name: "search_knowledge",
         arguments: { query: "CSV third field" },
@@ -279,8 +291,17 @@ describe("writeSolveSessionLog", () => {
         recordIds: ["man:awk:-F"]
       }
     ]);
-    expect(serializedLog).not.toContain(workerRetrievedRecordText);
-    expect(serializedLog).not.toContain("provider-call-1");
-    expect(serializedLog).not.toContain("provider-response-1");
+    const serializedWorkerLog = JSON.stringify({
+      attempts: logContent.attempts,
+      workerSummaries: logContent.workerSummaries
+    });
+    expect(serializedWorkerLog).not.toContain(workerRetrievedRecordText);
+    expect(serializedWorkerLog).not.toContain("provider-call-1");
+    expect(serializedWorkerLog).not.toContain("provider-response-1");
+    expect(serializedWorkerLog).not.toContain('"text"');
+    expect(serializedWorkerLog).not.toContain('"value"');
+    expect(serializedWorkerLog).not.toContain('"result"');
+    expect(serializedWorkerLog).not.toContain('"continuation"');
+    expect(serializedWorkerLog).not.toContain('"toolResults"');
   });
 });

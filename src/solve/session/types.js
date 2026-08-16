@@ -183,6 +183,9 @@
  */
 
 /**
+ * Engines declaring `capabilities.toolCalling: true` must implement `generateTurn`.
+ * Engines without Tool Calling support may omit both the capability and method.
+ *
  * @typedef {Object} SolveProblemOptions
  * @property {string} problemInput
  * @property {{name: string, capabilities?: {toolCalling: boolean}, generateCommand(context: SolveContext): Promise<EngineResult>, generateTurn?(input: {context: SolveContext, tools: ToolDefinition[], continuation?: EngineContinuation, toolResults?: EngineToolResult[]}): Promise<CommandTurn | ToolCallsTurn>}} engine

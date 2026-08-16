@@ -1,10 +1,15 @@
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+const execFileAsync = promisify(execFile);
 
 describe("npm publish metadata", () => {
   it("declares npm metadata for public release", () => {
@@ -130,25 +135,48 @@ describe("npm publish metadata", () => {
   });
 
   it("includes Planner and Worker knowledge runtime modules in the packed files", async () => {
-    const modules = [
+    const modulePaths = [
       "../src/knowledge/mode.js",
       "../src/knowledge/hints.js",
       "../src/tools/toolRegistry.js",
       "../src/knowledge/searchKnowledgeTool.js",
       "../src/solve/worker/toolLoop.js"
     ];
+    const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
 
-    for (const modulePath of modules) {
-      expect(existsSync(path.resolve(repoRoot, modulePath.replace(/^\.\.\//, "")))).toBe(true);
+    for (const modulePath of packedModulePaths) {
+      expect(existsSync(path.resolve(repoRoot, modulePath))).toBe(true);
     }
-    await Promise.all(modules.map((modulePath) => import(modulePath)));
+    await Promise.all(modulePaths.map((modulePath) => import(modulePath)));
 
-    expect(packageJson.files).toContain("src");
-    for (const modulePath of modules) {
-      const packedPath = modulePath.replace(/^\.\.\//, "");
-      expect(packageJson.files).not.toContain(`!${packedPath}`);
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-package-publish-"));
+    const cacheDir = path.join(tempDir, "npm-cache");
+    const packDir = path.join(tempDir, "pack-output");
+
+    try {
+      await mkdir(cacheDir);
+      await mkdir(packDir);
+      const { stdout } = await execFileAsync(
+        "npm",
+        ["pack", "--dry-run", "--json", "--pack-destination", packDir],
+        {
+          cwd: repoRoot,
+          env: { ...process.env, npm_config_cache: cacheDir }
+        }
+      );
+      const manifest = JSON.parse(stdout);
+      expect(manifest).toHaveLength(1);
+      const packedPaths = manifest[0].files.map((file) => file.path);
+
+      for (const modulePath of packedModulePaths) {
+        expect(packedPaths).toContain(modulePath);
+      }
+      expect(packedPaths).not.toContain("data/knowledge/man.jsonl");
+      expect(packedPaths).not.toContain("data/knowledge/man.vectors.jsonl");
+      expect(packedPaths).not.toContain("data/knowledge/man.vectors.json");
+      expect((await readdir(packDir)).filter((name) => name.endsWith(".tgz"))).toEqual([]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
     }
-    expect(packageJson.files).toContain("!data/knowledge/man.jsonl");
-    expect(packageJson.files).toContain("!data/knowledge/man.vectors.jsonl");
   });
 });

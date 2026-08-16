@@ -223,6 +223,8 @@ session log には次を残します。
 
 Tool Calling は attempt ごとに Tool 名、検証済み引数、成否、件数、record ID だけを bounded summary として残します。Worker Tool result 内の record 本文、完全な Tool result、provider の response ID、continuation はログへ保存しません。
 
+Planner prompt と raw response metadata は再現性のため既存 schema のまま保存し、bounded な Planner reference text を含む場合があります。この Planner metadata と、本文を保存しない Worker Tool summary の privacy contract は区別します。
+
 成功候補だけでなく、失敗した探索も後から分析できる形にします。
 
 ## 今後の移行方針

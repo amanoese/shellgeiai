@@ -75,7 +75,11 @@ export async function createSolveSession(options) {
     plannerProvider: options.plannerProvider
   };
 
-  if (usesWorkerKnowledge(session.knowledgeMode) && session.engine?.capabilities?.toolCalling !== true) {
+  if (
+    usesWorkerKnowledge(session.knowledgeMode) &&
+    (session.engine?.capabilities?.toolCalling !== true ||
+      typeof session.engine?.generateTurn !== "function")
+  ) {
     throw new Error(
       `Engine "${session.engine?.name ?? "unknown"}" does not support Tool Calling required by --knowledge ${session.knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`
     );
