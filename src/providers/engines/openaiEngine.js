@@ -12,33 +12,8 @@ function buildSystemPrompt() {
   ].join(" ");
 }
 
-const MAX_KNOWLEDGE_HINTS = 10;
-const MAX_KNOWLEDGE_HINT_TEXT_CHARS = 300;
-
-function truncateHintText(text) {
-  const value = typeof text === "string" ? text : "";
-  if (value.length <= MAX_KNOWLEDGE_HINT_TEXT_CHARS) return value;
-  return `${value.slice(0, MAX_KNOWLEDGE_HINT_TEXT_CHARS)}...`;
-}
-
-function formatKnowledgeHints(workerTask) {
-  const hints = workerTask?.knowledgeHints ?? [];
-  if (hints.length === 0) return "";
-  return [
-    "Relevant command knowledge:",
-    ...hints.slice(0, MAX_KNOWLEDGE_HINTS).map((hint, index) => {
-      const formattedHint = {
-        command: hint.command ?? "",
-        option: hint.option ?? "",
-        text: truncateHintText(hint.text),
-        source: hint.source ?? ""
-      };
-
-      return `${index + 1}. ${JSON.stringify(formattedHint)}`;
-    }),
-    "Use these hints as optional references, not as mandatory commands."
-  ].join("\n");
-}
+const STRICT_TOOL_SCHEMA_ERROR =
+  "The OpenAI engine received a Tool schema incompatible with strict mode.";
 
 function buildUserPrompt(context) {
   const workerTask = context.workerTask ?? null;
@@ -95,7 +70,6 @@ function buildUserPrompt(context) {
     workerTask?.assignedVariant?.toolSuggestions?.length
       ? "Use suggestedTools as optional starting points, but choose any safer or better tools if needed."
       : "",
-    formatKnowledgeHints(workerTask),
     `Retry budget: ${workerTask?.maxAttempts ?? 1}`,
     `Previous attempts: ${attemptSummary}`
   ]
@@ -132,11 +106,132 @@ function parseEngineResponse(raw) {
   };
 }
 
+function parseToolCallArguments(raw) {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("The OpenAI engine returned invalid Tool call arguments.");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("The OpenAI engine returned invalid Tool call arguments.");
+  }
+
+  return parsed;
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function serializeToolResult(result) {
+  let serialized;
+
+  try {
+    serialized = JSON.stringify(result);
+  } catch {
+    throw new Error("The OpenAI engine could not serialize a Tool result.");
+  }
+
+  if (typeof serialized !== "string") {
+    throw new Error("The OpenAI engine could not serialize a Tool result.");
+  }
+
+  return serialized;
+}
+
+function isObjectSchema(schema) {
+  return (
+    schema?.type === "object" ||
+    (Array.isArray(schema?.type) && schema.type.includes("object"))
+  );
+}
+
+function assertOpenAIStrictSchema(rootSchema) {
+  const visited = new Set();
+
+  function visit(schema, isRoot = false) {
+    if (!schema || typeof schema !== "object") {
+      if (isRoot) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+      return;
+    }
+    if (visited.has(schema)) {
+      return;
+    }
+    visited.add(schema);
+    if (Array.isArray(schema)) {
+      if (isRoot) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+      for (const item of schema) {
+        visit(item);
+      }
+      return;
+    }
+
+    if (isRoot || isObjectSchema(schema) || Object.hasOwn(schema, "properties")) {
+      const properties = schema.properties;
+      const required = schema.required;
+      const propertyNames =
+        properties && typeof properties === "object" && !Array.isArray(properties)
+          ? Object.keys(properties)
+          : null;
+      const requiredNames = Array.isArray(required) ? new Set(required) : null;
+
+      if (
+        (isRoot ? schema.type !== "object" : !isObjectSchema(schema)) ||
+        propertyNames === null ||
+        schema.additionalProperties !== false ||
+        requiredNames === null ||
+        requiredNames.size !== propertyNames.length ||
+        !propertyNames.every((name) => requiredNames.has(name))
+      ) {
+        throw new Error(STRICT_TOOL_SCHEMA_ERROR);
+      }
+    }
+
+    for (const schemaMap of [
+      schema.properties,
+      schema.$defs,
+      schema.definitions,
+      schema.dependentSchemas,
+      schema.patternProperties
+    ]) {
+      if (schemaMap && typeof schemaMap === "object" && !Array.isArray(schemaMap)) {
+        for (const childSchema of Object.values(schemaMap)) {
+          visit(childSchema);
+        }
+      }
+    }
+    for (const childSchema of [
+      schema.items,
+      schema.prefixItems,
+      schema.contains,
+      schema.not,
+      schema.if,
+      schema.then,
+      schema.else,
+      schema.propertyNames,
+      schema.anyOf,
+      schema.oneOf,
+      schema.allOf
+    ]) {
+      visit(childSchema);
+    }
+  }
+
+  visit(rootSchema, true);
+}
+
 function isNonJsonResponseError(error) {
   return error instanceof Error && error.message === "The OpenAI engine returned non-JSON response.";
 }
 
-function extractResponseText(response) {
+function extractOptionalResponseText(response) {
   if (typeof response?.output_text === "string" && response.output_text.trim()) {
     return response.output_text.trim();
   }
@@ -152,6 +247,15 @@ function extractResponseText(response) {
 
   const text = chunks.join("\n").trim();
   if (text.length > 0) {
+    return text;
+  }
+
+  return "";
+}
+
+function extractResponseText(response) {
+  const text = extractOptionalResponseText(response);
+  if (text) {
     return text;
   }
 
@@ -190,6 +294,7 @@ function resolvePositiveInteger(value, fallback) {
 
 export class OpenAIEngine {
   name = "openai";
+  capabilities = { toolCalling: true };
 
   constructor(options = {}) {
     this.model = options.model ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
@@ -233,6 +338,98 @@ export class OpenAIEngine {
     }
 
     throw lastError ?? new Error("The OpenAI engine returned non-JSON response.");
+  }
+
+  async generateTurn({ context, tools, continuation, toolResults = [] }) {
+    const openaiTools = tools.map(({ name, description, parameters }) => {
+      assertOpenAIStrictSchema(parameters);
+      return {
+        type: "function",
+        name,
+        description,
+        parameters,
+        strict: true
+      };
+    });
+    const request = continuation
+      ? {
+          model: this.model,
+          previous_response_id: continuation.responseId,
+          input: toolResults.map(({ callId, result }) => ({
+            type: "function_call_output",
+            call_id: callId,
+            output: serializeToolResult(result)
+          })),
+          tools: openaiTools
+        }
+      : {
+          model: this.model,
+          input: [
+            {
+              role: "system",
+              content: [{ type: "input_text", text: buildSystemPrompt() }]
+            },
+            {
+              role: "user",
+              content: [{ type: "input_text", text: buildUserPrompt(context) }]
+            }
+          ],
+          tools: openaiTools
+        };
+    const client = await this.#getClient();
+    const response = await client.responses.create(request);
+
+    if (response?.status != null && response.status !== "completed") {
+      throw new Error("The OpenAI engine returned a non-completed response.");
+    }
+
+    const functionCalls = (response.output ?? []).filter(
+      (item) => item?.type === "function_call"
+    );
+
+    if (
+      functionCalls.some((call) => call.status != null && call.status !== "completed")
+    ) {
+      throw new Error("The OpenAI engine returned a non-completed Tool call.");
+    }
+
+    if (functionCalls.length > 0 && !isNonEmptyString(response.id)) {
+      throw new Error("The OpenAI engine returned Tool calls without a response ID.");
+    }
+
+    for (const call of functionCalls) {
+      if (!isNonEmptyString(call.call_id)) {
+        throw new Error("The OpenAI engine returned a Tool call without a call ID.");
+      }
+      if (!isNonEmptyString(call.name)) {
+        throw new Error("The OpenAI engine returned a Tool call without a name.");
+      }
+    }
+
+    const commandText = extractOptionalResponseText(response);
+
+    if (functionCalls.length > 0 && commandText) {
+      throw new Error("The OpenAI engine returned both a command and Tool calls.");
+    }
+
+    const calls = functionCalls.map((item) => ({
+      id: item.call_id,
+      name: item.name,
+      arguments: parseToolCallArguments(item.arguments)
+    }));
+
+    if (calls.length > 0) {
+      return {
+        type: "tool_calls",
+        calls,
+        continuation: { responseId: response.id }
+      };
+    }
+
+    return {
+      type: "command",
+      ...parseEngineResponse(commandText || extractResponseText(response))
+    };
   }
 
   async #getClient() {

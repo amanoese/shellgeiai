@@ -86,7 +86,7 @@ afterEach(async () => {
 });
 
 describeDocker("Docker integration", () => {
-  it("runs commands inside a real container with the mounted workdir read-only by default", async () => {
+  it("rejects writes to the mounted workdir when it is read-only by default", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-docker-runner-"));
     tempDirs.push(requestedWorkdir);
     const runner = new DockerRunner({
@@ -102,7 +102,7 @@ describeDocker("Docker integration", () => {
       }
     });
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(1);
     expect(result.timedOut).toBe(false);
     expect(result.aborted).toBe(false);
     expect(result.stdout.trim()).toBe("/workspace");

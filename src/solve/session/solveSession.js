@@ -1,11 +1,18 @@
 import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
-import { loadKnowledgeDataset } from "../../knowledge/dataset.js";
+import { loadKnowledgeDatasetWithFingerprint } from "../../knowledge/dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
+import {
+  normalizeKnowledgeMode,
+  usesPlannerKnowledge,
+  usesWorkerKnowledge
+} from "../../knowledge/mode.js";
 import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
 import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
+import { createSearchKnowledgeTool } from "../../knowledge/searchKnowledgeTool.js";
 import {
   attachKnowledgeVectors,
+  assertKnowledgeVectorFileCompatibility,
   defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists
 } from "../../knowledge/vectorFile.js";
@@ -13,6 +20,7 @@ import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
 import { createExecutionPlan } from "../planning/planner.js";
+import { createToolRegistry } from "../../tools/toolRegistry.js";
 import { reportSessionPhase } from "./progress.js";
 
 export async function createSolveSession(options) {
@@ -48,7 +56,7 @@ export async function createSolveSession(options) {
     parallelism,
     selectorName: options.selector ?? "first-pass-wins",
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
-    knowledgeMode: options.knowledgeMode ?? "off",
+    knowledgeMode: normalizeKnowledgeMode(options.knowledgeMode),
     knowledgeModel: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL,
     knowledgeDatasetPath: options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
     knowledgeVectorsPath:
@@ -67,48 +75,62 @@ export async function createSolveSession(options) {
     plannerProvider: options.plannerProvider
   };
 
+  if (
+    usesWorkerKnowledge(session.knowledgeMode) &&
+    (session.engine?.capabilities?.toolCalling !== true ||
+      typeof session.engine?.generateTurn !== "function")
+  ) {
+    throw new Error(
+      `Engine "${session.engine?.name ?? "unknown"}" does not support Tool Calling required by --knowledge ${session.knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`
+    );
+  }
+
   if (options.knowledgeRetriever) {
     session.knowledgeRetriever = options.knowledgeRetriever;
-  } else if (session.knowledgeMode === "worker") {
-    const records = await loadKnowledgeDataset(session.knowledgeDatasetPath);
+  } else if (
+    usesPlannerKnowledge(session.knowledgeMode) ||
+    usesWorkerKnowledge(session.knowledgeMode)
+  ) {
+    const { records, fingerprint: datasetFingerprint } =
+      await loadKnowledgeDatasetWithFingerprint(session.knowledgeDatasetPath);
     const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
+    if (vectorFile) {
+      assertKnowledgeVectorFileCompatibility(vectorFile, {
+        datasetPath: session.knowledgeDatasetPath,
+        datasetFingerprint,
+        model: session.knowledgeModel
+      });
+    }
     const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
     session.knowledgeRetriever = createKnowledgeRetriever({
-      mode: session.knowledgeMode,
       records: recordsWithVectors,
       embedder:
         options.knowledgeEmbedder ??
         (options.knowledgeEmbedderFactory ?? createRuriEmbedder)({
           model: session.knowledgeModel
-        }),
-      topK: 10
+        })
     });
   }
 
+  if (usesWorkerKnowledge(session.knowledgeMode)) {
+    session.toolRegistry = createToolRegistry();
+    session.toolRegistry.register(
+      createSearchKnowledgeTool({ retriever: session.knowledgeRetriever })
+    );
+  }
+
+  session.plannerKnowledgeHints = usesPlannerKnowledge(session.knowledgeMode)
+    ? await session.knowledgeRetriever.retrieveForPlanner({
+        problem: session.problem.problemText,
+        expectedOutput: session.problem.expectedOutput
+      })
+    : [];
+
   reportSessionPhase(session, "planning", "Building execution plan.");
   const plan = {
-    ...(await enrichWorkerTasksWithKnowledge(session, await createExecutionPlan(session))),
+    ...(await createExecutionPlan(session)),
     knowledgeMode: session.knowledgeMode
   };
 
   return { ...session, plan };
-}
-
-async function enrichWorkerTasksWithKnowledge(session, plan) {
-  if (session.knowledgeMode !== "worker") return plan;
-
-  const retriever = session.knowledgeRetriever;
-  if (!retriever) return plan;
-
-  const workerTasks = await Promise.all(
-    plan.workerTasks.map(async (task) => ({
-      ...task,
-      knowledgeHints: await retriever.retrieveForWorker({
-        problem: session.problem.problemText,
-        task
-      })
-    }))
-  );
-
-  return { ...plan, workerTasks };
 }

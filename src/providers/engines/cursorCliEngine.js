@@ -19,6 +19,7 @@ function buildPrompt(context) {
 
 export class CursorCliEngine {
   name = "cursor";
+  capabilities = Object.freeze({ toolCalling: false });
 
   async generateCommand(context) {
     const exists = await commandExists("cursor");

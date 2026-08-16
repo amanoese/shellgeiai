@@ -95,12 +95,10 @@ function usesLanguageAsShellTool(features) {
   return features.languageOneLiners.some((oneLiner) => oneLiner.inPipeline);
 }
 
-function scoreConcisenessRaw(command, features) {
+function scoreConcisenessRaw(command) {
   const lengthPenalty = Math.min(0.3, command.length / 260);
-  const tokenPenalty = Math.min(0.25, Math.max(0, commandTokenCount(command) - 8) * 0.025);
-  const commandPenalty = Math.min(0.2, Math.max(0, features.simpleCommandCount - 3) * 0.06);
   const catPenalty = hasUselessCat(command) ? 0.2 : 0;
-  return clamp(1 - lengthPenalty - tokenPenalty - commandPenalty - catPenalty);
+  return clamp(1 - lengthPenalty - catPenalty);
 }
 
 function scoreShellnessRaw(features) {
@@ -236,7 +234,7 @@ export async function scoreShellgeiCandidate(candidate, options = {}) {
   const mode = normalizeMode(options.mode ?? DEFAULT_MODE);
   const features = await analyzeShellCommand(command);
   const rawScores = {
-    conciseness: scoreConcisenessRaw(command, features),
+    conciseness: scoreConcisenessRaw(command),
     shellness: scoreShellnessRaw(features),
     ingenuity: scoreIngenuityRaw(features),
     readability: scoreReadabilityRaw(command, features),

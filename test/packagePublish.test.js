@@ -1,4 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -27,8 +30,31 @@ describe("npm publish metadata", () => {
 });
 
   it("limits publish files to runtime assets and package docs", () => {
-    expect(packageJson.files).toEqual(["src", "wasm", "policies", "data", "README.md", "LICENSE"]);
+    expect(packageJson.files).toEqual([
+      "src",
+      "scripts",
+      "wasm",
+      "policies",
+      "data",
+      "!data/knowledge/man.jsonl",
+      "!data/knowledge/man.vectors.jsonl",
+      "!data/knowledge/man.vectors.json",
+      "README.md",
+      "LICENSE"
+    ]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "scripts/build-man-knowledge.js"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-man-profile.json"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.jsonl"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.json"))).toBe(false);
+  });
+
+  it("excludes locally generated man knowledge artifacts", () => {
+    const ignoredPaths = readFileSync(path.join(repoRoot, ".gitignore"), "utf8").split(/\r?\n/);
+
+    expect(ignoredPaths).toContain("data/knowledge/man.jsonl");
+    expect(ignoredPaths).toContain("data/knowledge/man.vectors.jsonl");
+    expect(ignoredPaths).toContain("data/knowledge/man.vectors.json");
   });
 
   it("exposes execution modules from the grouped src hierarchy", async () => {
@@ -104,5 +130,52 @@ describe("npm publish metadata", () => {
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
+  });
+
+  it("includes Planner and Worker knowledge runtime modules in the packed files", async () => {
+    const modulePaths = [
+      "../src/knowledge/mode.js",
+      "../src/knowledge/hints.js",
+      "../src/tools/toolRegistry.js",
+      "../src/knowledge/searchKnowledgeTool.js",
+      "../src/solve/worker/toolLoop.js"
+    ];
+    const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
+
+    for (const modulePath of packedModulePaths) {
+      expect(existsSync(path.resolve(repoRoot, modulePath))).toBe(true);
+    }
+    await Promise.all(modulePaths.map((modulePath) => import(modulePath)));
+
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-package-publish-"));
+    const cacheDir = path.join(tempDir, "npm-cache");
+    const packDir = path.join(tempDir, "pack-output");
+
+    try {
+      await mkdir(cacheDir);
+      await mkdir(packDir);
+      const stdout = execFileSync(
+        "npm",
+        ["pack", "--dry-run", "--json", "--pack-destination", packDir],
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          env: { ...process.env, npm_config_cache: cacheDir }
+        }
+      );
+      const manifest = JSON.parse(stdout);
+      expect(manifest).toHaveLength(1);
+      const packedPaths = manifest[0].files.map((file) => file.path);
+
+      for (const modulePath of packedModulePaths) {
+        expect(packedPaths).toContain(modulePath);
+      }
+      expect(packedPaths).not.toContain("data/knowledge/man.jsonl");
+      expect(packedPaths).not.toContain("data/knowledge/man.vectors.jsonl");
+      expect(packedPaths).not.toContain("data/knowledge/man.vectors.json");
+      expect((await readdir(packDir)).filter((name) => name.endsWith(".tgz"))).toEqual([]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

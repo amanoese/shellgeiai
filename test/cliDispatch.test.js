@@ -6,6 +6,7 @@ const commands = vi.hoisted(() => ({
   runLogsSearchCommand: vi.fn(),
   runLogsShowCommand: vi.fn(),
   runKnowledgeBuildCommand: vi.fn(),
+  runKnowledgeManCommand: vi.fn(),
   runKnowledgePrepareCommand: vi.fn(),
   runKnowledgeSearchCommand: vi.fn(),
   runSolveCommand: vi.fn()
@@ -25,6 +26,7 @@ vi.mock("../src/cli/commands/logsShow.js", () => ({
 }));
 vi.mock("../src/cli/commands/knowledge.js", () => ({
   runKnowledgeBuildCommand: commands.runKnowledgeBuildCommand,
+  runKnowledgeManCommand: commands.runKnowledgeManCommand,
   runKnowledgePrepareCommand: commands.runKnowledgePrepareCommand,
   runKnowledgeSearchCommand: commands.runKnowledgeSearchCommand
 }));
@@ -81,6 +83,37 @@ describe("runCli", () => {
     );
   });
 
+  it.each(["planner", "worker", "all", "on"])(
+    "dispatches solve with %s knowledge mode",
+    async (knowledge) => {
+      await runCli(["solve", "print 42", "--knowledge", knowledge]);
+
+      expect(commands.runSolveCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ knowledge: knowledge === "on" ? "all" : knowledge })
+      );
+    }
+  );
+
+  it("reports the exact error for an invalid knowledge mode", async () => {
+    let errorOutput = "";
+    const stderrWrite = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((text) => {
+        errorOutput += text;
+        return true;
+      });
+
+    try {
+      await runCli(["solve", "print 42", "--knowledge", "invalid"]);
+    } finally {
+      stderrWrite.mockRestore();
+    }
+
+    expect(errorOutput).toContain(
+      "Invalid --knowledge value. Use off, planner, worker, all, or on."
+    );
+  });
+
   it("lets solve CLI knowledge model override the environment model", async () => {
     await withKnowledgeModelEnv("env-model", () =>
       runCli(["solve", "print 42", "--knowledge-model", "cli-model"])
@@ -101,6 +134,14 @@ describe("runCli", () => {
         dataset: "custom.jsonl",
         knowledgeModel: "env-model"
       })
+    );
+  });
+
+  it("dispatches knowledge man with the curated profile", async () => {
+    await runCli(["knowledge", "man", "--profile", "shellgei"]);
+
+    expect(commands.runKnowledgeManCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: "shellgei" })
     );
   });
 

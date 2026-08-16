@@ -89,7 +89,24 @@ CLI は問題解釈、実行計画、判定、選択の詳細を持ちません�
 
 `src/solve/` はアプリケーションフローを持ちますが、Docker 実行の詳細や provider 実装には直接踏み込みません。
 
-Worker knowledge retrieval は意図的に worker-only にしています。planner は同じ worker variants を作成し、`--knowledge worker` が有効なときだけ、各 worker task が JSONL の command / option と pattern dataset から `knowledgeHints` を受け取ります。`shellgeiai knowledge prepare` は既定の Transformers.js / ONNX 対応 embedding model `sirasagi62/ruri-v3-30m-ONNX` の warmup、`shellgeiai knowledge build` は dataset vector file の生成を担当し、solve 時は事前生成 vectors があれば優先利用します。`--knowledge-model` と `SHELLGEIAI_KNOWLEDGE_MODEL` で solve / knowledge の model を揃えられます。
+knowledge retrieval は Planner と Worker で責務を分けます。`planner` / `all` では session 初期化時に最大5件を prefetch し、Planner がその record を信頼済み命令ではなく任意の参考情報として読み、探索 variant、`toolBias`、`toolSuggestions` を作ります。record を各 Worker task や通常の command prompt へ無条件に注入することはありません。
+
+`worker` / `all` では session が provider-neutral な `ToolRegistry` に read-only の `search_knowledge` を登録します。各 Worker attempt の Tool Loop は Tool call を最大1回だけ許可し、registry が引数検証と実行を担当した後、最大5 records の結果を Engine の continuation へ返します。retry は新しい attempt なので、改めて1回だけ呼び出せます。
+
+```text
+Planner prefetch (planner/all)
+  -> untrusted bounded records
+  -> Planner variants / toolBias / toolSuggestions
+  -> Worker attempt
+  -> Worker Tool Loop (worker/all, at most one call)
+  -> ToolRegistry executes search_knowledge
+  -> Engine continuation
+  -> command
+```
+
+Engine adapter は provider 固有の Tool schema、Tool call、continuation を共通 turn 形式へ翻訳するだけです。Tool の選択、実行、回数制限は `src/solve/` の orchestration が所有します。現在 native Tool Calling に対応するのは `OpenAIEngine` だけで、`worker` / `all` を指定した非対応 Engine は Planner 実行前に fail fast します。`off` / `planner` は Tool Calling capability を要求しません。
+
+`shellgeiai knowledge prepare` は既定の Transformers.js / ONNX 対応 embedding model `sirasagi62/ruri-v3-30m-ONNX` の warmup、`shellgeiai knowledge build` は dataset vector file の生成を担当し、solve 時は事前生成 vectors があれば優先利用します。`--knowledge-model` と `SHELLGEIAI_KNOWLEDGE_MODEL` で solve / knowledge の model を揃えられます。
 
 ### `src/execution/`
 
@@ -105,6 +122,8 @@ Worker knowledge retrieval は意図的に worker-only にしています。plan
 - CLI engine、OpenAI engine、mock engine などを実装する
 - LLM planner の prompt、schema、正規化を扱う
 - model provider 固有の都合を solve flow から隔離する
+
+Tool Calling 対応 adapter は provider API と共通の `CommandTurn` / `ToolCallsTurn` の相互変換だけを行います。Tool の実行、validation policy、呼び出し budget は provider 層に置きません。
 
 provider の失敗は、利用者が原因と次の対応を理解できる形で返します。
 
@@ -201,6 +220,10 @@ session log には次を残します。
 - 各 attempt の command、stdout、stderr、exit code、判定結果
 - runner limits と sandbox policy
 - selector が採用した候補と理由
+
+Tool Calling は attempt ごとに Tool 名、検証済み引数、成否、件数、record ID だけを bounded summary として残します。Worker Tool result 内の record 本文、完全な Tool result、provider の response ID、continuation はログへ保存しません。
+
+Planner prompt と raw response metadata は再現性のため既存 schema のまま保存し、bounded な Planner reference text を含む場合があります。この Planner metadata と、本文を保存しない Worker Tool summary の privacy contract は区別します。
 
 成功候補だけでなく、失敗した探索も後から分析できる形にします。
 

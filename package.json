@@ -1,6 +1,6 @@
 {
   "name": "shellgeiai",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
   "type": "module",
   "author": "amanoese",
@@ -10,6 +10,7 @@
   "scripts": {
     "build": "node -e \"console.log('JavaScript sources do not require build step.')\"",
     "dev": "node src/cli.js",
+    "knowledge:man": "node scripts/build-man-knowledge.js",
     "start": "node src/cli.js",
     "lint": "echo \"TODO: add lint\"",
     "test": "vitest run",
@@ -43,9 +44,13 @@
   },
   "files": [
     "src",
+    "scripts",
     "wasm",
     "policies",
     "data",
+    "!data/knowledge/man.jsonl",
+    "!data/knowledge/man.vectors.jsonl",
+    "!data/knowledge/man.vectors.json",
     "README.md",
     "LICENSE"
   ],

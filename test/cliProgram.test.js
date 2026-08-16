@@ -39,6 +39,7 @@ describe("createCliProgram", () => {
     expect(solve.helpInformation()).toContain("--shellgei-score-mode");
     expect(solve.helpInformation()).toContain("--knowledge-model");
     expect(solve.helpInformation()).toContain("SHELLGEIAI_KNOWLEDGE_MODEL");
+    expect(solve.helpInformation()).toContain("off, planner, worker, all, or on");
   });
 
   it("summarizes knowledge subcommand options in knowledge help", () => {
@@ -50,10 +51,12 @@ describe("createCliProgram", () => {
     expect(help).toContain("prepare:");
     expect(help).toContain("build:");
     expect(help).toContain("search:");
+    expect(help).toContain("man:");
     expect(help).toContain("--knowledge-model");
     expect(help).toContain("SHELLGEIAI_KNOWLEDGE_MODEL");
     expect(help).toContain("--dataset");
     expect(help).toContain("--vectors");
     expect(help).toContain("--top-k");
+    expect(help).toContain("--profile");
   });
 });

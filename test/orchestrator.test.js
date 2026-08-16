@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createAbortedAttempt,
+  createGenerationFailedAttempt,
   createWorkerCandidate,
   createWorkerSummary
 } from "../src/solve/worker/attemptFactory.js";
@@ -168,6 +169,7 @@ describe("worker attempt factory", () => {
       durationMs: 123,
       runnerFailure: { message: "aborted" },
       runnerCleanup: { killed: true },
+      toolCalls: [],
       score: {
         value: 0,
         breakdown: {
@@ -177,6 +179,54 @@ describe("worker attempt factory", () => {
           expectedOutput: 0
         }
       }
+    });
+  });
+
+  it("creates a retryable generation-failed attempt with bounded Tool audit data", () => {
+    const toolCalls = [
+      {
+        name: "search_knowledge",
+        arguments: { query: "awk" },
+        status: "completed",
+        resultCount: 1,
+        recordIds: ["man:awk"]
+      }
+    ];
+
+    expect(
+      createGenerationFailedAttempt({
+        task,
+        iteration: 0,
+        reason: "Worker Tool call limit exceeded.",
+        toolCalls
+      })
+    ).toEqual({
+      attemptId: "worker-1-attempt-1",
+      workerId: "worker-1",
+      command: "",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      timedOut: false,
+      aborted: false,
+      passed: false,
+      explanation: "",
+      failureReason: "Worker Tool call limit exceeded.",
+      durationMs: 0,
+      runnerFailure: null,
+      runnerCleanup: null,
+      score: {
+        value: 0,
+        breakdown: {
+          correctness: 0,
+          stdoutQuality: 0,
+          stderrQuality: 0,
+          expectedOutput: 0
+        }
+      },
+      state: "idle",
+      stopReason: "",
+      toolCalls
     });
   });
 
@@ -285,5 +335,104 @@ describe("runWorkerAttempt", () => {
       failureReason: expect.stringContaining("Blocked")
     });
     expect(runnerRun).not.toHaveBeenCalled();
+  });
+
+  it("turns only Worker Tool loop failures into retryable generation attempts", async () => {
+    const task = {
+      workerId: "worker-1",
+      strategy: "default",
+      maxAttempts: 2
+    };
+    const toolResult = {
+      ok: true,
+      value: { records: [{ id: "man:awk", text: "do not log this" }] },
+      validatedArguments: { query: "awk" }
+    };
+    const toolRegistry = {
+      definitions: vi.fn(() => [{ name: "search_knowledge" }]),
+      execute: vi.fn(async () => toolResult)
+    };
+    const engine = {
+      generateTurn: vi
+        .fn()
+        .mockResolvedValueOnce({
+          type: "tool_calls",
+          calls: [
+            { id: "call-1", name: "search_knowledge", arguments: { query: "awk" } }
+          ],
+          continuation: { responseId: "response-1" }
+        })
+        .mockResolvedValueOnce({
+          type: "tool_calls",
+          calls: [
+            { id: "call-2", name: "search_knowledge", arguments: { query: "sed" } }
+          ],
+          continuation: { responseId: "response-2" }
+        })
+    };
+    const runnerRun = vi.fn();
+    const session = {
+      problem: { problemText: "List files", expectedOutput: "" },
+      workdir: "/tmp",
+      commandPolicy: undefined,
+      engine,
+      toolRegistry,
+      runner: { run: runnerRun },
+      progressEvents: []
+    };
+
+    const result = await runWorkerAttempt({
+      session,
+      task,
+      control: {},
+      workerState: { abortController: new AbortController() },
+      iteration: 0,
+      attempts: []
+    });
+
+    expect(result).toMatchObject({
+      state: "idle",
+      stopReason: "",
+      command: "",
+      passed: false,
+      reason: "Worker Tool call limit exceeded."
+    });
+    expect(result.attempt).toMatchObject({
+      command: "",
+      passed: false,
+      failureReason: "Worker Tool call limit exceeded.",
+      state: "idle",
+      stopReason: "",
+      toolCalls: [
+        {
+          name: "search_knowledge",
+          arguments: { query: "awk" },
+          status: "completed",
+          resultCount: 1,
+          recordIds: ["man:awk"]
+        }
+      ]
+    });
+    expect(runnerRun).not.toHaveBeenCalled();
+  });
+
+  it("preserves unrelated Engine generation exceptions", async () => {
+    const providerError = new Error("provider unavailable");
+    const session = {
+      problem: { problemText: "List files", expectedOutput: "" },
+      workdir: "/tmp",
+      engine: { generateCommand: vi.fn(async () => { throw providerError; }) }
+    };
+
+    await expect(
+      runWorkerAttempt({
+        session,
+        task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+        control: {},
+        workerState: { abortController: new AbortController() },
+        iteration: 0,
+        attempts: []
+      })
+    ).rejects.toBe(providerError);
   });
 });

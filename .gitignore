@@ -1,6 +1,9 @@
 .serena/
 node_modules/
 dist/
+data/knowledge/man.jsonl
+data/knowledge/man.vectors.jsonl
+data/knowledge/man.vectors.json
 data/knowledge/*vectors.*.json
 docs/superpowers/plans/*.md
 docs/superpowers/specs/*.md

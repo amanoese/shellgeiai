@@ -1,12 +1,13 @@
-import { loadKnowledgeDataset } from "./dataset.js";
+import { loadKnowledgeDatasetWithFingerprint } from "./dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { createRuriEmbedder } from "./ruriEmbedder.js";
 import { searchKnowledgeRecords } from "./vectorSearch.js";
 import {
   attachKnowledgeVectors,
+  assertKnowledgeVectorFileCompatibility,
   defaultKnowledgeVectorsPath,
   loadKnowledgeVectorFileIfExists,
-  writeKnowledgeVectorFile
+  openKnowledgeVectorFileWriter
 } from "./vectorFile.js";
 
 export const DEFAULT_KNOWLEDGE_DATASET = "data/knowledge/shellgei-basic.jsonl";
@@ -30,30 +31,44 @@ export async function buildKnowledgeVectors({
   vectorsPath,
   embedder,
   model = DEFAULT_KNOWLEDGE_MODEL,
-  now = () => new Date().toISOString()
+  now = () => new Date().toISOString(),
+  openVectorWriter = openKnowledgeVectorFileWriter
 } = {}) {
   const resolvedVectorsPath =
     vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
   await prepareKnowledgeModel({ embedder: activeEmbedder, model });
-  const records = await loadKnowledgeDataset(datasetPath);
-  const items = [];
-  for (const record of records) {
-    items.push({
-      id: record.id,
-      vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
-    });
-  }
-  await writeKnowledgeVectorFile(resolvedVectorsPath, {
-    version: 1,
+  const { records, fingerprint: datasetFingerprint } =
+    await loadKnowledgeDatasetWithFingerprint(datasetPath);
+  const writer = await openVectorWriter(resolvedVectorsPath, {
+    version: 2,
+    itemCount: records.length,
     model,
     dataset: datasetPath,
-    createdAt: now(),
-    items
+    datasetFingerprint,
+    createdAt: now()
   });
+
+  try {
+    for (const record of records) {
+      await writer.writeItem({
+        id: record.id,
+        vector: await activeEmbedder.embed(`検索文書: ${record.text}`)
+      });
+    }
+    await writer.commit();
+  } catch (error) {
+    try {
+      await writer.abort();
+    } catch (abortError) {
+      throw new AggregateError([error, abortError], "Unable to build knowledge vector file.");
+    }
+    throw error;
+  }
+
   return {
     datasetPath,
-    itemCount: items.length,
+    itemCount: records.length,
     model,
     vectorsPath: resolvedVectorsPath
   };
@@ -70,8 +85,16 @@ export async function searchKnowledge({
   const resolvedVectorsPath =
     vectorsPath ?? defaultKnowledgeVectorsPath(datasetPath, model);
   const activeEmbedder = embedder ?? createRuriEmbedder({ model });
-  const records = await loadKnowledgeDataset(datasetPath);
+  const { records, fingerprint: datasetFingerprint } =
+    await loadKnowledgeDatasetWithFingerprint(datasetPath);
   const vectorFile = await loadKnowledgeVectorFileIfExists(resolvedVectorsPath);
+  if (vectorFile) {
+    assertKnowledgeVectorFileCompatibility(vectorFile, {
+      datasetPath,
+      datasetFingerprint,
+      model
+    });
+  }
   const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
   const results = await searchKnowledgeRecords({
     query: `検索クエリ: ${query}`,

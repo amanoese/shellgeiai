@@ -6,21 +6,26 @@ import { runLogsSearchCommand } from "./commands/logsSearch.js";
 import { runLogsShowCommand } from "./commands/logsShow.js";
 import {
   runKnowledgeBuildCommand,
+  runKnowledgeManCommand,
   runKnowledgePrepareCommand,
   runKnowledgeSearchCommand
 } from "./commands/knowledge.js";
 import { runSolveCommand } from "./commands/solve.js";
 import { DEFAULT_KNOWLEDGE_DATASET } from "../knowledge/commands.js";
 import {
+  normalizeKnowledgeMode,
+  SUPPORTED_KNOWLEDGE_MODES
+} from "../knowledge/mode.js";
+import {
   DEFAULT_KNOWLEDGE_MODEL,
   KNOWLEDGE_MODEL_ENV
 } from "../knowledge/modelConfig.js";
+import { SUPPORTED_MAN_PROFILES } from "../knowledge/manProfile.js";
 
 const supportedModes = new Set(["single", "parallel"]);
 const supportedSelectors = new Set(["first-pass-wins", "best-score-wins"]);
 const supportedProgressModes = new Set(["off", "plain", "jsonl", "bar"]);
 const supportedScoreModes = new Set(["simple", "artistry", "robustness"]);
-const supportedKnowledgeModes = new Set(["off", "worker"]);
 
 function parsePositiveInteger(value, message) {
   const parsed = Number(value);
@@ -53,6 +58,16 @@ function parseChoice(value, supported, message) {
     throw new InvalidArgumentError(message);
   }
   return value;
+}
+
+function parseKnowledgeMode(value) {
+  return normalizeKnowledgeMode(
+    parseChoice(
+      value,
+      SUPPORTED_KNOWLEDGE_MODES,
+      "Invalid --knowledge value. Use off, planner, worker, all, or on."
+    )
+  );
 }
 
 function knowledgeModelOption(flags = "--knowledge-model <model>") {
@@ -148,13 +163,8 @@ export function createCliProgram() {
     )
     .option(
       "--knowledge <mode>",
-      "knowledge mode",
-      (value) =>
-        parseChoice(
-          value,
-          supportedKnowledgeModes,
-          "Invalid --knowledge value. Use off or worker."
-        ),
+      "knowledge mode: off, planner, worker, all, or on",
+      parseKnowledgeMode,
       "off"
     )
     .addOption(knowledgeModelOption())
@@ -206,6 +216,32 @@ export function createCliProgram() {
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
     .option("--vectors <path>", "knowledge vectors file")
     .action((options) => runKnowledgeBuildCommand(options));
+
+  knowledge
+    .command("man")
+    .description("build knowledge JSONL from local man pages")
+    .option("--output <path>", "JSONL output path")
+    .option(
+      "--profile <name>",
+      "man extraction profile",
+      (value) =>
+        parseChoice(
+          value,
+          SUPPORTED_MAN_PROFILES,
+          "Invalid --profile value. Use shellgei or all."
+        ),
+      "shellgei"
+    )
+    .option("--sections <list>", "comma-separated man sections, or all")
+    .option("--commands <list>", "comma-separated commands")
+    .option(
+      "--limit <number>",
+      "maximum man entries to process",
+      (value) => parsePositiveInteger(value, "Invalid --limit value. Use positive integer.")
+    )
+    .option("--locale <locale>", "locale for man rendering")
+    .option("--man <path>", "man executable path or name")
+    .action((options) => runKnowledgeManCommand(options));
 
   knowledge
     .command("search")

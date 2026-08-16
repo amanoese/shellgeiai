@@ -1,0 +1,537 @@
+const DEFAULT_COMMAND_SECTIONS = new Set(["1", "8"]);
+
+const EXCLUDED_SECTION_TITLES = new Set([
+  "AUTHOR",
+  "AUTHORS",
+  "BUGS",
+  "COPYRIGHT",
+  "COLOPHON",
+  "HISTORY",
+  "LICENSE",
+  "NAME",
+  "REPORTING BUGS",
+  "SEE ALSO",
+  "SYNOPSIS",
+  "VERSION",
+  "著者",
+  "関連項目",
+  "バグ",
+  "版",
+  "著作権"
+]);
+
+const OPTION_DEFINITION_SECTION_TITLES = new Set([
+  "DESCRIPTION",
+  "OPTION",
+  "OPTIONS",
+  "オプション",
+  "説明"
+]);
+
+const NAME_SECTION_TITLES = new Set(["NAME", "名前"]);
+
+const GENERIC_LONG_OPTIONS = new Set(["--help", "--version", "--debug", "--usage"]);
+
+const PATTERN_SECTION_TITLES = new Set([
+  "ADDRESSES",
+  "ARGUMENTS",
+  "COMMAND SYNOPSIS",
+  "COMMANDS",
+  "EXPRESSION",
+  "EXPRESSIONS",
+  "FORMAT",
+  "FORMAT SPECIFIERS",
+  "LANGUAGE",
+  "OPERANDS",
+  "PATTERNS",
+  "PATTERNS AND ACTIONS",
+  "REGULAR EXPRESSIONS",
+  "VARIABLES",
+  "アドレス",
+  "コマンド",
+  "書式",
+  "式",
+  "正規表現",
+  "変数",
+  "引数"
+]);
+
+const STRUCTURAL_SECTION_TITLES = new Set([
+  ...EXCLUDED_SECTION_TITLES,
+  ...NAME_SECTION_TITLES,
+  ...OPTION_DEFINITION_SECTION_TITLES,
+  ...PATTERN_SECTION_TITLES,
+  "ENVIRONMENT",
+  "EXAMPLE",
+  "EXAMPLES",
+  "EXIT STATUS",
+  "FILES",
+  "終了ステータス",
+  "環境変数",
+  "ファイル",
+  "例"
+]);
+
+const MAX_DEFINITION_TERM_INDENT = 12;
+const MAX_CURATED_PATTERN_TERM_INDENT = 20;
+
+const CURATED_PATTERN_KEYWORDS = new Set(["BEGIN", "BEGINFILE", "END", "ENDFILE"]);
+
+const CURATED_PATTERN_SUBSECTION_TITLES = new Set([
+  "ACTIONS",
+  "GLOBAL OPTIONS",
+  "I/O STATEMENTS",
+  "OPERATORS",
+  "PATTERNS",
+  "POSITIONAL OPTIONS",
+  "TESTS"
+]);
+
+function collapseWhitespace(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function dedupeManKnowledgeRecords(records, { profile = "all" } = {}) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const record of records) {
+    const normalizedRecord = { ...record, text: collapseWhitespace(record.text) };
+    const key = profile === "shellgei" ? normalizedRecord.text : record.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(normalizedRecord);
+  }
+
+  return unique;
+}
+
+function leadingSpaceCount(line) {
+  return line.match(/^\s*/)?.[0].length ?? 0;
+}
+
+function cleanLine(line) {
+  return String(line ?? "").replace(/\t/g, "        ").replace(/\s+$/u, "");
+}
+
+export function stripManControlCharacters(text) {
+  let output = String(text ?? "").replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
+  while (/.\x08/.test(output)) {
+    output = output.replace(/.\x08/g, "");
+  }
+  return output.replace(/\r/g, "");
+}
+
+function sectionBase(section) {
+  return String(section ?? "").match(/^\d+/)?.[0] ?? String(section ?? "");
+}
+
+export function parseManIndex(indexText, { sections = [...DEFAULT_COMMAND_SECTIONS] } = {}) {
+  const allowedSections = sections === "all" ? null : new Set(sections.map(String));
+  const entries = [];
+  const seen = new Set();
+
+  for (const line of String(indexText ?? "").split(/\r?\n/)) {
+    const match = line.match(/^(.+?)\s+\(([^)]+)\)\s+-\s+/);
+    if (!match) continue;
+
+    const section = match[2].trim();
+    const base = sectionBase(section);
+    if (allowedSections && !allowedSections.has(section) && !allowedSections.has(base)) continue;
+
+    const names = match[1]
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => /^[A-Za-z0-9_.+:-]+$/.test(name));
+
+    for (const name of names) {
+      const key = `${name}\0${section}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ name, section });
+    }
+  }
+
+  return entries;
+}
+
+function canonicalSectionTitle(title) {
+  return collapseWhitespace(title).toUpperCase();
+}
+
+function isJapaneseHeading(title) {
+  if (title.length > 32 || /[。．.!！?？]$/u.test(title)) return false;
+  if (
+    !/[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}]/u.test(
+      title
+    )
+  ) {
+    return false;
+  }
+  return /^[\p{Script_Extensions=Han}\p{Script_Extensions=Hiragana}\p{Script_Extensions=Katakana}A-Za-z0-9０-９\s・／:：()（）]+$/u.test(
+    title
+  );
+}
+
+function isHeading(line) {
+  if (!line || leadingSpaceCount(line) > 0) return false;
+  const trimmed = line.trim();
+  if (trimmed.length < 2 || trimmed.length > 80) return false;
+  if (STRUCTURAL_SECTION_TITLES.has(canonicalSectionTitle(trimmed))) return true;
+  if (/^[A-Z][A-Z0-9 _/().-]*$/.test(trimmed)) return true;
+  if (isJapaneseHeading(trimmed)) return true;
+  return false;
+}
+
+function splitSections(text) {
+  const sections = [];
+  let current = null;
+
+  for (const rawLine of stripManControlCharacters(text).split(/\n/)) {
+    const line = cleanLine(rawLine);
+    if (isHeading(line)) {
+      current = { title: line.trim(), lines: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current) current.lines.push(line);
+  }
+
+  return sections;
+}
+
+function slugify(value) {
+  const slug = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^-{1,2}/, (prefix) => prefix)
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+  return slug || "item";
+}
+
+function optionIdValue(option) {
+  return String(option ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9_?@$-]+/g, "-")
+    .replace(/-+$/, "");
+}
+
+function patternCollisionSuffix(term) {
+  return encodeURIComponent(collapseWhitespace(term));
+}
+
+function sourceFor(command, section, title) {
+  return `man ${command}(${section}) / ${title}`;
+}
+
+function sectionRecord({ command, section, title, lines }) {
+  const body = collapseWhitespace(lines.join(" "));
+  if (!body) return null;
+  return {
+    id: `man:${command}:${section}:section:${slugify(title)}`,
+    kind: "section",
+    command,
+    option: "",
+    text: `${title}: ${body}`.slice(0, 1200),
+    source: sourceFor(command, section, title)
+  };
+}
+
+function commandSummaryRecord({ command, section, title, lines }) {
+  const body = collapseWhitespace(lines.join(" "));
+  if (!body) return null;
+  return {
+    id: `man:${command}:${section}:note:summary`,
+    kind: "note",
+    command,
+    option: "",
+    text: body.slice(0, 1200),
+    source: sourceFor(command, section, title)
+  };
+}
+
+function looksLikeOptionItem(trimmed) {
+  return /^--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*/.test(trimmed);
+}
+
+function isOptionOnlyTermLine(trimmed) {
+  return /^(?:--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)(?:\s*,\s*--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*(?:=[^\s,]+)?)*\s*,?$/.test(
+    trimmed
+  );
+}
+
+function looksLikeLegacyPatternItem(trimmed) {
+  if (!trimmed || trimmed.length > 100) return false;
+  if (/[.。]$/.test(trimmed)) return false;
+  return /[A-Za-z0-9_$][A-Za-z0-9_$~,/()[\]{}=+*?<>|.-]*/.test(trimmed);
+}
+
+function isCuratedPatternSubsection(trimmed) {
+  const canonical = canonicalSectionTitle(trimmed);
+  return (
+    CURATED_PATTERN_SUBSECTION_TITLES.has(canonical) ||
+    /^(?:ACTIONS|PATTERNS|TESTS)\b/.test(canonical)
+  );
+}
+
+function looksLikeCuratedPatternItem(trimmed) {
+  const normalized = collapseWhitespace(trimmed);
+  if (!normalized || normalized.length > 100 || /[.。]$/.test(normalized)) return false;
+  if (isCuratedPatternSubsection(normalized)) return false;
+  if (/(?:https?:\/\/|www\.)/i.test(normalized)) return false;
+  if (/\b(?:above|below)\b/i.test(normalized)) return false;
+
+  const words = normalized.split(" ");
+  if (/^(?:a|an|as|of|see|supported|the|that|these|this|those)\s+/i.test(normalized)) {
+    return false;
+  }
+  if (words.length > 4) return false;
+  if (CURATED_PATTERN_KEYWORDS.has(normalized)) return true;
+  if (/[/~,$()[\]{}=+*?<>|!^%\\&]/.test(normalized)) return true;
+  if (/^--?\S+(?:\s+\S+){0,2}$/.test(normalized)) return true;
+  if (/^\S+-\S+$/.test(normalized)) return true;
+  if (/^[^\x00-\x7F\s]{1,32}$/u.test(normalized)) return true;
+  return /^(?:arithmetic|boolean|regular|relational) expression$/i.test(normalized);
+}
+
+function hasIndentedDescription(lines, index) {
+  const currentIndent = leadingSpaceCount(lines[index]);
+  for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+    const nextLine = cleanLine(lines[nextIndex]);
+    if (!nextLine.trim()) continue;
+    return leadingSpaceCount(nextLine) > currentIndent;
+  }
+  return false;
+}
+
+function shouldStartItem(lines, index, mode, { curated = false } = {}) {
+  const line = lines[index];
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (mode === "option") {
+    if (!curated) return looksLikeOptionItem(trimmed);
+    return looksLikeOptionItem(trimmed) && leadingSpaceCount(line) <= MAX_DEFINITION_TERM_INDENT;
+  }
+  if (!curated) {
+    return (
+      looksLikeLegacyPatternItem(trimmed) &&
+      leadingSpaceCount(line) <= 8 &&
+      hasIndentedDescription(lines, index)
+    );
+  }
+  return (
+    looksLikeCuratedPatternItem(trimmed) &&
+    leadingSpaceCount(line) <= MAX_CURATED_PATTERN_TERM_INDENT
+  );
+}
+
+function extractDefinitionItems(lines, mode, { curated = false } = {}) {
+  const items = [];
+  let current = null;
+
+  function flush() {
+    if (current && collapseWhitespace([current.term, ...current.description].join(" "))) {
+      items.push(current);
+    }
+    current = null;
+  }
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    const line = cleanLine(rawLine);
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (shouldStartItem(lines, index, mode, { curated })) {
+      if (
+        mode === "option" &&
+        curated &&
+        current?.optionOnly &&
+        current.description.length === 0 &&
+        isOptionOnlyTermLine(trimmed)
+      ) {
+        current.term = `${current.term} ${trimmed}`;
+        continue;
+      }
+      flush();
+      current = {
+        term: trimmed,
+        description: [],
+        indent: leadingSpaceCount(line),
+        optionOnly: mode === "option" && curated && isOptionOnlyTermLine(trimmed)
+      };
+      continue;
+    }
+    if (
+      mode === "pattern" &&
+      curated &&
+      current &&
+      leadingSpaceCount(line) <= current.indent
+    ) {
+      flush();
+      continue;
+    }
+    if (current) {
+      current.description.push(trimmed);
+    }
+  }
+  flush();
+
+  return items.map((item) => ({
+    term: item.term,
+    text: collapseWhitespace([item.term, ...item.description].join(" "))
+  }));
+}
+
+function optionTokens(term) {
+  const tokens = [...term.matchAll(/(^|[\s,])(--?[A-Za-z0-9?@$][A-Za-z0-9?_.-]*)/g)].map(
+    (match) => match[2]
+  );
+  return tokens.filter((option, index) => tokens.indexOf(option) === index);
+}
+
+function isGenericOptionGroup(options) {
+  return options.some((option) => GENERIC_LONG_OPTIONS.has(option));
+}
+
+function optionRecords({
+  command,
+  section,
+  title,
+  lines,
+  groupAliases = false,
+  excludeGeneric = false,
+  curated = false
+}) {
+  const records = [];
+  for (const item of extractDefinitionItems(lines, "option", { curated })) {
+    const options = optionTokens(item.term);
+    if (excludeGeneric && isGenericOptionGroup(options)) continue;
+
+    if (groupAliases && options.length > 0) {
+      records.push({
+        id: `man:${command}:${section}:option:${optionIdValue(options[0])}`,
+        kind: "option",
+        command,
+        option: options.join(", "),
+        text: item.text,
+        source: sourceFor(command, section, title)
+      });
+      continue;
+    }
+
+    for (const option of options) {
+      records.push({
+        id: `man:${command}:${section}:option:${optionIdValue(option)}`,
+        kind: "option",
+        command,
+        option,
+        text: item.text,
+        source: sourceFor(command, section, title)
+      });
+    }
+  }
+  return records;
+}
+
+function patternRecords({ command, section, title, lines, curated = false }) {
+  return extractDefinitionItems(lines, "pattern", { curated })
+    .filter((item) => !curated || !isGenericOptionGroup(optionTokens(item.term)))
+    .map((item) => ({
+      id: `man:${command}:${section}:pattern:${slugify(item.term)}`,
+      kind: "pattern",
+      command,
+      option: item.term,
+      text: item.text,
+      source: sourceFor(command, section, title)
+    }));
+}
+
+function pushUnique(records, record, seen) {
+  if (!record || seen.has(record.id)) return;
+  seen.add(record.id);
+  records.push(record);
+}
+
+function hasSamePatternContent(left, right) {
+  return left?.kind === "pattern" && left.option === right.option && left.text === right.text;
+}
+
+function pushPatternRecord(records, record, seen) {
+  const existing = records.find((candidate) => candidate.id === record.id);
+  if (!existing) {
+    pushUnique(records, record, seen);
+    return;
+  }
+  if (hasSamePatternContent(existing, record)) return;
+
+  const disambiguatedBaseId = `${record.id}:${patternCollisionSuffix(record.option)}`;
+  let disambiguatedId = disambiguatedBaseId;
+  let suffix = 2;
+
+  while (seen.has(disambiguatedId)) {
+    const disambiguatedExisting = records.find((candidate) => candidate.id === disambiguatedId);
+    if (hasSamePatternContent(disambiguatedExisting, record)) return;
+    disambiguatedId = `${disambiguatedBaseId}:${suffix}`;
+    suffix += 1;
+  }
+
+  pushUnique(records, { ...record, id: disambiguatedId }, seen);
+}
+
+export function extractKnowledgeRecordsFromManPage({
+  command,
+  section,
+  text,
+  profile = "all",
+  includePatterns = true
+}) {
+  const records = [];
+  const seen = new Set();
+  const isShellgeiProfile = profile === "shellgei";
+
+  for (const manSection of splitSections(text)) {
+    const title = manSection.title;
+    const canonicalTitle = canonicalSectionTitle(title);
+    const context = { command, section, title, lines: manSection.lines };
+
+    if (isShellgeiProfile && NAME_SECTION_TITLES.has(canonicalTitle)) {
+      pushUnique(records, commandSummaryRecord(context), seen);
+      continue;
+    }
+    if (EXCLUDED_SECTION_TITLES.has(canonicalTitle)) continue;
+
+    if (isShellgeiProfile) {
+      if (OPTION_DEFINITION_SECTION_TITLES.has(canonicalTitle)) {
+        for (const record of optionRecords({
+          ...context,
+          groupAliases: true,
+          excludeGeneric: true,
+          curated: true
+        })) {
+          pushUnique(records, record, seen);
+        }
+      }
+
+      if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
+        for (const record of patternRecords({ ...context, curated: true })) {
+          pushPatternRecord(records, record, seen);
+        }
+      }
+      continue;
+    }
+
+    pushUnique(records, sectionRecord(context), seen);
+
+    for (const record of optionRecords(context)) pushUnique(records, record, seen);
+
+    if (includePatterns && PATTERN_SECTION_TITLES.has(canonicalTitle)) {
+      for (const record of patternRecords(context)) pushPatternRecord(records, record, seen);
+    }
+  }
+
+  return records;
+}

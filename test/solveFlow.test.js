@@ -221,19 +221,64 @@ describe("solveProblem", () => {
     });
 
     expect(result.finalCheck.passed).toBe(true);
-    expect(seenTasks[0].knowledgeHints).toBeUndefined();
+    expect(seenTasks.length).toBeGreaterThan(0);
+    expect(seenTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
   });
 
-  it("passes worker knowledge hints to the engine when enabled", async () => {
-    const seenHints = [];
-    const result = await solveProblem({
-      problemInput: "CSV の 3列目を合計する",
-      engine: {
-        name: "mock",
-        generateCommand: async ({ workerTask }) => {
-          seenHints.push(workerTask.knowledgeHints);
-          return { command: "printf '42\\n'", explanation: "ok" };
+  it("orchestrates one worker knowledge Tool call and logs only its bounded summary", async () => {
+    const retrievedText = "RETRIEVED_TEXT_MUST_NOT_BE_LOGGED";
+    const seenTasks = [];
+    const search = vi.fn(async () => [
+      {
+        id: "man:awk:-F",
+        kind: "option",
+        command: "awk",
+        option: "-F",
+        text: retrievedText,
+        source: "test",
+        score: 0.9
+      }
+    ]);
+    const generateTurn = vi.fn(async ({ context, continuation, toolResults }) => {
+      seenTasks.push(context.workerTask);
+      if (context.workerId !== "worker-1") {
+        return { type: "command", command: "rm -rf /", explanation: "blocked worker" };
+      }
+      if (!continuation) {
+        return {
+          type: "tool_calls",
+          calls: [
+            {
+              id: "call-1",
+              name: "search_knowledge",
+              arguments: { query: "  awk CSV fields  " }
+            }
+          ],
+          continuation: { responseId: "response-1" }
+        };
+      }
+      expect(toolResults).toEqual([
+        {
+          callId: "call-1",
+          result: {
+            ok: true,
+            value: {
+              records: [
+                expect.objectContaining({ id: "man:awk:-F", text: retrievedText })
+              ]
+            }
+          }
         }
+      ]);
+      return { type: "command", command: "printf '42\\n'", explanation: "Print 42." };
+    });
+
+    const result = await solveProblem({
+      problemInput: "print 42",
+      engine: {
+        name: "tool-engine",
+        capabilities: { toolCalling: true },
+        generateTurn
       },
       runner: {
         name: "mock",
@@ -255,26 +300,139 @@ describe("solveProblem", () => {
       maxIterations: 1,
       parallelism: 2,
       knowledgeMode: "worker",
-      knowledgeRetriever: {
-        async retrieveForWorker() {
-          return [
-            {
-              id: "man:awk:-F",
-              kind: "option",
-              command: "awk",
-              option: "-F",
-              text: "awk -F: CSV 列処理",
-              source: "test",
-              score: 1
-            }
-          ];
-        }
-      },
+      knowledgeRetriever: { search },
       plannerProvider: createTestPlannerProvider()
     });
 
+    const expectedSummary = {
+      name: "search_knowledge",
+      arguments: { query: "awk CSV fields" },
+      status: "completed",
+      resultCount: 1,
+      recordIds: ["man:awk:-F"]
+    };
     expect(result.finalCheck.passed).toBe(true);
-    expect(seenHints[0]).toEqual([expect.objectContaining({ id: "man:awk:-F" })]);
+    expect(seenTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
+    expect(search).toHaveBeenCalledOnce();
+    expect(result.attempts.find((attempt) => attempt.workerId === "worker-1")?.toolCalls).toEqual([
+      expectedSummary
+    ]);
+
+    const logText = await readFile(result.logPath, "utf8");
+    const logContent = JSON.parse(logText);
+    expect(logContent.attempts.find((attempt) => attempt.workerId === "worker-1")?.toolCalls).toEqual([
+      expectedSummary
+    ]);
+    expect(logText).not.toContain(retrievedText);
+  });
+
+  it("resets the one-call Tool budget for a retry after a continuation exceeds it", async () => {
+    const search = vi.fn(async ({ query }) => [
+      { id: `record:${query}`, command: "awk", text: "NEVER_LOG_RETRIEVED_TEXT", source: "test" }
+    ]);
+    const workerOneTurns = [];
+    let workerOneTurn = 0;
+    const generateTurn = vi.fn(async (request) => {
+      const { context } = request;
+      if (context.workerId !== "worker-1") {
+        return { type: "command", command: "rm -rf /", explanation: "blocked worker" };
+      }
+
+      workerOneTurns.push({
+        request,
+        attemptCount: request.context.attempts.length
+      });
+      workerOneTurn += 1;
+      if (workerOneTurn === 1) {
+        return {
+          type: "tool_calls",
+          calls: [
+            { id: "call-1", name: "search_knowledge", arguments: { query: "first" } }
+          ],
+          continuation: { responseId: "response-1" }
+        };
+      }
+      if (workerOneTurn === 2) {
+        return {
+          type: "tool_calls",
+          calls: [
+            { id: "call-2", name: "search_knowledge", arguments: { query: "must-not-run" } }
+          ],
+          continuation: { responseId: "response-2" }
+        };
+      }
+      if (workerOneTurn === 3) {
+        return {
+          type: "tool_calls",
+          calls: [
+            { id: "call-3", name: "search_knowledge", arguments: { query: "retry" } }
+          ],
+          continuation: { responseId: "response-3" }
+        };
+      }
+      return { type: "command", command: "printf '42\\n'", explanation: "Recovered." };
+    });
+
+    const result = await solveProblem({
+      problemInput: "print 42",
+      engine: {
+        name: "tool-engine",
+        capabilities: { toolCalling: true },
+        generateTurn
+      },
+      runner: {
+        name: "mock",
+        run: async () => ({
+          stdout: "42\n",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          durationMs: 1
+        })
+      },
+      judge: {
+        judge: async () => ({
+          passed: true,
+          reason: "ok",
+          score: { value: 100, breakdown: {} }
+        })
+      },
+      maxIterations: 2,
+      parallelism: 2,
+      knowledgeMode: "worker",
+      knowledgeRetriever: { search },
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    const workerAttempts = result.attempts.filter((attempt) => attempt.workerId === "worker-1");
+    expect(workerAttempts).toHaveLength(2);
+    expect(workerAttempts[0]).toMatchObject({
+      command: "",
+      passed: false,
+      failureReason: "Worker Tool call limit exceeded.",
+      toolCalls: [
+        {
+          arguments: { query: "first" },
+          status: "completed",
+          recordIds: ["record:first"]
+        }
+      ]
+    });
+    expect(workerAttempts[1]).toMatchObject({
+      command: "printf '42\\n'",
+      passed: true,
+      toolCalls: [
+        {
+          arguments: { query: "retry" },
+          status: "completed",
+          recordIds: ["record:retry"]
+        }
+      ]
+    });
+    expect(search).toHaveBeenCalledTimes(2);
+    expect(search).not.toHaveBeenCalledWith({ query: "must-not-run" });
+    expect(workerOneTurns[2].request).not.toHaveProperty("continuation");
+    expect(workerOneTurns[2].attemptCount).toBe(1);
   });
 
   it("keeps final formatted output while reporting session phases", async () => {

@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeSolveSessionLog } from "../src/io/logs/writer.js";
+import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
+import { generateWorkerCommand } from "../src/solve/worker/toolLoop.js";
+import { createToolRegistry } from "../src/tools/toolRegistry.js";
 
 const tempDirs = [];
 
@@ -151,5 +154,154 @@ describe("writeSolveSessionLog", () => {
     expect(logContent.plan.workerTasks[0]).toEqual(
       expect.objectContaining({ workerId: "worker-1", strategy: "default" })
     );
+  });
+
+  it("retains normalized knowledge metadata and bounded Worker Tool summaries without Tool records", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const session = buildSolveSession();
+    const workerRetrievedRecordText = "SECRET WORKER TOOL RECORD TEXT";
+    const plannerReferenceText = "BOUNDED PLANNER REFERENCE TEXT";
+    session.knowledgeMode = "all";
+    session.plan = {
+      ...session.plan,
+      knowledgeMode: "all",
+      planner: {
+        provider: "llm",
+        attemptedProvider: "llm",
+        fallbackReason: null,
+        promptVersion: "2026-08-02-llm-planner-v2",
+        prompt: `Planner used bounded, untrusted knowledge references: ${plannerReferenceText}`
+      },
+      workerTasks: [
+        {
+          workerId: "worker-1",
+          strategy: "default",
+          maxAttempts: 1,
+          assignedVariant: {
+            toolSuggestions: [
+              {
+                summary: "Try an awk field-oriented approach.",
+                rationale: "The planner selected a relevant command family.",
+                suggestedTools: ["awk"]
+              }
+            ]
+          }
+        }
+      ]
+    };
+    const toolRegistry = createToolRegistry();
+    toolRegistry.register(
+      createSearchKnowledgeTool({
+        retriever: {
+          async search() {
+            return [
+              {
+                id: "man:awk:-F",
+                command: "awk",
+                option: "-F",
+                text: workerRetrievedRecordText,
+                source: "man"
+              }
+            ];
+          }
+        }
+      })
+    );
+    let turn = 0;
+    const { toolCalls } = await generateWorkerCommand({
+      engine: {
+        async generateTurn() {
+          turn += 1;
+          return turn === 1
+            ? {
+                type: "tool_calls",
+                calls: [
+                  {
+                    id: "provider-call-1",
+                    name: "search_knowledge",
+                    arguments: { query: "CSV third field" }
+                  }
+                ],
+                continuation: { responseId: "provider-response-1" }
+              }
+            : { type: "command", command: "awk '{print $3}'" };
+        }
+      },
+      context: { problem: "CSV third field", attempts: [], workdir: "/tmp/workdir" },
+      toolRegistry
+    });
+
+    const { logPath } = await writeSolveSessionLog({
+      logsDir,
+      session,
+      summary: {
+        finishedAt: "2026-06-13T00:00:05.000Z",
+        selectedCandidateId: "worker-1",
+        stopReason: null,
+        selectorReason: "selected",
+        selectorScore: { value: 100, breakdown: {} },
+        selectorMetrics: null
+      },
+      attempts: [
+        {
+          attemptId: "worker-1-attempt-1",
+          workerId: "worker-1",
+          command: "awk '{print $3}'",
+          passed: true,
+          toolCalls
+        }
+      ],
+      candidates: [],
+      workerSummaries: [
+        {
+          workerId: "worker-1",
+          attemptCount: 1,
+          passed: true,
+          state: "completed",
+          reason: "ok"
+        }
+      ],
+      finalCheck: { passed: true, reason: "ok" }
+    });
+
+    const serializedLog = await readFile(logPath, "utf8");
+    const logContent = JSON.parse(serializedLog);
+    expect(logContent.plan.knowledgeMode).toBe("all");
+    expect(logContent.planner).toEqual(
+      expect.objectContaining({
+        provider: "llm",
+        attemptedProvider: "llm",
+        promptVersion: "2026-08-02-llm-planner-v2"
+      })
+    );
+    expect(logContent.plan.workerTasks[0].assignedVariant.toolSuggestions).toEqual([
+      expect.objectContaining({ suggestedTools: ["awk"] })
+    ]);
+    expect(logContent.planner.prompt).toContain(plannerReferenceText);
+    expect(logContent.workerSummaries).toEqual([
+      expect.objectContaining({ workerId: "worker-1", attemptCount: 1 })
+    ]);
+    expect(logContent.attempts[0].toolCalls).toEqual([
+      {
+        name: "search_knowledge",
+        arguments: { query: "CSV third field" },
+        status: "completed",
+        resultCount: 1,
+        recordIds: ["man:awk:-F"]
+      }
+    ]);
+    const serializedWorkerLog = JSON.stringify({
+      attempts: logContent.attempts,
+      workerSummaries: logContent.workerSummaries
+    });
+    expect(serializedWorkerLog).not.toContain(workerRetrievedRecordText);
+    expect(serializedWorkerLog).not.toContain("provider-call-1");
+    expect(serializedWorkerLog).not.toContain("provider-response-1");
+    expect(serializedWorkerLog).not.toContain('"text"');
+    expect(serializedWorkerLog).not.toContain('"value"');
+    expect(serializedWorkerLog).not.toContain('"result"');
+    expect(serializedWorkerLog).not.toContain('"continuation"');
+    expect(serializedWorkerLog).not.toContain('"toolResults"');
   });
 });

@@ -80,4 +80,23 @@ describe("scoreShellgeiCandidate", () => {
       launchedProgram.breakdown.artistry
     );
   });
+
+  it("scores conciseness by whole-command length instead of pipeline size", async () => {
+    const shorterPipeline = await scoreShellgeiCandidate(
+      passingCandidate(
+        "seq 100001 100500 | factor | awk 'NF==2{print $2}' | head -10"
+      )
+    );
+    const longerPackedCommand = await scoreShellgeiCandidate(
+      passingCandidate(
+        "awk 'BEGIN{N=101000;for(i=2;i<=N;i++)a[i]=1;for(i=2;i*i<=N;i++)if(a[i])for(j=i*i;j<=N;j+=i)a[j]=0;for(i=100001;i<=N;i++)if(a[i])print i}' | head -10"
+      )
+    );
+
+    expect(shorterPipeline.breakdown.conciseness).toBe(19);
+    expect(longerPackedCommand.breakdown.conciseness).toBe(18);
+    expect(shorterPipeline.breakdown.conciseness).toBeGreaterThan(
+      longerPackedCommand.breakdown.conciseness
+    );
+  });
 });

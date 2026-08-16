@@ -55,6 +55,7 @@ function buildPrompt(context) {
 
 export class CodexCliEngine {
   name = "codex-cli";
+  capabilities = Object.freeze({ toolCalling: false });
 
   constructor(options = {}) {
     this.command = options.command ?? "codex";
