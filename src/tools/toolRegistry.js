@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+function supportsZodSchema(inputSchema) {
+  if (typeof inputSchema?.safeParse !== "function") {
+    return false;
+  }
+
+  try {
+    z.toJSONSchema(inputSchema);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validateTool(tool) {
   if (typeof tool?.name !== "string" || tool.name.trim().length === 0) {
     throw new TypeError("Tool name must be a non-empty string.");
@@ -7,7 +20,7 @@ function validateTool(tool) {
   if (typeof tool.description !== "string" || tool.description.trim().length === 0) {
     throw new TypeError("Tool description must be a non-empty string.");
   }
-  if (typeof tool.inputSchema?.safeParse !== "function") {
+  if (!supportsZodSchema(tool.inputSchema)) {
     throw new TypeError("Tool inputSchema must support safeParse.");
   }
   if (typeof tool.execute !== "function") {

@@ -136,6 +136,19 @@ describe("createToolRegistry", () => {
     expect(() => registry.register(echoTool(overrides))).toThrow();
   });
 
+  it("rejects a non-Zod safeParse impostor during registration", () => {
+    const registry = createToolRegistry();
+    const inputSchema = {
+      safeParse(value) {
+        return { success: true, data: value };
+      }
+    };
+
+    expect(() => registry.register(echoTool({ inputSchema }))).toThrow(
+      new TypeError("Tool inputSchema must support safeParse.")
+    );
+  });
+
   it("rejects duplicate tool names with the required message", () => {
     const registry = createToolRegistry();
     registry.register(echoTool());
