@@ -128,4 +128,27 @@ describe("npm publish metadata", () => {
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
+
+  it("includes Planner and Worker knowledge runtime modules in the packed files", async () => {
+    const modules = [
+      "../src/knowledge/mode.js",
+      "../src/knowledge/hints.js",
+      "../src/tools/toolRegistry.js",
+      "../src/knowledge/searchKnowledgeTool.js",
+      "../src/solve/worker/toolLoop.js"
+    ];
+
+    for (const modulePath of modules) {
+      expect(existsSync(path.resolve(repoRoot, modulePath.replace(/^\.\.\//, "")))).toBe(true);
+    }
+    await Promise.all(modules.map((modulePath) => import(modulePath)));
+
+    expect(packageJson.files).toContain("src");
+    for (const modulePath of modules) {
+      const packedPath = modulePath.replace(/^\.\.\//, "");
+      expect(packageJson.files).not.toContain(`!${packedPath}`);
+    }
+    expect(packageJson.files).toContain("!data/knowledge/man.jsonl");
+    expect(packageJson.files).toContain("!data/knowledge/man.vectors.jsonl");
+  });
 });

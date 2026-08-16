@@ -107,4 +107,34 @@ describe("runSolveCommand", () => {
     expect(mocks.reporter.cleanup).toHaveBeenCalledTimes(1);
     expect(stdoutWrite).not.toHaveBeenCalled();
   });
+
+  it("forwards and formats the normalized all knowledge mode", async () => {
+    const result = {
+      knowledgeMode: "all",
+      plan: { knowledgeMode: "all" },
+      finalCheck: { passed: true }
+    };
+    mocks.solveProblem.mockResolvedValue(result);
+
+    await runSolveCommand({
+      problem: "sum",
+      engine: "mock",
+      runner: "docker",
+      maxIter: 1,
+      mode: "single",
+      parallelism: 4,
+      selector: "best-score-wins",
+      knowledge: "all",
+      knowledgeModel: "test-model",
+      knowledgeDataset: "data/knowledge/shellgei-basic.jsonl",
+      progress: "off"
+    });
+
+    expect(mocks.solveProblem).toHaveBeenCalledWith(
+      expect.objectContaining({ knowledgeMode: "all" })
+    );
+    expect(mocks.formatResult).toHaveBeenCalledWith(result);
+    expect(stdoutWrite).toHaveBeenCalledWith("formatted result\n");
+    expect(process.exitCode).toBe(0);
+  });
 });

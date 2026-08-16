@@ -42,7 +42,10 @@ export async function generateWorkerCommand({ engine, context, toolRegistry }) {
   }
 
   const call = firstTurn.calls[0];
-  const toolResult = await toolRegistry.execute(call);
+  const toolResult = await toolRegistry.execute({
+    name: call.name,
+    arguments: call.arguments
+  });
   const summary = createToolCallSummary(call, toolResult);
   const { validatedArguments: _validatedArguments, ...publicToolResult } = toolResult;
   const finalTurn = await engine.generateTurn({

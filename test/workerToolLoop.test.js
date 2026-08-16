@@ -104,7 +104,9 @@ describe("generateWorkerCommand", () => {
       text: "retrieved text must not be persisted"
     };
     const execute = vi.fn(async () => ({ records: [rawRecord, { text: "without id" }] }));
-    const toolRegistry = createRegistry(execute);
+    const registeredTools = createRegistry(execute);
+    const registryExecute = vi.fn(registeredTools.execute.bind(registeredTools));
+    const toolRegistry = { ...registeredTools, execute: registryExecute };
     const firstTurn = {
       type: "tool_calls",
       calls: [
@@ -133,6 +135,10 @@ describe("generateWorkerCommand", () => {
       ]
     });
     expect(execute).toHaveBeenCalledWith({ query: "awk fields" });
+    expect(registryExecute).toHaveBeenCalledWith({
+      name: "search_knowledge",
+      arguments: { query: "  awk fields  " }
+    });
     expect(engine.generateTurn).toHaveBeenNthCalledWith(2, {
       context,
       tools: toolRegistry.definitions(),

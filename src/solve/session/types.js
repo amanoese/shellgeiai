@@ -1,4 +1,67 @@
 /**
+ * Normalized knowledge execution mode. The CLI alias `on` is normalized to `all`.
+ * @typedef {"off" | "planner" | "worker" | "all"} KnowledgeMode
+ */
+
+/**
+ * Provider-neutral Tool definition exposed to an Engine adapter.
+ * @typedef {Object} ToolDefinition
+ * @property {string} name
+ * @property {string} description
+ * @property {Object} parameters
+ */
+
+/**
+ * Provider-neutral Tool call returned by an Engine adapter.
+ * @typedef {Object} EngineToolCall
+ * @property {string} id
+ * @property {string} name
+ * @property {Object} arguments
+ */
+
+/**
+ * ToolRegistry execution request with provider correlation fields removed.
+ * @typedef {Object} ToolExecutionCall
+ * @property {string} name
+ * @property {Object} arguments
+ */
+
+/**
+ * Bounded, log-safe summary of a Tool call. Full Tool result values and provider IDs are omitted.
+ * @typedef {Object} ToolCallSummary
+ * @property {string} name
+ * @property {Object} arguments
+ * @property {"completed" | "error"} status
+ * @property {number} resultCount
+ * @property {string[]} recordIds
+ */
+
+/**
+ * Provider-owned opaque continuation passed unchanged to the next Engine turn.
+ * @typedef {Object<string, unknown>} EngineContinuation
+ */
+
+/**
+ * @typedef {Object} EngineToolResult
+ * @property {string} callId
+ * @property {unknown} result
+ */
+
+/**
+ * @typedef {Object} CommandTurn
+ * @property {"command"} type
+ * @property {string} command
+ * @property {string} [explanation]
+ */
+
+/**
+ * @typedef {Object} ToolCallsTurn
+ * @property {"tool_calls"} type
+ * @property {EngineToolCall[]} calls
+ * @property {EngineContinuation} continuation
+ */
+
+/**
  * @typedef {Object} SolveAttempt
  * @property {string} [attemptId]
  * @property {string} [workerId]
@@ -14,6 +77,7 @@
  * @property {import("../../execution/judge/Judge.js").JudgeScore} [score]
  * @property {import("../../execution/runner/Runner.js").RunnerFailure | null} [runnerFailure]
  * @property {import("../../execution/runner/Runner.js").RunnerCleanup | null} [runnerCleanup]
+ * @property {ToolCallSummary[]} [toolCalls]
  */
 
 /**
@@ -88,13 +152,40 @@
  * @property {number} parallelism
  * @property {PlanVariant[]} variants
  * @property {WorkerTask[]} workerTasks
+ * @property {KnowledgeMode} [knowledgeMode]
  * @property {{provider: string, attemptedProvider: string|null, fallbackReason: string|null, promptVersion: string|null, prompt: string|null, rawResponse: string|null}} planner
+ */
+
+/**
+ * Retrieved knowledge record made available only to the Planner prefetch boundary.
+ * @typedef {Object} PlannerKnowledgeHint
+ * @property {string} [id]
+ * @property {string} [command]
+ * @property {string} [option]
+ * @property {string} [text]
+ * @property {string} [source]
+ */
+
+/**
+ * Provider-neutral Tool execution boundary owned by solve orchestration.
+ * @typedef {Object} ToolRegistry
+ * @property {() => ToolDefinition[]} definitions
+ * @property {(call: ToolExecutionCall) => Promise<{ok: boolean, value?: unknown, error?: {code: string, message: string}, validatedArguments: Object}>} execute
+ */
+
+/**
+ * Knowledge fields exposed on a solve session before and during planning/execution.
+ * @typedef {Object} SolveSession
+ * @property {KnowledgeMode} knowledgeMode
+ * @property {PlannerKnowledgeHint[]} plannerKnowledgeHints
+ * @property {ToolRegistry} [toolRegistry]
+ * @property {ExecutionPlan} [plan]
  */
 
 /**
  * @typedef {Object} SolveProblemOptions
  * @property {string} problemInput
- * @property {{name: string, generateCommand(context: SolveContext): Promise<EngineResult>}} engine
+ * @property {{name: string, capabilities?: {toolCalling: boolean}, generateCommand(context: SolveContext): Promise<EngineResult>, generateTurn?(input: {context: SolveContext, tools: ToolDefinition[], continuation?: EngineContinuation, toolResults?: EngineToolResult[]}): Promise<CommandTurn | ToolCallsTurn>}} engine
  * @property {{name?: string, run(command: string, options: import("../../execution/runner/Runner.js").RunOptions): Promise<import("../../execution/runner/Runner.js").RunResult>}} runner
  * @property {{judge(input: import("../../execution/judge/Judge.js").JudgeInput): Promise<import("../../execution/judge/Judge.js").JudgeDecision>}} judge
  * @property {number} maxIterations
@@ -110,8 +201,12 @@
  * @property {string} [commandPolicyPath]
  * @property {import("../../execution/runner/Runner.js").SandboxPolicy} [sandboxPolicy]
  * @property {string} [sandboxPolicyPath]
+ * @property {KnowledgeMode | "on"} [knowledgeMode]
+ * @property {string} [knowledgeModel]
+ * @property {string} [knowledgeDatasetPath]
+ * @property {string} [knowledgeVectorsPath]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
- * @property {{name?: string, buildPlan(session: unknown): Promise<unknown>}} [plannerProvider]
+ * @property {{name?: string, buildPlan(session: SolveSession): Promise<unknown>}} [plannerProvider]
  */
 
 /**
