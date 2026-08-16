@@ -1,15 +1,13 @@
-import { execFile } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packageJson = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
-const execFileAsync = promisify(execFile);
 
 describe("npm publish metadata", () => {
   it("declares npm metadata for public release", () => {
@@ -156,11 +154,12 @@ describe("npm publish metadata", () => {
     try {
       await mkdir(cacheDir);
       await mkdir(packDir);
-      const { stdout } = await execFileAsync(
+      const stdout = execFileSync(
         "npm",
         ["pack", "--dry-run", "--json", "--pack-destination", packDir],
         {
           cwd: repoRoot,
+          encoding: "utf8",
           env: { ...process.env, npm_config_cache: cacheDir }
         }
       );
