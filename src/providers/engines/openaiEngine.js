@@ -148,6 +148,82 @@ function parseToolCallArguments(raw) {
   return parsed;
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function serializeToolResult(result) {
+  let serialized;
+
+  try {
+    serialized = JSON.stringify(result);
+  } catch {
+    throw new Error("The OpenAI engine could not serialize a Tool result.");
+  }
+
+  if (typeof serialized !== "string") {
+    throw new Error("The OpenAI engine could not serialize a Tool result.");
+  }
+
+  return serialized;
+}
+
+function isObjectSchema(schema) {
+  return (
+    schema?.type === "object" ||
+    (Array.isArray(schema?.type) && schema.type.includes("object"))
+  );
+}
+
+function assertOpenAIStrictNestedSchema(schema) {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return;
+  }
+
+  if (isObjectSchema(schema) || Object.hasOwn(schema, "properties")) {
+    assertOpenAIStrictObjectSchema(schema, false);
+  }
+
+  const nestedSchemas = [
+    schema.items,
+    ...(schema.anyOf ?? []),
+    ...(schema.oneOf ?? [])
+  ];
+  for (const nestedSchema of nestedSchemas.flat()) {
+    assertOpenAIStrictNestedSchema(nestedSchema);
+  }
+}
+
+function assertOpenAIStrictObjectSchema(schema, isRoot = true) {
+  const properties = schema?.properties;
+  const required = schema?.required;
+  const propertyNames =
+    properties && typeof properties === "object" && !Array.isArray(properties)
+      ? Object.keys(properties)
+      : null;
+  const requiredNames = Array.isArray(required) ? new Set(required) : null;
+
+  if (
+    !schema ||
+    typeof schema !== "object" ||
+    Array.isArray(schema) ||
+    (isRoot ? schema.type !== "object" : !isObjectSchema(schema)) ||
+    propertyNames === null ||
+    schema.additionalProperties !== false ||
+    requiredNames === null ||
+    requiredNames.size !== propertyNames.length ||
+    !propertyNames.every((name) => requiredNames.has(name))
+  ) {
+    throw new Error(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+  }
+
+  for (const propertySchema of Object.values(properties)) {
+    assertOpenAIStrictNestedSchema(propertySchema);
+  }
+}
+
 function isNonJsonResponseError(error) {
   return error instanceof Error && error.message === "The OpenAI engine returned non-JSON response.";
 }
@@ -262,14 +338,16 @@ export class OpenAIEngine {
   }
 
   async generateTurn({ context, tools, continuation, toolResults = [] }) {
-    const client = await this.#getClient();
-    const openaiTools = tools.map(({ name, description, parameters }) => ({
-      type: "function",
-      name,
-      description,
-      parameters,
-      strict: true
-    }));
+    const openaiTools = tools.map(({ name, description, parameters }) => {
+      assertOpenAIStrictObjectSchema(parameters);
+      return {
+        type: "function",
+        name,
+        description,
+        parameters,
+        strict: true
+      };
+    });
     const request = continuation
       ? {
           model: this.model,
@@ -277,7 +355,7 @@ export class OpenAIEngine {
           input: toolResults.map(({ callId, result }) => ({
             type: "function_call_output",
             call_id: callId,
-            output: JSON.stringify(result)
+            output: serializeToolResult(result)
           })),
           tools: openaiTools
         }
@@ -295,10 +373,36 @@ export class OpenAIEngine {
           ],
           tools: openaiTools
         };
+    const client = await this.#getClient();
     const response = await client.responses.create(request);
+
+    if (response?.status != null && response.status !== "completed") {
+      throw new Error("The OpenAI engine returned a non-completed response.");
+    }
+
     const functionCalls = (response.output ?? []).filter(
       (item) => item?.type === "function_call"
     );
+
+    if (
+      functionCalls.some((call) => call.status != null && call.status !== "completed")
+    ) {
+      throw new Error("The OpenAI engine returned a non-completed Tool call.");
+    }
+
+    if (functionCalls.length > 0 && !isNonEmptyString(response.id)) {
+      throw new Error("The OpenAI engine returned Tool calls without a response ID.");
+    }
+
+    for (const call of functionCalls) {
+      if (!isNonEmptyString(call.call_id)) {
+        throw new Error("The OpenAI engine returned a Tool call without a call ID.");
+      }
+      if (!isNonEmptyString(call.name)) {
+        throw new Error("The OpenAI engine returned a Tool call without a name.");
+      }
+    }
+
     const commandText = extractOptionalResponseText(response);
 
     if (functionCalls.length > 0 && commandText) {

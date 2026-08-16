@@ -37,7 +37,8 @@ describe("OpenAIEngine", () => {
         parameters: {
           type: "object",
           properties: { query: { type: "string" } },
-          required: ["query"]
+          required: ["query"],
+          additionalProperties: false
         }
       }
     ];
@@ -80,7 +81,8 @@ describe("OpenAIEngine", () => {
     const parameters = {
       type: "object",
       properties: { query: { type: "string" } },
-      required: ["query"]
+      required: ["query"],
+      additionalProperties: false
     };
 
     await engine.generateTurn({
@@ -103,6 +105,80 @@ describe("OpenAIEngine", () => {
         strict: true
       }
     ]);
+  });
+
+  it("rejects schemas incompatible with OpenAI strict mode before the client call", async () => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: [
+          {
+            name: "search_knowledge",
+            description: "Search command knowledge.",
+            parameters: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                limit: { type: "integer" }
+              },
+              required: ["query"]
+            }
+          }
+        ]
+      })
+    ).rejects.toThrow(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects nested object schemas incompatible with OpenAI strict mode", async () => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "Search with filters",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: [
+          {
+            name: "search_knowledge",
+            description: "Search command knowledge.",
+            parameters: {
+              type: "object",
+              properties: {
+                filters: {
+                  type: "object",
+                  properties: { command: { type: "string" } },
+                  required: []
+                }
+              },
+              required: ["filters"],
+              additionalProperties: false
+            }
+          }
+        ]
+      })
+    ).rejects.toThrow(
+      "The OpenAI engine received a Tool schema incompatible with strict mode."
+    );
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("returns a common command turn for a direct command response", async () => {
@@ -166,7 +242,8 @@ describe("OpenAIEngine", () => {
         parameters: {
           type: "object",
           properties: { query: { type: "string" } },
-          required: ["query"]
+          required: ["query"],
+          additionalProperties: false
         }
       }
     ];
@@ -196,6 +273,50 @@ describe("OpenAIEngine", () => {
       ]
     });
     expect(create.mock.calls[1][0].input).toHaveLength(1);
+  });
+
+  it.each([
+    ["undefined", () => undefined],
+    [
+      "a circular object",
+      () => {
+        const result = {};
+        result.self = result;
+        return result;
+      }
+    ],
+    [
+      "an object whose toJSON throws",
+      () => ({
+        toJSON() {
+          throw new Error("irrelevant serialization internals");
+        }
+      })
+    ]
+  ])("rejects %s Tool result with a stable serialization error", async (_label, makeResult) => {
+    const create = vi.fn(async () => ({
+      output_text: '{"command":"printf ok","explanation":"Print ok."}'
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "print ok",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: [],
+        continuation: { responseId: "resp-1" },
+        toolResults: [{ callId: "call-1", result: makeResult() }]
+      })
+    ).rejects.toMatchObject({
+      message: "The OpenAI engine could not serialize a Tool result."
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("preserves the order of multiple Tool calls", async () => {
@@ -331,6 +452,123 @@ describe("OpenAIEngine", () => {
       })
     ).rejects.toThrow("The OpenAI engine returned both a command and Tool calls.");
   });
+
+  it("rejects a Tool response whose status is not completed", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      status: "incomplete",
+      output: [
+        {
+          type: "function_call",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"CSV"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).rejects.toThrow("The OpenAI engine returned a non-completed response.");
+  });
+
+  it("rejects a function call whose status is not completed", async () => {
+    const create = vi.fn(async () => ({
+      id: "resp-1",
+      status: "completed",
+      output: [
+        {
+          type: "function_call",
+          status: "in_progress",
+          call_id: "call-1",
+          name: "search_knowledge",
+          arguments: '{"query":"CSV"}'
+        }
+      ]
+    }));
+    const engine = new OpenAIEngine({
+      apiKey: "test-key",
+      client: { responses: { create } }
+    });
+
+    await expect(
+      engine.generateTurn({
+        context: {
+          problem: "CSV の 3列目を合計する",
+          attempts: [],
+          workdir: "/tmp/workdir"
+        },
+        tools: []
+      })
+    ).rejects.toThrow("The OpenAI engine returned a non-completed Tool call.");
+  });
+
+  it.each([
+    {
+      label: "response ID",
+      responseId: "",
+      callId: "call-1",
+      name: "search_knowledge",
+      message: "The OpenAI engine returned Tool calls without a response ID."
+    },
+    {
+      label: "call ID",
+      responseId: "resp-1",
+      callId: "",
+      name: "search_knowledge",
+      message: "The OpenAI engine returned a Tool call without a call ID."
+    },
+    {
+      label: "name",
+      responseId: "resp-1",
+      callId: "call-1",
+      name: " ",
+      message: "The OpenAI engine returned a Tool call without a name."
+    }
+  ])(
+    "rejects a Tool response with an empty $label",
+    async ({ responseId, callId, name, message }) => {
+      const create = vi.fn(async () => ({
+        id: responseId,
+        status: "completed",
+        output: [
+          {
+            type: "function_call",
+            status: "completed",
+            call_id: callId,
+            name,
+            arguments: '{"query":"CSV"}'
+          }
+        ]
+      }));
+      const engine = new OpenAIEngine({
+        apiKey: "test-key",
+        client: { responses: { create } }
+      });
+
+      await expect(
+        engine.generateTurn({
+          context: {
+            problem: "CSV の 3列目を合計する",
+            attempts: [],
+            workdir: "/tmp/workdir"
+          },
+          tools: []
+        })
+      ).rejects.toThrow(message);
+    }
+  );
 
   it("builds the response request and parses JSON output", async () => {
     const create = vi.fn(async () => ({
