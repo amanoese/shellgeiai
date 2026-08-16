@@ -85,6 +85,54 @@ describe("createToolRegistry", () => {
     });
   });
 
+  it("awaits async validation and returns sanitized invalid arguments", async () => {
+    const registry = createToolRegistry();
+    registry.register(
+      echoTool({
+        inputSchema: z
+          .object({ value: z.string().refine(async () => false) })
+          .strict()
+      })
+    );
+
+    await expect(registry.execute({ name: "echo_value", arguments: { value: "ok" } })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "invalid_arguments",
+        message: "Invalid arguments for Tool echo_value."
+      },
+      validatedArguments: {}
+    });
+  });
+
+  it("sanitizes exceptions thrown while parsing arguments", async () => {
+    const registry = createToolRegistry();
+    registry.register(
+      echoTool({
+        inputSchema: z
+          .object({
+            value: z.string().refine(() => {
+              throw new Error("secret /tmp/path");
+            })
+          })
+          .strict()
+      })
+    );
+
+    const result = await registry.execute({ name: "echo_value", arguments: { value: "ok" } });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "invalid_arguments",
+        message: "Invalid arguments for Tool echo_value."
+      },
+      validatedArguments: {}
+    });
+    expect(JSON.stringify(result)).not.toContain("secret");
+    expect(JSON.stringify(result)).not.toContain("/tmp/path");
+  });
+
   it("awaits execution and returns the parsed arguments", async () => {
     const registry = createToolRegistry();
     registry.register(
@@ -124,6 +172,34 @@ describe("createToolRegistry", () => {
     expect(JSON.stringify(result)).not.toContain("/tmp/path");
   });
 
+  it("snapshots registration fields from later caller mutation", async () => {
+    const registry = createToolRegistry();
+    const tool = echoTool();
+    registry.register(tool);
+
+    tool.name = "mutated_tool";
+    tool.description = "Mutated description.";
+    tool.execute = async () => ({ value: "mutated" });
+
+    expect(registry.definitions()[0]).toEqual({
+      name: "echo_value",
+      description: "Echo one value.",
+      parameters: {
+        type: "object",
+        properties: {
+          value: { type: "string", minLength: 1 }
+        },
+        required: ["value"],
+        additionalProperties: false
+      }
+    });
+    await expect(registry.execute({ name: "echo_value", arguments: { value: "ok" } })).resolves.toEqual({
+      ok: true,
+      value: { value: "ok" },
+      validatedArguments: { value: "ok" }
+    });
+  });
+
   it.each([
     ["empty name", { name: "" }],
     ["empty description", { description: "" }],
@@ -145,7 +221,7 @@ describe("createToolRegistry", () => {
     };
 
     expect(() => registry.register(echoTool({ inputSchema }))).toThrow(
-      new TypeError("Tool inputSchema must support safeParse.")
+      new TypeError("Tool inputSchema must be a JSON Schema-compatible Zod schema.")
     );
   });
 

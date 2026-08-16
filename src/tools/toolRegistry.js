@@ -13,6 +13,17 @@ function supportsZodSchema(inputSchema) {
   }
 }
 
+function invalidArgumentsResult(name) {
+  return {
+    ok: false,
+    error: {
+      code: "invalid_arguments",
+      message: `Invalid arguments for Tool ${name}.`
+    },
+    validatedArguments: {}
+  };
+}
+
 function validateTool(tool) {
   if (typeof tool?.name !== "string" || tool.name.trim().length === 0) {
     throw new TypeError("Tool name must be a non-empty string.");
@@ -21,7 +32,7 @@ function validateTool(tool) {
     throw new TypeError("Tool description must be a non-empty string.");
   }
   if (!supportsZodSchema(tool.inputSchema)) {
-    throw new TypeError("Tool inputSchema must support safeParse.");
+    throw new TypeError("Tool inputSchema must be a JSON Schema-compatible Zod schema.");
   }
   if (typeof tool.execute !== "function") {
     throw new TypeError("Tool execute must be a function.");
@@ -37,7 +48,15 @@ export function createToolRegistry() {
       if (tools.has(tool.name)) {
         throw new Error(`Tool already registered: ${tool.name}`);
       }
-      tools.set(tool.name, tool);
+      tools.set(
+        tool.name,
+        Object.freeze({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          execute: tool.execute
+        })
+      );
     },
 
     definitions() {
@@ -60,16 +79,14 @@ export function createToolRegistry() {
         };
       }
 
-      const parsed = tool.inputSchema.safeParse(argumentsValue);
+      let parsed;
+      try {
+        parsed = await tool.inputSchema.safeParseAsync(argumentsValue);
+      } catch {
+        return invalidArgumentsResult(name);
+      }
       if (!parsed.success) {
-        return {
-          ok: false,
-          error: {
-            code: "invalid_arguments",
-            message: `Invalid arguments for Tool ${name}.`
-          },
-          validatedArguments: {}
-        };
+        return invalidArgumentsResult(name);
       }
 
       try {
