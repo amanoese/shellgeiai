@@ -27,6 +27,7 @@ export async function runSolveCommand(options) {
       selector: options.selector,
       timeBudgetMs: options.timeBudget,
       writableWorkdir: options.writableWorkdir,
+      dockerDevicesReadonly: options.dockerDevicesReadonly,
       commandPolicyPath: options.commandPolicy,
       sandboxPolicyPath: options.sandboxPolicy,
       knowledgeMode: options.knowledge,

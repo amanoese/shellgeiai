@@ -7,7 +7,8 @@ function buildRunnerSnapshot(session) {
     image: "image" in session.runner ? session.runner.image : undefined,
     limits: session.runnerLimits,
     sandboxPolicy: session.sandboxPolicy,
-    writableWorkdir: session.writableWorkdir ?? false
+    writableWorkdir: session.writableWorkdir ?? false,
+    dockerDevicesReadonly: session.dockerDevicesReadonly ?? []
   };
 }
 

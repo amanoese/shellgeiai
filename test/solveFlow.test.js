@@ -17,6 +17,36 @@ afterEach(async () => {
 });
 
 describe("solveProblem", () => {
+  it("includes normalized read-only Docker devices in the result", async () => {
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: {
+        name: "mock",
+        generateCommand: async () => ({
+          command: "printf 'ok\\n'",
+          explanation: "Print ok."
+        })
+      },
+      runner: {
+        name: "docker",
+        run: async () => ({
+          stdout: "ok\n",
+          stderr: "",
+          exitCode: 0,
+          timedOut: false,
+          aborted: false,
+          durationMs: 1
+        })
+      },
+      judge: new SimpleJudge(),
+      maxIterations: 1,
+      dockerDevicesReadonly: ["/dev/null"],
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(result.runner.dockerDevicesReadonly).toEqual(["/dev/null"]);
+  });
+
   it("emits top-level session phases around solve lifecycle", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);

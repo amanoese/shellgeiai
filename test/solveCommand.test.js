@@ -137,4 +137,29 @@ describe("runSolveCommand", () => {
     expect(stdoutWrite).toHaveBeenCalledWith("formatted result\n");
     expect(process.exitCode).toBe(0);
   });
+
+  it("forwards read-only Docker devices to solveProblem", async () => {
+    mocks.solveProblem.mockResolvedValue({ finalCheck: { passed: true } });
+
+    await runSolveCommand({
+      problem: "inspect devices",
+      engine: "mock",
+      runner: "docker",
+      maxIter: 1,
+      mode: "single",
+      parallelism: 4,
+      selector: "best-score-wins",
+      knowledge: "off",
+      knowledgeModel: "test-model",
+      knowledgeDataset: "data/knowledge/shellgei-basic.jsonl",
+      dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"],
+      progress: "off"
+    });
+
+    expect(mocks.solveProblem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"]
+      })
+    );
+  });
 });

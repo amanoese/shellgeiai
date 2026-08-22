@@ -210,6 +210,7 @@
  * @property {KnowledgeRetriever} [knowledgeRetriever]
  * @property {ToolRegistry} [toolRegistry]
  * @property {ExecutionPlan} [plan]
+ * @property {string[]} [dockerDevicesReadonly]
  */
 
 /**
@@ -228,6 +229,7 @@
  * @property {"first-pass-wins" | "best-score-wins"} [selector]
  * @property {number} [timeBudgetMs]
  * @property {boolean} [writableWorkdir]
+ * @property {string[]} [dockerDevicesReadonly]
  * @property {ShellgeiScoreMode} [shellgeiScoreMode]
  * @property {import("../../execution/runner/Runner.js").RunnerLimits} [runnerLimits]
  * @property {{blockedCommands: {name: string, reason: string}[], blockedRedirectionTargets: {prefix: string, reason: string}[], blockRecursiveBackgroundFunctions: boolean}} [commandPolicy]
