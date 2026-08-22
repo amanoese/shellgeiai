@@ -140,6 +140,10 @@ export function buildDockerRunArgs(command, options, config = {}) {
     args.push("--pids-limit", String(limits.processMaxCount));
   }
 
+  for (const devicePath of options.dockerDevicesReadonly ?? []) {
+    args.push("--device", `${devicePath}:${devicePath}:r`);
+  }
+
   args.push(image, "/bin/bash", "--noprofile", "--norc", "-lc", command);
 
   return args;

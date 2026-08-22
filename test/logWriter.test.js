@@ -28,6 +28,7 @@ function buildSolveSession() {
     runnerLimits: {},
     sandboxPolicy: {},
     writableWorkdir: false,
+    dockerDevicesReadonly: ["/dev/null"],
     workdir: "/tmp/workdir",
     mode: "parallel",
     parallelism: 1,
@@ -86,6 +87,7 @@ describe("writeSolveSessionLog", () => {
     expect(path.basename(second.logPath)).toBe("solve-2026-06-13T00-00-05-000Z-2.json");
     expect(logContent.mode).toBe("solve");
     expect(logContent.problemSpec.expectedOutput).toBe("ok");
+    expect(logContent.runner.dockerDevicesReadonly).toEqual(["/dev/null"]);
   });
 
   it("writes solve plan and shellgei score metadata", async () => {

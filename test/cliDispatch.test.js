@@ -83,6 +83,25 @@ describe("runCli", () => {
     );
   });
 
+  it("collects both read-only Docker device option spellings in order", async () => {
+    await runCli([
+      "solve",
+      "inspect devices",
+      "--device-ro",
+      "/dev/loop40",
+      "--docker-device-readonly",
+      "/dev/loop41",
+      "--device-ro",
+      "/dev/loop42"
+    ]);
+
+    expect(commands.runSolveCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41", "/dev/loop42"]
+      })
+    );
+  });
+
   it.each(["planner", "worker", "all", "on"])(
     "dispatches solve with %s knowledge mode",
     async (knowledge) => {

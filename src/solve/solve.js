@@ -84,7 +84,8 @@ async function finalizeSolve(session, execution) {
       name: session.runner.name ?? "local",
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy,
-      writableWorkdir: session.writableWorkdir
+      writableWorkdir: session.writableWorkdir,
+      dockerDevicesReadonly: session.dockerDevicesReadonly ?? []
     },
     knowledgeMode: session.knowledgeMode,
     stopReason: execution.stopReason ?? null,

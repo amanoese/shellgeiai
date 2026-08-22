@@ -100,6 +100,11 @@ function summarizeSubcommandOptions(command) {
 
 export function createCliProgram() {
   const program = new Command();
+  const dockerDevicesReadonly = [];
+  const collectDockerDeviceReadonly = (value) => {
+    dockerDevicesReadonly.push(value);
+    return value;
+  };
 
   program
     .name("shellgeiai")
@@ -127,6 +132,17 @@ export function createCliProgram() {
     )
     .option("--workdir <path>", "working directory")
     .option("--writable-workdir", "allow writes to the working directory")
+    .addOption(
+      new Option(
+        "--docker-device-readonly <path>",
+        "expose a host device read-only at the same Docker path"
+      ).argParser(collectDockerDeviceReadonly)
+    )
+    .addOption(
+      new Option("--device-ro <path>", "alias for --docker-device-readonly").argParser(
+        collectDockerDeviceReadonly
+      )
+    )
     .option(
       "--mode <mode>",
       "solve mode",
@@ -192,9 +208,14 @@ export function createCliProgram() {
         ),
       "bar"
     )
-    .action((problemParts, options) =>
-      runSolveCommand({ ...options, problem: problemParts.join(" ") })
-    );
+    .action((problemParts, options) => {
+      const { dockerDeviceReadonly, deviceRo, ...solveOptions } = options;
+      return runSolveCommand({
+        ...solveOptions,
+        problem: problemParts.join(" "),
+        dockerDevicesReadonly: [...dockerDevicesReadonly]
+      });
+    });
 
   const knowledge = program
     .command("knowledge")

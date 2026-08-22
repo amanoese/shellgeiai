@@ -17,6 +17,7 @@ import {
   loadKnowledgeVectorFileIfExists
 } from "../../knowledge/vectorFile.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
+import { normalizeReadonlyDockerDevices } from "../../execution/runner/dockerDevices.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
 import { createExecutionPlan } from "../planning/planner.js";
@@ -36,6 +37,14 @@ export async function createSolveSession(options) {
 
   const problem = parseProblemInput(options.problemInput);
   const workdir = await resolveRequestedWorkdir(options.requestedWorkdir);
+  const requestedDockerDevices = options.dockerDevicesReadonly ?? [];
+  if (requestedDockerDevices.length > 0 && options.runner?.name !== "docker") {
+    throw new Error(
+      "Read-only Docker devices require the Docker runner. Remove the device option or use --runner docker."
+    );
+  }
+  const dockerDevicesReadonly =
+    await normalizeReadonlyDockerDevices(requestedDockerDevices);
   const logsDir = path.join(process.cwd(), "logs");
   await ensureDirectory(logsDir);
   const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
@@ -69,6 +78,7 @@ export async function createSolveSession(options) {
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
     writableWorkdir: options.writableWorkdir ?? false,
+    dockerDevicesReadonly,
     commandPolicy,
     sandboxPolicy,
     onProgress: options.onProgress,

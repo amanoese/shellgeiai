@@ -132,6 +132,7 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       timeoutMs: remainingBudgetMs,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy,
+      dockerDevicesReadonly: session.dockerDevicesReadonly,
       signal: workerState.abortController.signal
     });
 

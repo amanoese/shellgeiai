@@ -66,9 +66,20 @@ shellgeiai logs show <run-id>
 - `--runner <docker|local>`: 実行環境を切り替えます。既定は `docker` です
 - `--workdir <path>`: 実行対象の作業ディレクトリを指定します
 - `--writable-workdir`: workdir への書き込みを許可します
+- `--docker-device-readonly <path>` / `--device-ro <path>`: ホストデバイスを Docker 内の同じパスへ読み取り専用で共有します
 - `--time-budget <ms>`: 実行時間の上限を指定します
 - `--command-policy <path>`: カスタム command policy を読み込みます
 - `--sandbox-policy <path>`: カスタム sandbox policy を読み込みます
+
+Docker runner に複数のデバイスを読み取り専用で共有する場合は、正式名と短い alias を繰り返し、または混在して指定できます。
+
+```bash
+shellgeiai solve "loop device の内容を調査" \
+  --device-ro /dev/loop40 \
+  --docker-device-readonly /dev/loop41
+```
+
+各デバイスは Docker の `--device <path>:<path>:r` として、ホストと同じコンテナ内パスへ共有されます。この機能は `--runner docker` 専用で、任意の Docker オプションを渡す機能ではありません。
 
 ### Knowledge retrieval modes
 
@@ -139,6 +150,7 @@ man の表示 locale は既定で `ja_JP.UTF-8` です。日本語 man が利用
 - `/etc` や `$HOME` などの敏感なパスへのリダイレクトもブロックします
 - 再帰的に background 実行する shell function は fork bomb 相当としてブロックします
 - workdir への書き込みは既定で無効です。必要な場合だけ `--writable-workdir` を付けてください
+- `--docker-device-readonly` / `--device-ro` はデバイスの変更を防ぎますが、内容の読み出しは防ぎません。AI が生成したコマンドや保存ログから内容が露出しても問題ないデバイスだけを指定してください
 
 policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。
 

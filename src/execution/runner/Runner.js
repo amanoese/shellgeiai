@@ -49,6 +49,7 @@
  * @property {RunnerLimits} [limits]
  * @property {SandboxPolicy} [sandboxPolicy]
  * @property {boolean} [writableWorkdir]
+ * @property {string[]} [dockerDevicesReadonly]
  * @property {AbortSignal} [signal]
  */
 

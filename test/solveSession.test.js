@@ -52,6 +52,40 @@ describe("progress helpers", () => {
 });
 
 describe("createSolveSession", () => {
+  it("normalizes read-only devices for Docker sessions", async () => {
+    const session = await createSolveSession({
+      problemInput: "inspect device",
+      engine: {
+        name: "mock",
+        generateCommand: async () => ({ command: "true" })
+      },
+      runner: { name: "docker" },
+      judge: { judge: async () => ({ passed: true, reason: "ok" }) },
+      maxIterations: 1,
+      dockerDevicesReadonly: ["/dev/null", "/dev/null"],
+      plannerProvider: createTestPlannerProvider()
+    });
+
+    expect(session.dockerDevicesReadonly).toEqual(["/dev/null"]);
+  });
+
+  it("rejects read-only Docker devices with a local runner", async () => {
+    await expect(
+      createSolveSession({
+        problemInput: "inspect device",
+        engine: {
+          name: "mock",
+          generateCommand: async () => ({ command: "true" })
+        },
+        runner: { name: "local" },
+        judge: { judge: async () => ({ passed: true, reason: "ok" }) },
+        maxIterations: 1,
+        dockerDevicesReadonly: ["/dev/null"],
+        plannerProvider: createTestPlannerProvider()
+      })
+    ).rejects.toThrow("use --runner docker");
+  });
+
   it("defaults shellgei score mode simple", async () => {
     const session = await createSolveSession({
       problemInput: "print 42",

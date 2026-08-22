@@ -91,6 +91,38 @@ describe("buildDockerRunArgs", () => {
       "-lc",
       "printf '123\\n'"
     ]);
+    expect(args).not.toContain("--device");
+  });
+
+  it("adds read-only devices before the Docker image", () => {
+    const args = buildDockerRunArgs(
+      "true",
+      {
+        cwd: "/tmp/example",
+        dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"],
+        limits: createDefaultRunnerLimits(),
+        sandboxPolicy: {
+          networkAccess: "off",
+          filesystemScope: "workdir-only"
+        }
+      },
+      {
+        image: "shellgeiai:test",
+        containerName: "device-test"
+      }
+    );
+
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "--device",
+        "/dev/loop40:/dev/loop40:r",
+        "--device",
+        "/dev/loop41:/dev/loop41:r"
+      ])
+    );
+    expect(args.indexOf("/dev/loop41:/dev/loop41:r")).toBeLessThan(
+      args.indexOf("shellgeiai:test")
+    );
   });
 
   it("mounts the workdir read-write when writable workdir is enabled", () => {

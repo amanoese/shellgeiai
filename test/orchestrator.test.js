@@ -291,6 +291,56 @@ describe("worker attempt factory", () => {
 });
 
 describe("runWorkerAttempt", () => {
+  it("forwards normalized read-only Docker devices to the runner", async () => {
+    const runnerRun = vi.fn(async () => ({
+      stdout: "ok\n",
+      stderr: "",
+      exitCode: 0,
+      timedOut: false,
+      aborted: false,
+      durationMs: 1
+    }));
+    const session = {
+      problem: { problemText: "Print ok", expectedOutput: "ok" },
+      workdir: "/tmp",
+      commandPolicy: undefined,
+      engine: {
+        generateCommand: vi.fn(async () => ({
+          command: "printf 'ok\\n'",
+          explanation: "Print ok."
+        }))
+      },
+      runner: { run: runnerRun },
+      judge: {
+        judge: vi.fn(async () => ({
+          passed: true,
+          reason: "ok",
+          score: { value: 100, breakdown: {} }
+        }))
+      },
+      runnerLimits: {},
+      sandboxPolicy: { networkAccess: "off", filesystemScope: "workdir-only" },
+      dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"],
+      progressEvents: []
+    };
+
+    await runWorkerAttempt({
+      session,
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      control: {},
+      workerState: { abortController: new AbortController() },
+      iteration: 0,
+      attempts: []
+    });
+
+    expect(runnerRun).toHaveBeenCalledWith(
+      "printf 'ok\\n'",
+      expect.objectContaining({
+        dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"]
+      })
+    );
+  });
+
   it("creates unsafe attempt and skips runner for blocked command", async () => {
     const task = {
       workerId: "worker-1",
