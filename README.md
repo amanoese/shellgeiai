@@ -46,6 +46,27 @@ source ~/.zshrc
 
 必要に応じて `OPENAI_MODEL`、`OPENAI_TIMEOUT_MS`、`OPENAI_MAX_RETRIES`、`OPENAI_BASE_URL` も指定できます。
 
+### OpenRouter を使う場合
+
+`openai` engine は OpenAI 互換の base URL を指定できるため、OpenRouter も利用できます。
+OpenRouter の API key、API endpoint、利用する model ID を次のように設定してください。
+
+```bash
+export OPENAI_API_KEY="your-openrouter-api-key"
+export OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+export OPENAI_MODEL="openai/gpt-5.6-luna"
+```
+
+`OPENAI_BASE_URL` には `/responses` を付けず、`/api/v1` までを指定します。model の提供状況や
+利用条件は OpenRouter 側で確認し、利用可能な model ID に置き換えてください。
+
+HTTP proxy が必要な Node.js 実行環境では、Node.js 22 以降の環境変数 proxy 対応を有効にして
+実行できます。
+
+```bash
+NODE_OPTIONS=--use-env-proxy shellgeiai solve "標準入力の行順を逆順にして表示せよ"
+```
+
 ## 使い方
 
 問題文から回答候補を生成して検証する:
@@ -53,6 +74,31 @@ source ~/.zshrc
 ```bash
 shellgeiai solve "標準入力の行順を逆順にして表示せよ"
 ```
+
+### Docker で生成コマンドを実行する例
+
+Docker が起動済みの環境では、次のように入力ファイルを一時 workdir に用意して、AI が生成した
+コマンドをコンテナ内で実行できます。`docker` は既定の runner ですが、この例では実行環境を
+分かりやすくするため `--runner docker` を明示しています。
+
+```bash
+workdir=$(mktemp -d)
+printf 'orange\napple\nbanana\n' > "$workdir/fruits.txt"
+
+shellgeiai solve \
+  "fruits.txt の各行を辞書順に並べて表示してください" \
+  --engine openai \
+  --runner docker \
+  --workdir "$workdir" \
+  --max-iter 2 \
+  --progress plain
+```
+
+OpenRouter を使う場合は、先に前述の `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` を
+設定してください。AI provider へのリクエストは ShellGeiAI の親プロセスが行い、生成された
+コマンドだけが Docker コンテナ内で実行されます。既定では workdir は読み取り専用でマウントされ、
+コンテナのネットワークも無効です。ファイルへの書き込みが必要な課題に限り、
+`--writable-workdir` を追加してください。
 
 保存済みログを確認する:
 
