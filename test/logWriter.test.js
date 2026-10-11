@@ -50,6 +50,21 @@ function buildSolveSession() {
 }
 
 describe("writeSolveSessionLog", () => {
+  it("logs a reproducible knowledge snapshot and excludes injected credential fields", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const session = buildSolveSession();
+    const snapshot = { provider: "openrouter", model: "test-model", inputProfile: "qwen-retrieval-v1", dbPath: "/tmp/test.sqlite",
+      dimensions: 2, generationId: 7, datasetFingerprint: "abc" };
+    session.knowledgeMode = "planner";
+    session.knowledgeSnapshot = { ...snapshot, apiKey: "DO NOT LOG THIS", authorization: "SECRET" };
+    const { logPath } = await writeSolveSessionLog({ logsDir, session, summary: { finishedAt: "2026-06-13T00:00:05.000Z" },
+      attempts: [], candidates: [], finalCheck: { passed: false } });
+    const content = await readFile(logPath, "utf8");
+    expect(JSON.parse(content).knowledge).toEqual({ mode: "planner", ...snapshot });
+    expect(content).not.toContain("DO NOT LOG THIS");
+    expect(content).not.toContain("SECRET");
+  });
   it("uses a unique filename when timestamp would otherwise collide", async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
     tempDirs.push(logsDir);

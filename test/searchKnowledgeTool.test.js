@@ -24,6 +24,8 @@ describe("createSearchKnowledgeTool", () => {
     expect(tool.name).toBe("search_knowledge");
     expect(tool.description).toMatch(/search/i);
     expect(tool.description).toMatch(/read-only/i);
+    expect(tool.description).toMatch(/persisted/i);
+    expect(tool.description).toMatch(/external.*embedding/i);
   });
 
   it("trims a valid query before executing through the registry", async () => {

@@ -11,12 +11,16 @@ export async function solveProblem(options) {
     knowledgeMode: options.knowledgeMode,
     knowledgeModel: options.knowledgeModel,
     knowledgeDatasetPath: options.knowledgeDatasetPath,
-    knowledgeVectorsPath: options.knowledgeVectorsPath,
+    knowledgeDbPath: options.knowledgeDbPath,
     knowledgeEmbedder: options.knowledgeEmbedder,
     knowledgeEmbedderFactory: options.knowledgeEmbedderFactory
   });
-  const execution = await runSolveOrchestrator(session);
-  return await finalizeSolve(session, execution);
+  try {
+    const execution = await runSolveOrchestrator(session);
+    return await finalizeSolve(session, execution);
+  } finally {
+    await session.dispose();
+  }
 }
 
 async function finalizeSolve(session, execution) {

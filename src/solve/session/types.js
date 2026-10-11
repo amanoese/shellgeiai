@@ -191,11 +191,32 @@
 
 /**
  * @typedef {Object} KnowledgeEmbedder
- * @property {(text: string) => Promise<number[]>} embed
+ * @property {(text: string, options?: {signal?: AbortSignal}) => Promise<number[]>} embed
+ * @property {(texts: string[], options?: {signal?: AbortSignal}) => Promise<number[][]>} [embedBatch]
  */
 
 /**
  * @typedef {(options: {model: string}) => KnowledgeEmbedder} KnowledgeEmbedderFactory
+ */
+
+/**
+ * Reproducible metadata for a pinned, persisted knowledge generation. Contains no credentials.
+ * @typedef {Object} KnowledgeSnapshot
+ * @property {"openrouter"} provider
+ * @property {string} model
+ * @property {string} inputProfile
+ * @property {string} dbPath
+ * @property {number} dimensions
+ * @property {number} generationId
+ * @property {string} datasetFingerprint
+ */
+
+/**
+ * A runtime owns its read-only SQLite connection. Injected retrievers remain caller-owned.
+ * @typedef {Object} KnowledgeRuntime
+ * @property {KnowledgeRetriever} retriever
+ * @property {KnowledgeSnapshot} snapshot
+ * @property {() => Promise<void>} dispose
  */
 
 /**
@@ -208,6 +229,11 @@
  * @property {KnowledgeMode} knowledgeMode
  * @property {PlannerKnowledgeHint[]} plannerKnowledgeHints
  * @property {KnowledgeRetriever} [knowledgeRetriever]
+ * @property {string} knowledgeDatasetPath
+ * @property {string} knowledgeDbPath
+ * @property {KnowledgeSnapshot} [knowledgeSnapshot]
+ * @property {AbortSignal} signal
+ * @property {() => Promise<void>} dispose Call when finished with a session created directly; solveProblem calls it automatically.
  * @property {ToolRegistry} [toolRegistry]
  * @property {ExecutionPlan} [plan]
  * @property {string[]} [dockerDevicesReadonly]
@@ -239,10 +265,12 @@
  * @property {KnowledgeMode | "on"} [knowledgeMode]
  * @property {string} [knowledgeModel]
  * @property {string} [knowledgeDatasetPath]
- * @property {string} [knowledgeVectorsPath]
+ * @property {string} [knowledgeDbPath]
  * @property {KnowledgeRetriever} [knowledgeRetriever]
  * @property {KnowledgeEmbedder} [knowledgeEmbedder]
  * @property {KnowledgeEmbedderFactory} [knowledgeEmbedderFactory]
+ * @property {(options: {datasetPath: string, dbPath: string, model: string, embedder?: KnowledgeEmbedder, embedderFactory?: KnowledgeEmbedderFactory, signal?: AbortSignal}) => Promise<KnowledgeRuntime>} [knowledgeRuntimeFactory]
+ * @property {AbortSignal} [signal]
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: SolveSession): Promise<unknown>}} [plannerProvider]
  */

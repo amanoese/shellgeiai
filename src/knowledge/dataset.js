@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 export const supportedKinds = new Set(["option", "pattern", "section", "note"]);
+export const MAX_EMBEDDING_INPUT_BYTES = 128 * 1024;
 
 function trimmedString(value) {
   return String(value ?? "").trim();
@@ -27,6 +28,10 @@ export function normalizeKnowledgeRecord(record) {
     throw new Error(`Knowledge record ${id} text is required.`);
   }
 
+  if (Buffer.byteLength(text, "utf8") > MAX_EMBEDDING_INPUT_BYTES) {
+    throw new Error(`Knowledge record ${id} text exceeds the 128 KiB embedding input limit.`);
+  }
+
   return {
     id,
     kind,
@@ -39,6 +44,7 @@ export function normalizeKnowledgeRecord(record) {
 
 function parseKnowledgeDataset(content) {
   const records = [];
+  const ids = new Set();
 
   for (const [index, line] of content.split(/\r?\n/).entries()) {
     if (!line.trim()) {
@@ -46,20 +52,24 @@ function parseKnowledgeDataset(content) {
     }
 
     try {
-      records.push(normalizeKnowledgeRecord(JSON.parse(line)));
+      const record = normalizeKnowledgeRecord(JSON.parse(line));
+      if (ids.has(record.id)) throw new Error(`Duplicate knowledge record id: ${record.id}.`);
+      ids.add(record.id);
+      records.push(record);
     } catch (error) {
       throw new Error(`Invalid knowledge dataset line ${index + 1}: ${error.message}`);
     }
   }
 
+  if (records.length === 0) throw new Error("Knowledge dataset is empty.");
   return records;
 }
 
 export async function loadKnowledgeDatasetWithFingerprint(datasetPath) {
-  const content = await readFile(datasetPath, "utf8");
+  const bytes = await readFile(datasetPath);
   return {
-    records: parseKnowledgeDataset(content),
-    fingerprint: createHash("sha256").update(content).digest("hex")
+    records: parseKnowledgeDataset(bytes.toString("utf8")),
+    fingerprint: createHash("sha256").update(bytes).digest("hex")
   };
 }
 

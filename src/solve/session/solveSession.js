@@ -1,21 +1,15 @@
 import path from "node:path";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
-import { loadKnowledgeDatasetWithFingerprint } from "../../knowledge/dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
 import {
   normalizeKnowledgeMode,
   usesPlannerKnowledge,
   usesWorkerKnowledge
 } from "../../knowledge/mode.js";
-import { createKnowledgeRetriever } from "../../knowledge/retriever.js";
-import { createRuriEmbedder } from "../../knowledge/ruriEmbedder.js";
+import { createKnowledgeRuntime } from "../../knowledge/knowledgeRuntime.js";
+import { awaitWithSignal } from "../../knowledge/retriever.js";
+import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "../../knowledge/knowledgePaths.js";
 import { createSearchKnowledgeTool } from "../../knowledge/searchKnowledgeTool.js";
-import {
-  attachKnowledgeVectors,
-  assertKnowledgeVectorFileCompatibility,
-  defaultKnowledgeVectorsPath,
-  loadKnowledgeVectorFileIfExists
-} from "../../knowledge/vectorFile.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { normalizeReadonlyDockerDevices } from "../../execution/runner/dockerDevices.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
@@ -67,13 +61,12 @@ export async function createSolveSession(options) {
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
     knowledgeMode: normalizeKnowledgeMode(options.knowledgeMode),
     knowledgeModel: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL,
-    knowledgeDatasetPath: options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
-    knowledgeVectorsPath:
-      options.knowledgeVectorsPath ??
-      defaultKnowledgeVectorsPath(
-        options.knowledgeDatasetPath ?? "data/knowledge/shellgei-basic.jsonl",
-        options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL
-      ),
+    knowledgeDatasetPath: path.resolve(options.knowledgeDatasetPath ?? DEFAULT_KNOWLEDGE_DATASET),
+    knowledgeDbPath: path.resolve(resolveKnowledgeDbPath({
+      dbPath: options.knowledgeDbPath,
+      datasetPath: options.knowledgeDatasetPath ?? DEFAULT_KNOWLEDGE_DATASET,
+      model: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL
+    })),
     timeBudgetMs: options.timeBudgetMs,
     deadlineAtMs: options.timeBudgetMs == null ? null : Date.now() + options.timeBudgetMs,
     runnerLimits: options.runnerLimits ?? createDefaultRunnerLimits(),
@@ -95,52 +88,62 @@ export async function createSolveSession(options) {
     );
   }
 
-  if (options.knowledgeRetriever) {
-    session.knowledgeRetriever = options.knowledgeRetriever;
-  } else if (
-    usesPlannerKnowledge(session.knowledgeMode) ||
-    usesWorkerKnowledge(session.knowledgeMode)
-  ) {
-    const { records, fingerprint: datasetFingerprint } =
-      await loadKnowledgeDatasetWithFingerprint(session.knowledgeDatasetPath);
-    const vectorFile = await loadKnowledgeVectorFileIfExists(session.knowledgeVectorsPath);
-    if (vectorFile) {
-      assertKnowledgeVectorFileCompatibility(vectorFile, {
-        datasetPath: session.knowledgeDatasetPath,
-        datasetFingerprint,
-        model: session.knowledgeModel
-      });
-    }
-    const recordsWithVectors = attachKnowledgeVectors(records, vectorFile);
-    session.knowledgeRetriever = createKnowledgeRetriever({
-      records: recordsWithVectors,
-      embedder:
-        options.knowledgeEmbedder ??
-        (options.knowledgeEmbedderFactory ?? createRuriEmbedder)({
-          model: session.knowledgeModel
-        })
-    });
-  }
-
-  if (usesWorkerKnowledge(session.knowledgeMode)) {
-    session.toolRegistry = createToolRegistry();
-    session.toolRegistry.register(
-      createSearchKnowledgeTool({ retriever: session.knowledgeRetriever })
-    );
-  }
-
-  session.plannerKnowledgeHints = usesPlannerKnowledge(session.knowledgeMode)
-    ? await session.knowledgeRetriever.retrieveForPlanner({
-        problem: session.problem.problemText,
-        expectedOutput: session.problem.expectedOutput
-      })
-    : [];
-
-  reportSessionPhase(session, "planning", "Building execution plan.");
-  const plan = {
-    ...(await createExecutionPlan(session)),
-    knowledgeMode: session.knowledgeMode
+  let ownedRuntime;
+  let disposed = false;
+  const controller = new AbortController();
+  const externalAbort = () => controller.abort(options.signal.reason);
+  options.signal?.addEventListener("abort", externalAbort, { once: true });
+  if (options.signal?.aborted) externalAbort();
+  const timer = session.deadlineAtMs == null ? null : setTimeout(
+    () => controller.abort(new Error("Solve time budget exceeded during knowledge retrieval.")),
+    Math.max(0, session.deadlineAtMs - Date.now())
+  );
+  timer?.unref?.();
+  session.signal = controller.signal;
+  session.dispose = async () => {
+    if (disposed) return;
+    disposed = true;
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", externalAbort);
+    controller.abort(new Error("Solve session disposed."));
+    await ownedRuntime?.dispose();
   };
 
-  return { ...session, plan };
+  try {
+    controller.signal.throwIfAborted();
+    if (options.knowledgeRetriever) {
+      session.knowledgeRetriever = options.knowledgeRetriever;
+    } else if (usesPlannerKnowledge(session.knowledgeMode) || usesWorkerKnowledge(session.knowledgeMode)) {
+      ownedRuntime = await (options.knowledgeRuntimeFactory ?? createKnowledgeRuntime)({
+        datasetPath: session.knowledgeDatasetPath,
+        dbPath: session.knowledgeDbPath,
+        model: session.knowledgeModel,
+        embedder: options.knowledgeEmbedder,
+        embedderFactory: options.knowledgeEmbedderFactory,
+        signal: controller.signal
+      });
+      session.knowledgeRetriever = ownedRuntime.retriever;
+      session.knowledgeSnapshot = ownedRuntime.snapshot;
+    }
+
+    if (usesWorkerKnowledge(session.knowledgeMode)) {
+      session.toolRegistry = createToolRegistry();
+      session.toolRegistry.register(createSearchKnowledgeTool({ retriever: session.knowledgeRetriever }));
+    }
+    session.plannerKnowledgeHints = usesPlannerKnowledge(session.knowledgeMode)
+      ? await awaitWithSignal(() => session.knowledgeRetriever.retrieveForPlanner({
+          problem: session.problem.problemText,
+          expectedOutput: session.problem.expectedOutput
+        }), controller.signal)
+      : [];
+    controller.signal.throwIfAborted();
+    reportSessionPhase(session, "planning", "Building execution plan.");
+    const plan = { ...(await awaitWithSignal(() => createExecutionPlan(session), controller.signal)), knowledgeMode: session.knowledgeMode };
+    controller.signal.throwIfAborted();
+    return { ...session, plan };
+  } catch (error) {
+    try { await session.dispose(); }
+    catch (disposeError) { throw new AggregateError([error, disposeError], "Solve initialization and knowledge cleanup failed."); }
+    throw error;
+  }
 }

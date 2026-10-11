@@ -1,244 +1,62 @@
 import { describe, expect, it, vi } from "vitest";
 import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
-import { searchKnowledgeRecords } from "../src/knowledge/vectorSearch.js";
+import { formatEmbeddingQuery } from "../src/knowledge/embeddingInputs.js";
 
-const vectors = new Map([
-  ["検索クエリ: CSV の 3列目を合計する\nawk-worker", [1, 0]],
-  ["検索文書: awk -F: CSV の列を処理する", [1, 0]],
-  ["検索文書: sort -k: 指定列で並べ替える", [0, 1]]
-]);
-
-const fakeEmbedder = {
-  async embed(text) {
-    return vectors.get(text) ?? [0, 1];
-  }
-};
-
-describe("knowledge retrieval", () => {
-  it("searches records by cosine similarity", async () => {
-    const results = await searchKnowledgeRecords({
-      query: "検索クエリ: CSV の 3列目を合計する\nawk-worker",
-      records: [
-        { id: "awk", command: "awk", text: "awk -F: CSV の列を処理する" },
-        { id: "sort", command: "sort", text: "sort -k: 指定列で並べ替える" }
-      ],
-      embedder: fakeEmbedder,
-      topK: 1
-    });
-
-    expect(results).toEqual([
-      expect.objectContaining({ id: "awk", score: 1 })
-    ]);
+function fixture(embedder = { embed: vi.fn(async () => [1, 0]) }, signal) {
+  const records = [{ id: "awk", command: "awk", option: "-F", text: "x".repeat(1000), source: "seed" }];
+  const store = { search: vi.fn(() => records) };
+  return { store, embedder, retriever: createKnowledgeRetriever({ store, generationId: 7, embedder, signal }) };
+}
+describe("persisted retrieval", () => {
+  it("formats planner input and pins a generation with broad diversity", async () => {
+    const { store, embedder, retriever } = fixture();
+    const hints = await retriever.retrieveForPlanner({ problem: "集計", expectedOutput: "頻度" });
+    expect(embedder.embed.mock.calls[0][0]).toBe(formatEmbeddingQuery("集計\n期待する出力: 頻度"));
+    expect(store.search).toHaveBeenCalledWith({ generationId: 7, vector: [1, 0], topK: 5, maxPerCommand: 1 });
+    expect(hints[0].text.length).toBeLessThan(1000);
+    expect(hints[0]).not.toHaveProperty("score");
   });
-
-  it("reuses record embeddings across repeated searches with the same embedder and records", async () => {
-    const calls = [];
-    const records = [
-      { id: "awk", command: "awk", text: "awk -F: CSV の列を処理する" },
-      { id: "sort", command: "sort", text: "sort -k: 指定列で並べ替える" }
-    ];
-    const embedder = {
-      async embed(text) {
-        calls.push(text);
-        return vectors.get(text) ?? [1, 0];
-      }
-    };
-
-    await searchKnowledgeRecords({
-      query: "検索クエリ: CSV の 3列目を合計する\nawk-worker",
-      records,
-      embedder
-    });
-    await searchKnowledgeRecords({
-      query: "検索クエリ: CSV の 3列目を合計する\nawk-worker",
-      records,
-      embedder
-    });
-
-    expect(calls).toEqual([
-      "検索クエリ: CSV の 3列目を合計する\nawk-worker",
-      "検索文書: awk -F: CSV の列を処理する",
-      "検索文書: sort -k: 指定列で並べ替える",
-      "検索クエリ: CSV の 3列目を合計する\nawk-worker"
-    ]);
+  it("uses worker diversity and shares concurrent identical query embeddings", async () => {
+    const { store, embedder, retriever } = fixture();
+    await Promise.all([retriever.search({ query: "CSV" }), retriever.search({ query: "CSV" })]);
+    expect(embedder.embed).toHaveBeenCalledOnce();
+    expect(store.search).toHaveBeenCalledWith({ generationId: 7, vector: [1, 0], topK: 5, maxPerCommand: 2 });
+    await retriever.retrieveForPlanner({ problem: "CSV" });
+    expect(embedder.embed).toHaveBeenCalledOnce();
+    expect(store.search.mock.calls.at(-1)[0].maxPerCommand).toBe(1);
   });
-
-  it("limits selected records per command", async () => {
-    const results = await searchKnowledgeRecords({
-      query: "query",
-      records: [
-        { id: "awk-1", command: "awk", text: "awk one" },
-        { id: "awk-2", command: "awk", text: "awk two" },
-        { id: "sort-1", command: "sort", text: "sort one" }
-      ],
-      embedder: {
-        async embed() {
-          return [1, 0];
-        }
-      },
-      topK: 3,
-      maxPerCommand: 1
-    });
-
-    expect(results.map((record) => record.id)).toEqual(["awk-1", "sort-1"]);
+  it("evicts failed embeddings so an identical query can retry", async () => {
+    const { retriever, embedder } = fixture({ embed: vi.fn().mockRejectedValueOnce(new Error("API failed")).mockResolvedValueOnce([1, 0]) });
+    await expect(retriever.search({ query: "CSV" })).rejects.toThrow("API failed");
+    await expect(retriever.search({ query: "CSV" })).resolves.toHaveLength(1);
+    expect(embedder.embed).toHaveBeenCalledTimes(2);
   });
-
-  it("returns empty results for empty records", async () => {
-    await expect(searchKnowledgeRecords({
-      query: "query",
-      records: [],
-      embedder: fakeEmbedder
-    })).resolves.toEqual([]);
+  it("rejects blank queries before API", async () => {
+    const { retriever, embedder } = fixture();
+    await expect(retriever.search({ query: " " })).rejects.toThrow("query");
+    expect(embedder.embed).not.toHaveBeenCalled();
   });
-
-  it("returns empty results for topK zero without embedding records", async () => {
-    const calls = [];
-    const results = await searchKnowledgeRecords({
-      query: "query",
-      records: [
-        { id: "awk", command: "awk", text: "awk text" }
-      ],
-      embedder: {
-        async embed(text) {
-          calls.push(text);
-          return [1, 0];
-        }
-      },
-      topK: 0
-    });
-
-    expect(results).toEqual([]);
-    expect(calls).toEqual(["query"]);
+  it.each([{ topK: 0 }, { topK: -1 }, { maxPerCommand: 0 }])("returns empty results for nonpositive limits without API", async limits => {
+    const { retriever, embedder, store } = fixture();
+    await expect(retriever.searchRecords({ query: "CSV", ...limits })).resolves.toEqual([]);
+    expect(embedder.embed).not.toHaveBeenCalled();
+    expect(store.search).not.toHaveBeenCalled();
   });
-
-  it("scores zero vectors as zero similarity", async () => {
-    const results = await searchKnowledgeRecords({
-      query: "query",
-      records: [
-        { id: "zero", command: "awk", text: "zero vector" }
-      ],
-      embedder: {
-        async embed() {
-          return [0, 0];
-        }
-      },
-      topK: 1
-    });
-
-    expect(results).toEqual([
-      expect.objectContaining({ id: "zero", score: 0 })
-    ]);
+  it.each([{ topK: 1.5 }, { maxPerCommand: NaN }])("rejects invalid limits before API", async limits => {
+    const { retriever, embedder } = fixture();
+    await expect(retriever.searchRecords({ query: "CSV", ...limits })).rejects.toThrow("integers");
+    expect(embedder.embed).not.toHaveBeenCalled();
   });
-
-  it("rejects embedding vectors with different dimensions", async () => {
-    await expect(searchKnowledgeRecords({
-      query: "query",
-      records: [
-        { id: "awk", command: "awk", text: "awk text" }
-      ],
-      embedder: {
-        async embed(text) {
-          return text === "query" ? [1, 0] : [1, 0, 0];
-        }
-      }
-    })).rejects.toThrow("Cannot compare embedding vectors with different dimensions.");
-  });
-
-  it("retrieves broad planner hints with at most one result per command", async () => {
-    const calls = [];
-    const retriever = createKnowledgeRetriever({
-      records: [
-        { id: "awk-1", command: "awk", option: "-F", text: "awk one", source: "seed", vector: [1, 0] },
-        { id: "awk-2", command: "awk", option: "-v", text: "awk two", source: "seed", vector: [1, 0] },
-        { id: "sort-1", command: "sort", option: "-k", text: "sort one", source: "seed", vector: [1, 0] },
-        { id: "uniq-1", command: "uniq", option: "-c", text: "uniq one", source: "seed", vector: [1, 0] },
-        { id: "cut-1", command: "cut", option: "-d", text: "cut one", source: "seed", vector: [1, 0] },
-        { id: "sed-1", command: "sed", option: "-n", text: "sed one", source: "seed", vector: [1, 0] }
-      ],
-      embedder: {
-        async embed(text) {
-          calls.push(text);
-          return [1, 0];
-        }
-      }
-    });
-
-    const hints = await retriever.retrieveForPlanner({
-      problem: "値を集計する",
-      expectedOutput: "頻度順の一覧"
-    });
-
-    expect(hints.map((record) => record.id)).toEqual([
-      "awk-1",
-      "sort-1",
-      "uniq-1",
-      "cut-1",
-      "sed-1"
-    ]);
-    expect(hints[0]).toEqual({
-      id: "awk-1",
-      command: "awk",
-      option: "-F",
-      text: "awk one",
-      source: "seed"
-    });
-    expect(calls).toEqual(["検索クエリ: 値を集計する\n期待する出力: 頻度順の一覧"]);
-  });
-
-  it("returns at most five generic search results and two per command", async () => {
-    const calls = [];
-    const retriever = createKnowledgeRetriever({
-      records: [
-        { id: "awk-1", command: "awk", text: "awk one", vector: [1, 0] },
-        { id: "awk-2", command: "awk", text: "awk two", vector: [1, 0] },
-        { id: "awk-3", command: "awk", text: "awk three", vector: [1, 0] },
-        { id: "sort-1", command: "sort", text: "sort one", vector: [1, 0] },
-        { id: "uniq-1", command: "uniq", text: "uniq one", vector: [1, 0] },
-        { id: "cut-1", command: "cut", text: "cut one", vector: [1, 0] },
-        { id: "sed-1", command: "sed", text: "sed one", vector: [1, 0] }
-      ],
-      embedder: {
-        async embed(text) {
-          calls.push(text);
-          return [1, 0];
-        }
-      }
-    });
-
-    const results = await retriever.search({ query: "集計" });
-
-    expect(results.map((record) => record.id)).toEqual([
-      "awk-1",
-      "awk-2",
-      "sort-1",
-      "uniq-1",
-      "cut-1"
-    ]);
-    expect(calls).toEqual(["検索クエリ: 集計"]);
-  });
-
-  it("uses precomputed record vectors without embedding documents", async () => {
-    const embedder = {
-      embed: vi.fn(async (text) => {
-        if (text.startsWith("検索文書:")) {
-          throw new Error("document embedding should not run");
-        }
-        return [1, 0];
-      })
-    };
-
-    const results = await searchKnowledgeRecords({
-      query: "検索クエリ: CSV",
-      records: [
-        { id: "awk", command: "awk", text: "awk -F: CSV の列を処理する", vector: [1, 0] },
-        { id: "sort", command: "sort", text: "sort -k: 指定列で並べ替える", vector: [0, 1] }
-      ],
-      embedder,
-      topK: 1
-    });
-
-    expect(results).toEqual([expect.objectContaining({ id: "awk", score: 1 })]);
-    expect(embedder.embed).toHaveBeenCalledTimes(1);
-    expect(embedder.embed).toHaveBeenCalledWith("検索クエリ: CSV");
+  it("rejects cancellation promptly even if an injected embedder ignores its signal", async () => {
+    const controller = new AbortController();
+    let resolve;
+    const embedder = { embed: vi.fn(() => new Promise(done => { resolve = done; })) };
+    const { store, retriever } = fixture(embedder, controller.signal);
+    const promise = retriever.search({ query: "CSV" });
+    controller.abort(new Error("deadline exceeded"));
+    await expect(promise).rejects.toThrow("deadline exceeded");
+    resolve([1, 0]);
+    await Promise.resolve();
+    expect(store.search).not.toHaveBeenCalled();
   });
 });
