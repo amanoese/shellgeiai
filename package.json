@@ -36,7 +36,7 @@
     "url": "https://github.com/amanoese/shellgeiai/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public",
@@ -56,9 +56,11 @@
   ],
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "better-sqlite3": "13.0.3",
     "commander": "^15.0.0",
     "log-update": "^8.0.0",
     "openai": "^6.9.1",
+    "sqlite-vec": "0.1.9",
     "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"
   },
