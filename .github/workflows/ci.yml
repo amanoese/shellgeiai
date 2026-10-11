@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [24, 26]
+        node-version: [22, 24, 26]
 
     steps:
       - name: Check out repository
@@ -34,6 +34,10 @@ jobs:
         run: |
           node src/cli.js --help
           node src/cli.js solve --help
+          node src/cli.js knowledge --help
+          node src/cli.js knowledge prepare --help
+          node src/cli.js knowledge build --help
+          node src/cli.js knowledge search --help
 
       - name: Verify packed contents
         run: npm pack --dry-run
@@ -42,4 +46,30 @@ jobs:
         run: |
           PACKAGE_TGZ="$(npm pack)"
           npm install -g "./${PACKAGE_TGZ}"
+          GLOBAL_MODULE_ROOT="$(npm root -g)"
+          cd "$(mktemp -d)"
           shellgeiai --help
+          shellgeiai knowledge build --help
+          node --input-type=module -e '
+            import { pathToFileURL } from "node:url";
+            import { readFile } from "node:fs/promises";
+            const { DEFAULT_KNOWLEDGE_DATASET } = await import(pathToFileURL(process.argv[1]));
+            if (!DEFAULT_KNOWLEDGE_DATASET.endsWith("shellgei-basic.jsonl")) throw new Error("Unexpected bundled dataset");
+            const records = (await readFile(DEFAULT_KNOWLEDGE_DATASET, "utf8")).trim().split("\n");
+            if (!records.length || !JSON.parse(records[0]).id) throw new Error("Missing bundled seed records");
+          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/src/knowledge/knowledgePaths.js"
+          node --input-type=module -e '
+            import { pathToFileURL } from "node:url";
+            import path from "node:path";
+            const { buildKnowledgeVectors, searchKnowledge } = await import(pathToFileURL(process.argv[1]));
+            const vector = Array.from({ length: 4096 }, (_, index) => index === 0 ? 1 : 0);
+            const embedder = {
+              embed: async () => vector,
+              embedBatch: async texts => texts.map(() => vector)
+            };
+            const dbPath = path.resolve("knowledge.sqlite");
+            const built = await buildKnowledgeVectors({ dbPath, embedder });
+            if (built.dimensions !== 4096 || built.itemCount < 1) throw new Error("Installed package build failed");
+            const searched = await searchKnowledge({ query: "CSV", dbPath, embedder, topK: 5 });
+            if (!searched.results.length || Math.abs(searched.results[0].score - 1) > 0.000001) throw new Error("Installed package cosine search failed");
+          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/src/knowledge/commands.js"

@@ -76,6 +76,29 @@ function knowledgeModelOption(flags = "--knowledge-model <model>") {
     .default(DEFAULT_KNOWLEDGE_MODEL);
 }
 
+function knowledgeDbOption(flags = "--db <path>") {
+  return new Option(flags, "knowledge SQLite database")
+    .env("SHELLGEIAI_KNOWLEDGE_DB");
+}
+
+function legacyVectorsOption(flags, replacement) {
+  return new Option(flags, "removed JSON/JSONL vector option")
+    .hideHelp()
+    .argParser(() => {
+      throw new InvalidArgumentError(
+        `JSON/JSONL vector files are no longer supported. Regenerate with knowledge build --db <path>, then use ${replacement}.`
+      );
+    });
+}
+
+function parseBatchSize(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 64) {
+    throw new InvalidArgumentError("Invalid --batch-size value. Use integer 1 to 64.");
+  }
+  return parsed;
+}
+
 function summarizeSubcommandOptions(command) {
   const helper = command.createHelp();
   const summaries = command.commands
@@ -185,7 +208,8 @@ export function createCliProgram() {
     )
     .addOption(knowledgeModelOption())
     .option("--knowledge-dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--knowledge-vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption("--knowledge-db <path>"))
+    .addOption(legacyVectorsOption("--knowledge-vectors <path>", "solve --knowledge-db <path>"))
     .option(
       "--time-budget <ms>",
       "time budget in milliseconds",
@@ -224,18 +248,21 @@ export function createCliProgram() {
 
   knowledge
     .command("prepare")
-    .description("prepare knowledge data")
+    .description("check native SQLite connection and remote embedding API (one API call; no model download)")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .action((options) => runKnowledgePrepareCommand(options));
 
   knowledge
     .command("build")
-    .description("build knowledge vectors")
+    .description("build a knowledge SQLite database via remote embeddings")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption())
+    .addOption(legacyVectorsOption("--vectors <path>", "knowledge build/search --db <path>"))
+    .option("--batch-size <number>", "embedding batch size (1 to 64)", parseBatchSize, 16)
+    .option("--force", "rebuild even when the active generation matches")
     .action((options) => runKnowledgeBuildCommand(options));
 
   knowledge
@@ -266,12 +293,13 @@ export function createCliProgram() {
 
   knowledge
     .command("search")
-    .description("search knowledge vectors")
+    .description("search a prepared knowledge SQLite database")
     .argument("<query...>", "search query")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption())
+    .addOption(legacyVectorsOption("--vectors <path>", "knowledge build/search --db <path>"))
     .option(
       "--top-k <number>",
       "maximum number of search results",

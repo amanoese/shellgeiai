@@ -4,6 +4,12 @@ dist/
 data/knowledge/man.jsonl
 data/knowledge/man.vectors.jsonl
 data/knowledge/man.vectors.json
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
 data/knowledge/*vectors.*.json
 docs/superpowers/plans/*.md
 docs/superpowers/specs/*.md

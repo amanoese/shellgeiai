@@ -9,6 +9,7 @@
 - `src/solve/`: solve のアプリケーション本体。session、planner、orchestrator、worker、selector を持つ。
 - `src/execution/`: コマンド実行、runner、judge、safety policy。
 - `src/providers/`: OpenAI や外部 CLI など、AI / planner provider 依存。
+- `src/knowledge/`: dataset、SQLite generation、検索 runtime と reference hints。
 - `src/io/`: 問題文入力、ログ、表示整形。
 - `src/shared/`: 汎用的な fs / exec 補助。
 
@@ -42,16 +43,11 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### CLI Commands
 
 - `src/cli/commands/solve.js`: solve 用 runtime を作り、`solveProblem()` を実行して結果を表示する。
+- `src/cli/commands/knowledge.js`: prepare / build / search の database オプションを渡して表示し、man generator へ委譲する。
 - `src/cli/commands/logsShow.js`: 指定ログを読み、詳細表示する。
 - `src/cli/commands/logsList.js`: logs directory のログ一覧を表示する。
 - `src/cli/commands/logsSearch.js`: 保存済みログを条件検索して表示する。
 - `src/cli/commands/logsPrune.js`: 保存済みログを削除する。
-
-### CLI Options
-
-- `src/cli/options/solveOptions.js`: `solve` の問題文と実行オプションを parse する。
-- `src/cli/options/logsOptions.js`: `logs show/list/search/prune` を parse する。
-- `src/cli/options/shared.js`: option parser 共通の flag 判定、数値 parse、値取得 helper。
 
 ### Solve Entry
 
@@ -118,6 +114,23 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 - `src/providers/planner/llmPlanner.js`: LLM planner provider の入口。planner prompt を投げて plan を得る。
 - `src/providers/planner/plannerPrompt.js`: planner に渡す prompt を組み立てる。
 - `src/providers/planner/plannerSchema.js`: planner response の schema と validation。
+- `src/providers/embeddings/openRouterEmbedder.js`: OpenRouter embedding API、batch、timeout / abort / retry と response validation。
+
+### Knowledge
+
+- `src/knowledge/modelConfig.js`: Qwen embedding の既定 model と環境変数名。
+- `src/knowledge/knowledgePaths.js`: package-relative seed dataset と user cache database path の解決。
+- `src/knowledge/embeddingInputs.js`: version 付き query instruction と document text の整形。
+- `src/knowledge/dataset.js`: JSONL の正規化、重複 ID / byte cap 検証と SHA-256 fingerprint。
+- `src/knowledge/commands.js`: prepare / build / search の入口。batch と staged generation 公開を管理。
+- `src/knowledge/sqliteSchema.js`: SQLite schema version と dimension / identity / metadata validation。
+- `src/knowledge/sqliteStore.js`: native SQLite / sqlite-vec 接続、generation、float32 cosine 検索、互換性検証。
+- `src/knowledge/knowledgeRuntime.js`: session で共有する readonly database と OpenRouter query embedder の lifecycle。
+- `src/knowledge/retriever.js`: query embedding の共有 cache、ランキングと command ごとの件数制御。
+- `src/knowledge/mode.js`: off / planner / worker / all の正規化と capability 要件。
+- `src/knowledge/hints.js`: Planner に渡す bounded reference hints の整形。
+- `src/knowledge/searchKnowledgeTool.js`: Worker の read-only Tool 検索と record 上限。
+- `src/tools/toolRegistry.js`: provider-neutral Tool schema、引数検証と実行。
 
 ### IO
 

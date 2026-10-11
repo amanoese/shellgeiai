@@ -162,4 +162,13 @@ describe("runSolveCommand", () => {
       })
     );
   });
+
+  it("forwards the SQLite database without resolving a legacy vector file", async () => {
+    mocks.solveProblem.mockResolvedValue({ finalCheck: { passed: true } });
+    await runSolveCommand({problem: "sum", engine: "mock", runner: "docker", knowledge: "planner",
+      knowledgeDb: "custom.sqlite", knowledgeDataset: "custom.jsonl", knowledgeModel: "custom-model", progress: "off"});
+    expect(mocks.solveProblem).toHaveBeenCalledWith(expect.objectContaining({knowledgeDbPath: "custom.sqlite",
+      knowledgeDatasetPath: "custom.jsonl", knowledgeModel: "custom-model", knowledgeMode: "planner"}));
+    expect(mocks.solveProblem.mock.calls[0][0]).not.toHaveProperty("knowledgeVectorsPath");
+  });
 });

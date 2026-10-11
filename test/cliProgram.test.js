@@ -42,6 +42,7 @@ describe("createCliProgram", () => {
     expect(solve.helpInformation()).toMatch(/off, planner, worker, all, or\s+on/);
     expect(solve.helpInformation()).toContain("--docker-device-readonly <path>");
     expect(solve.helpInformation()).toContain("--device-ro <path>");
+    expect(solve.helpInformation()).toContain("--knowledge-db <path>");
   });
 
   it("summarizes knowledge subcommand options in knowledge help", () => {
@@ -57,7 +58,10 @@ describe("createCliProgram", () => {
     expect(help).toContain("--knowledge-model");
     expect(help).toContain("SHELLGEIAI_KNOWLEDGE_MODEL");
     expect(help).toContain("--dataset");
-    expect(help).toContain("--vectors");
+    expect(help).toContain("--db");
+    expect(help).toContain("--batch-size");
+    expect(help).toContain("--force");
+    expect(help).not.toContain("--vectors");
     expect(help).toContain("--top-k");
     expect(help).toContain("--profile");
   });

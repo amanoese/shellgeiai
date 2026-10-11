@@ -51,11 +51,16 @@
     "!data/knowledge/man.jsonl",
     "!data/knowledge/man.vectors.jsonl",
     "!data/knowledge/man.vectors.json",
+    "!**/*.sqlite",
+    "!**/*.sqlite-*",
+    "!**/*.sqlite3",
+    "!**/*.sqlite3-*",
+    "!**/*.db",
+    "!**/*.db-*",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
     "better-sqlite3": "13.0.3",
     "commander": "^15.0.0",
     "log-update": "^8.0.0",

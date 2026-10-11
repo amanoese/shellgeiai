@@ -19,6 +19,16 @@ describe("GitHub workflows", () => {
     expect(ciWorkflow).not.toContain("- main");
   });
 
+  it("tests the native SQLite dependency on all supported Node release lines", () => {
+    const workflow = readWorkflow("ci.yml");
+    expect(workflow).toContain("node-version: [22, 24, 26]");
+    expect(workflow).toContain("node src/cli.js knowledge --help");
+    expect(workflow).toContain('cd "$(mktemp -d)"');
+    expect(workflow).toContain("shellgeiai knowledge build --help");
+    expect(workflow).toContain("shellgei-basic.jsonl");
+    expect(workflow).not.toContain("OPENROUTER_API_KEY");
+  });
+
   it("checks pull requests bump package version over master", () => {
     const workflow = readWorkflow("version-check.yml");
 

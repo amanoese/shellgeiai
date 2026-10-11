@@ -106,7 +106,9 @@ Planner prefetch (planner/all)
 
 Engine adapter は provider 固有の Tool schema、Tool call、continuation を共通 turn 形式へ翻訳するだけです。Tool の選択、実行、回数制限は `src/solve/` の orchestration が所有します。現在 native Tool Calling に対応するのは `OpenAIEngine` だけで、`worker` / `all` を指定した非対応 Engine は Planner 実行前に fail fast します。`off` / `planner` は Tool Calling capability を要求しません。
 
-`shellgeiai knowledge prepare` は既定の Transformers.js / ONNX 対応 embedding model `sirasagi62/ruri-v3-30m-ONNX` の warmup、`shellgeiai knowledge build` は dataset vector file の生成を担当し、solve 時は事前生成 vectors があれば優先利用します。`--knowledge-model` と `SHELLGEIAI_KNOWLEDGE_MODEL` で solve / knowledge の model を揃えられます。
+`src/providers/embeddings/openRouterEmbedder.js` が OpenRouter の remote embedding API を扱い、`src/knowledge/` が dataset fingerprint、embedding input profile、SQLite generation と検索を管理します。既定 model は `qwen/qwen3-embedding-8b`、4096次元 float32 と sqlite-vec の cosine 検索を利用します。`knowledge prepare` は native 接続と1回の API request を確認し、`knowledge build` は batch embedding を staged generation に保存、完了時だけ active generation を切り替えます。失敗時は以前の completed generation を維持します。
+
+solve / search は dataset 内容・絶対パス・provider・model・input profile が一致する ready database を要求し、実行時 document embedding fallback はありません。Planner と Worker は session に1つの runtime と query cache を共有し、検索時の query だけを remote API に送ります。`off` は native database と embedding provider を初期化しません。`--knowledge-model` / `SHELLGEIAI_KNOWLEDGE_MODEL` で model、`--knowledge-db`（solve）/ `--db`（knowledge）/ `SHELLGEIAI_KNOWLEDGE_DB` で database を指定できます。省略 dataset は package 所在地、cache path は user cache 内の identity hash から解決します。旧 Ruri と JSON/JSONL vector cache は読み込みません。
 
 ### `src/execution/`
 

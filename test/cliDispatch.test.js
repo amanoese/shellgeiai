@@ -156,6 +156,103 @@ describe("runCli", () => {
     );
   });
 
+  it("dispatches build database, batching and force options", async () => {
+    await runCli([
+      "knowledge", "build", "--db", "custom.sqlite", "--batch-size", "64",
+      "--force", "--model", "alias-model"
+    ]);
+    expect(commands.runKnowledgeBuildCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        db: "custom.sqlite", batchSize: 64, force: true, model: "alias-model"
+      })
+    );
+  });
+
+  it("uses the bundled absolute dataset and default batch size", async () => {
+    await runCli(["knowledge", "build"]);
+    expect(commands.runKnowledgeBuildCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataset: expect.stringMatching(/^\/.*\/data\/knowledge\/shellgei-basic\.jsonl$/),
+        batchSize: 16
+      })
+    );
+  });
+
+  it("forwards the solve database option", async () => {
+    await runCli(["solve", "print 42", "--knowledge-db", "custom.sqlite"]);
+    expect(commands.runSolveCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ knowledgeDb: "custom.sqlite" })
+    );
+  });
+
+  it("uses the database environment setting and lets explicit options override it", async () => {
+    vi.stubEnv("SHELLGEIAI_KNOWLEDGE_DB", "environment.sqlite");
+    try {
+      await runCli(["knowledge", "search", "CSV"]);
+      expect(commands.runKnowledgeSearchCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ db: "environment.sqlite" })
+      );
+      await runCli(["knowledge", "build", "--db", "explicit.sqlite"]);
+      expect(commands.runKnowledgeBuildCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ db: "explicit.sqlite" })
+      );
+      await runCli(["solve", "CSV", "--knowledge-db", "solve.sqlite"]);
+      expect(commands.runSolveCommand).toHaveBeenCalledWith(
+        expect.objectContaining({ knowledgeDb: "solve.sqlite" })
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(["prepare", "build", "search"])("preserves the --model alias for knowledge %s", async (command) => {
+    await withKnowledgeModelEnv("environment-model", () => runCli([
+      "knowledge", command, ...(command === "search" ? ["CSV"] : []),
+      "--model", "alias-model"
+    ]));
+    const handler = {
+      prepare: commands.runKnowledgePrepareCommand,
+      build: commands.runKnowledgeBuildCommand,
+      search: commands.runKnowledgeSearchCommand
+    }[command];
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "alias-model", knowledgeModel: "environment-model" })
+    );
+  });
+
+  it.each(["0", "65", "1.5", "NaN"])("rejects invalid embedding batch size %s", async (batchSize) => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCli(["knowledge", "build", "--batch-size", batchSize]);
+      expect(stderr.mock.calls.flat().join("")).toContain(
+        "Invalid --batch-size value. Use integer 1 to 64."
+      );
+      expect(commands.runKnowledgeBuildCommand).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it.each([
+    ["solve", "print 42", "--knowledge-vectors", "old.jsonl"],
+    ["knowledge", "build", "--vectors", "old.jsonl"],
+    ["knowledge", "search", "query", "--vectors", "old.json"]
+  ])("explains migration for legacy vector flags %j", async (...args) => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCli(args);
+      expect(stderr.mock.calls.flat().join("")).toContain(
+        "JSON/JSONL vector files are no longer supported"
+      );
+      expect(stderr.mock.calls.flat().join("")).toContain("knowledge build");
+      expect(commands.runKnowledgeBuildCommand).not.toHaveBeenCalled();
+      expect(commands.runKnowledgeSearchCommand).not.toHaveBeenCalled();
+      expect(commands.runSolveCommand).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
   it("dispatches knowledge man with the curated profile", async () => {
     await runCli(["knowledge", "man", "--profile", "shellgei"]);
 
