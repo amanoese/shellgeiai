@@ -37,6 +37,40 @@ describe("OpenRouter embedder", () => {
     await expect(wrong.embed("query")).rejects.toThrow(/dimension/i);
   });
 
+  it("accepts the observed Qwen provider response name without changing the requested model", async () => {
+    const vector = Array(4096).fill(0); vector[0] = 1;
+    const fetchImpl = vi.fn(async () => vectorResponse([vector], "Qwen/Qwen3-Embedding-8B"));
+    const embedder = createOpenRouterEmbedder({ apiKey: "key", fetchImpl });
+    await expect(embedder.embed("query")).resolves.toEqual(vector);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body).model).toBe("qwen/qwen3-embedding-8b");
+  });
+
+  it.each([
+    "Qwen/Qwen3-Embedding-4B", "other/qwen3-embedding-8b",
+    "Qwen/Qwen3-Embedding-8B:free", "QWEN/QWEN3-EMBEDDING-8B", null
+  ])("rejects unrecognized Qwen response names without retrying: %s", async responseModel => {
+    const vector = Array(4096).fill(0); vector[0] = 1;
+    const fetchImpl = vi.fn(async () => vectorResponse([vector], responseModel));
+    const embedder = createOpenRouterEmbedder({ apiKey: "key", fetchImpl });
+    await expect(embedder.embed("query")).rejects.toThrow(/model does not match/);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("does not relax model-name case matching for other models", async () => {
+    await expect(client({ fetchImpl: async () => vectorResponse([[1, 2]], "Test/Embedding") }).embed("query"))
+      .rejects.toThrow(/model does not match/);
+  });
+
+  it.each([
+    { data: [{ index: 0, embedding: [1, 2] }], expected: /dimension/i },
+    { data: [], expected: /item count/i },
+    { data: [{ index: 0, embedding: Array(4096).fill(0) }], expected: /norm/i }
+  ])("still validates vector integrity for the Qwen response alias %#", async ({ data, expected }) => {
+    const embedder = createOpenRouterEmbedder({ apiKey: "key", fetchImpl: async () =>
+      new Response(JSON.stringify({ model: "Qwen/Qwen3-Embedding-8B", object: "list", data })) });
+    await expect(embedder.embed("query")).rejects.toThrow(expected);
+  });
+
   it("rejects missing credentials and invalid input before fetching", async () => {
     const fetchImpl = vi.fn();
     await expect(client({ apiKey: " ", fetchImpl }).embed("query")).rejects.toThrow(/OPENROUTER_API_KEY/);

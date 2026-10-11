@@ -55,7 +55,11 @@ function isTransientNetworkError(error) {
 }
 
 function validateVectors(payload, count, model, expectedDimension) {
-  if (!payload || payload.model !== model) throw new Error("Embedding response model does not match the requested model.");
+  // OpenRouter's Qwen provider returns its upstream name instead of the request slug.
+  // Accept only this observed alias; other models must still match exactly.
+  const matchesModel = payload && (payload.model === model ||
+    (model === "qwen/qwen3-embedding-8b" && payload.model === "Qwen/Qwen3-Embedding-8B"));
+  if (!matchesModel) throw new Error("Embedding response model does not match the requested model.");
   if (!Array.isArray(payload.data) || payload.data.length !== count) throw new Error("Invalid embedding response item count.");
   const vectors = new Array(count);
   let dimension = expectedDimension;

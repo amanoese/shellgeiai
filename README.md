@@ -119,6 +119,8 @@ shellgeiai knowledge search "CSV の 3列目を合計" --top-k 5
 
 `prepare` は native SQLite 接続と embedding API を1回の remote request で確認します。model download、ローカル model の warmup、dataset の build は行いません。既定 model は `qwen/qwen3-embedding-8b` で、4096 次元の float32 vector を `sqlite-vec` に保存し、cosine distance による完全検索を行います。検索結果の score は `1 - distance` です。
 
+OpenRouter が返す既知の応答名 `Qwen/Qwen3-Embedding-8B` は、要求名 `qwen/qwen3-embedding-8b` と同じモデルとして検証します。DB の model identity は要求名のまま保持し、他モデルの不一致や vector の不正は引き続き拒否します。
+
 `solve` と `knowledge prepare/build/search` の model は `--knowledge-model <model>`、または環境変数 `SHELLGEIAI_KNOWLEDGE_MODEL` で指定でき、CLI が優先されます。`knowledge prepare/build/search --model <model>` は互換 alias で、同時指定時は `--model` が優先されます。API timeout は `SHELLGEIAI_EMBEDDING_TIMEOUT_MS`（既定 30000 ms）、retry 回数は `SHELLGEIAI_EMBEDDING_MAX_RETRIES`（既定 2、0～5）で変更できます。
 
 seed dataset は npm package 内の `data/knowledge/shellgei-basic.jsonl` です。省略時は package 所在地から解決するため、任意の作業ディレクトリから利用できます。明示した `--dataset` / `--knowledge-dataset` の相対パスは現在のディレクトリ基準です。database は `knowledge build/search --db <path>` または `solve --knowledge-db <path>`、次に `SHELLGEIAI_KNOWLEDGE_DB`、最後にユーザー cache directory 内の `shellgeiai/knowledge/<identity hash>.sqlite` の順で決まります。cache directory は `XDG_CACHE_HOME`、Windows の `LOCALAPPDATA`、または `~/.cache` を利用し、identity hash は dataset 絶対パス、provider、model、embedding input profile に基づきます。
