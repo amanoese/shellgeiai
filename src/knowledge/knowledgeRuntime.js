@@ -1,4 +1,5 @@
 import path from "node:path";
+import { lstat } from "node:fs/promises";
 import { loadKnowledgeDatasetWithFingerprint } from "./dataset.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "./knowledgePaths.js";
@@ -12,6 +13,29 @@ function shellQuote(value) {
 
 export function assertKnowledgeModel(model) {
   if (typeof model !== "string" || !model.trim()) throw new Error("Embedding model must be a nonempty string.");
+}
+
+async function unusedRebuildPath(dbPath) {
+  for (let sequence = 1; ; sequence++) {
+    const candidate = `${dbPath}.rebuilt${sequence === 1 ? "" : `-${sequence}`}.sqlite`;
+    try { await lstat(candidate); }
+    catch (error) {
+      if (error.code === "ENOENT") return candidate;
+      throw error;
+    }
+  }
+}
+
+async function recoveryHint(cause, { datasetPath, dbPath, model }) {
+  const fresh = cause.knowledgeRecovery === "fresh";
+  const target = fresh ? await unusedRebuildPath(dbPath) : dbPath;
+  const force = cause.knowledgeRecovery === "force" ? " --force" : "";
+  const identityOptions = `--dataset ${shellQuote(datasetPath)} --model ${shellQuote(model)}`;
+  const rebuild = `Rebuild with: shellgeiai knowledge build --dataset ${shellQuote(datasetPath)} --db ${shellQuote(target)} --model ${shellQuote(model)}${force}`;
+  if (!fresh) return rebuild;
+  return `${rebuild}\nKeep the old database. Configure subsequent commands to use the rebuilt database:\n` +
+    `shellgeiai knowledge search --db ${shellQuote(target)} ${identityOptions} 'your query'\n` +
+    `shellgeiai solve --knowledge-db ${shellQuote(target)} --knowledge-dataset ${shellQuote(datasetPath)} --knowledge-model ${shellQuote(model)} --knowledge planner 'your problem'`;
 }
 
 /** Owns one read-only connection and pins its active generation for the entire solve. */
@@ -45,6 +69,8 @@ export async function createKnowledgeRuntime({
   } catch (cause) {
     store?.close();
     if (signal?.aborted) throw cause;
-    throw new Error(`${cause.message}\nRebuild with: shellgeiai knowledge build --dataset ${shellQuote(datasetPath)} --db ${shellQuote(dbPath)} --model ${shellQuote(model)}`, { cause });
+    if (!cause.knowledgeRecovery) throw cause;
+    const hint = await recoveryHint(cause, { datasetPath, dbPath, model });
+    throw new Error(`${cause.message}\n${hint}`, { cause });
   }
 }

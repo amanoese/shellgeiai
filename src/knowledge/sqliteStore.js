@@ -3,7 +3,7 @@ import path from "node:path";
 import process from "node:process";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
-import { createKnowledgeSchema, validateDimensions, validateKnowledgeSchema } from "./sqliteSchema.js";
+import { createKnowledgeSchema, knowledgeDatabaseError, validateDimensions, validateKnowledgeSchema } from "./sqliteSchema.js";
 
 const MAX_NATIVE_K = 4096;
 const IDENTITY_KEYS = ["provider", "model", "inputProfile", "dimensions", "datasetPath"];
@@ -40,7 +40,7 @@ function manifestIdentity(manifest) {
 function assertIdentity(actual, expected) {
   for (const key of IDENTITY_KEYS) {
     if (actual[key] !== expected[key]) {
-      throw new Error(`Knowledge database ${key} mismatch; rebuild the knowledge database for this embedding identity.`);
+      throw knowledgeDatabaseError(`Knowledge database ${key} mismatch; rebuild the knowledge database for this embedding identity.`, "fresh");
     }
   }
 }
@@ -106,7 +106,7 @@ export function openKnowledgeStore({ dbPath, readonly = false }) {
   const filename = memory ? dbPath : path.resolve(dbPath);
   const existed = !memory && fs.existsSync(filename);
   if (readonly && !existed) {
-    throw new Error(`Knowledge database does not exist at ${filename}; run knowledge build first.`);
+    throw knowledgeDatabaseError(`Knowledge database does not exist at ${filename}; run knowledge build first.`, "missing");
   }
   if (!readonly && !memory) fs.mkdirSync(path.dirname(filename), { recursive: true });
 
@@ -152,7 +152,7 @@ export function openKnowledgeStore({ dbPath, readonly = false }) {
     integerId(generationId, "Generation id");
     const row = initialized
       ? db.prepare("SELECT * FROM knowledge_generations WHERE generation_id = ?").get(generationId) : null;
-    if (!row || row.status !== status) throw new Error(`Knowledge generation ${generationId} must be ${status}.`);
+    if (!row || row.status !== status) throw knowledgeDatabaseError(`Knowledge generation ${generationId} must be ${status}.`, "fresh");
     return row;
   }
   function activeInfo(row, dimensions) {
@@ -171,7 +171,7 @@ export function openKnowledgeStore({ dbPath, readonly = false }) {
         EXCEPT SELECT record_rowid FROM knowledge_records WHERE generation_id = ?) AS mismatched`)
       .get(generationId, generationId, generationId, generationId).mismatched;
     if (recordCount !== expectedCount || vectorCount !== expectedCount || mismatched) {
-      throw new Error("Knowledge generation record/vector count or rowid mismatch; rebuild the knowledge database.");
+      throw knowledgeDatabaseError("Knowledge generation record/vector count or rowid mismatch; rebuild the knowledge database.", "force");
     }
   }
 
@@ -186,12 +186,13 @@ export function openKnowledgeStore({ dbPath, readonly = false }) {
 
     assertCompatible({ datasetPath, datasetFingerprint, model, inputProfile }) {
       const state = this.inspect();
-      if (!state.identity || !state.active) throw new Error("Knowledge database has no ready active generation; run knowledge build first.");
+      if (!state.identity) throw knowledgeDatabaseError("Knowledge database has no identity; rebuild the knowledge database.", "fresh");
       const expected = normalizeIdentity({ provider: "openrouter", datasetPath, model, inputProfile,
         dimensions: state.identity.dimensions });
       assertIdentity(state.identity, expected);
+      if (!state.active) throw knowledgeDatabaseError("Knowledge database has no ready active generation; run knowledge build first.", "force");
       if (state.active.datasetFingerprint !== datasetFingerprint) {
-        throw new Error("Knowledge dataset fingerprint mismatch; rebuild the knowledge database.");
+        throw knowledgeDatabaseError("Knowledge dataset fingerprint mismatch; rebuild the knowledge database.", "force");
       }
       // Schema fixes every vector's dimension. Verify complete rowid sets in a
       // read snapshot without fetching or scanning the embedding payloads.

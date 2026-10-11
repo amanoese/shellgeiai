@@ -1,6 +1,11 @@
 export const KNOWLEDGE_SCHEMA_VERSION = 1;
 export const MAX_VECTOR_DIMENSIONS = 8192;
 
+/** Recovery guidance is attached only to diagnosed persisted-database failures. */
+export function knowledgeDatabaseError(message, recovery) {
+  return Object.assign(new Error(message), { knowledgeRecovery: recovery });
+}
+
 export function validateDimensions(dimensions) {
   if (!Number.isSafeInteger(dimensions) || dimensions < 1 || dimensions > MAX_VECTOR_DIMENSIONS) {
     throw new Error(`Embedding dimensions must be an integer from 1 to ${MAX_VECTOR_DIMENSIONS}.`);
@@ -52,7 +57,7 @@ export function createKnowledgeSchema(db, dimensions) {
 export function validateKnowledgeSchema(db) {
   const version = db.pragma("user_version", { simple: true });
   if (version !== KNOWLEDGE_SCHEMA_VERSION) {
-    throw new Error(`Unsupported knowledge SQLite schema version ${version}; rebuild the knowledge database.`);
+    throw knowledgeDatabaseError(`Unsupported knowledge SQLite schema version ${version}; rebuild the knowledge database.`, "fresh");
   }
   const expectedColumns = {
     knowledge_manifest: ["singleton", "provider", "model", "input_profile", "dimensions", "dataset_path", "active_generation"],
@@ -63,16 +68,17 @@ export function validateKnowledgeSchema(db) {
   for (const [table, columns] of Object.entries(expectedColumns)) {
     const actual = db.pragma(`table_info(${table})`).map(column => column.name);
     if (actual.length !== columns.length || columns.some((column, index) => actual[index] !== column)) {
-      throw new Error(`Incompatible knowledge SQLite schema (${table}); rebuild the knowledge database.`);
+      throw knowledgeDatabaseError(`Incompatible knowledge SQLite schema (${table}); rebuild the knowledge database.`, "fresh");
     }
   }
   const manifest = db.prepare("SELECT * FROM knowledge_manifest WHERE singleton = 1").get();
   if (!manifest) {
-    throw new Error("Knowledge SQLite schema has no identity manifest; rebuild the knowledge database.");
+    throw knowledgeDatabaseError("Knowledge SQLite schema has no identity manifest; rebuild the knowledge database.", "fresh");
   }
-  validateDimensions(manifest.dimensions);
+  try { validateDimensions(manifest.dimensions); }
+  catch (cause) { throw knowledgeDatabaseError(cause.message, "fresh"); }
   const vectorSql = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'knowledge_vectors'").get()?.sql ?? "";
   if (!new RegExp(`USING\\s+vec0\\s*\\([\\s\\S]*embedding\\s+FLOAT\\[${manifest.dimensions}\\]\\s+distance_metric=cosine`, "i").test(vectorSql)) {
-    throw new Error("Knowledge SQLite vector schema dimensions or metric mismatch; rebuild the knowledge database.");
+    throw knowledgeDatabaseError("Knowledge SQLite vector schema dimensions or metric mismatch; rebuild the knowledge database.", "fresh");
   }
 }
