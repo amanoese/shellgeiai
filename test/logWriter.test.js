@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { writeSolveSessionLog } from "../dist/io/logs/writer.js";
-import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import { generateWorkerCommand } from "../dist/solve/tools.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 import { OpenAIEngine } from "../dist/providers/apiEngine.js";

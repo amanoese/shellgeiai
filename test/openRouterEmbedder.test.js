@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_KNOWLEDGE_MODEL } from "../dist/knowledge/modelConfig.js";
+import { DEFAULT_KNOWLEDGE_MODEL } from "../dist/knowledge/config.js";
 import { createOpenRouterEmbedder } from "../dist/providers/embedder.js";
 
 const model = "test/embedding";

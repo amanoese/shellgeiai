@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import {
   MAX_KNOWLEDGE_RESULT_FIELD_CHARS
-} from "../dist/knowledge/hints.js";
+} from "../dist/knowledge/config.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 
 function createTool(records = []) {

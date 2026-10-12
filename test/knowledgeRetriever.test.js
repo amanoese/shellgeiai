@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
-import { formatEmbeddingQuery } from "../dist/knowledge/embeddingInputs.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/runtime.js";
+import { formatEmbeddingQuery } from "../dist/knowledge/config.js";
 
 function fixture(embedder = { embed: vi.fn(async () => [1, 0]) }, signal) {
   const records = [{ id: "awk", command: "awk", option: "-F", text: "x".repeat(1000), source: "seed" }];

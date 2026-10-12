@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
-import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/runtime.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 import {
   WorkerToolLoopError,

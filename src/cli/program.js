@@ -15,11 +15,11 @@ import { DEFAULT_KNOWLEDGE_DATASET } from "../knowledge/commands.js";
 import {
   normalizeKnowledgeMode,
   SUPPORTED_KNOWLEDGE_MODES
-} from "../knowledge/mode.js";
+} from "../knowledge/config.js";
 import {
   DEFAULT_KNOWLEDGE_MODEL,
   KNOWLEDGE_MODEL_ENV
-} from "../knowledge/modelConfig.js";
+} from "../knowledge/config.js";
 import { SUPPORTED_MAN_PROFILES } from "../knowledge/manProfile.js";
 
 const supportedModes = new Set(["single", "parallel"]);

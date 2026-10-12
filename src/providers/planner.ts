@@ -10,7 +10,7 @@ function hasRefusal(output: unknown): boolean {
         item.content.some((content: unknown) => isRecord(content) && content.type === "refusal"));
 }
 
-import { formatKnowledgeRecords } from "../knowledge/hints.js";
+import { formatKnowledgeRecords } from "../knowledge/config.js";
 import { z } from "zod";
 import { zodTextFormat } from "openai/helpers/zod";
 import { resolveLlmConfig, createLlmClient, safeLlmError } from "./llm.js";

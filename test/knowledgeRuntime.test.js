@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildKnowledgeVectors, searchKnowledge } from "../dist/knowledge/commands.js";
-import { createKnowledgeRuntime } from "../dist/knowledge/knowledgeRuntime.js";
+import { createKnowledgeRuntime } from "../dist/knowledge/runtime.js";
 import { createSolveSession } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { documentEmbedder, knowledgeFixture, knowledgeRecord } from "./support/knowledgeFixture.js";

@@ -4,7 +4,7 @@ import type OpenAI from "openai";
 type RequestOptions = NonNullable<Parameters<OpenAI["responses"]["create"]>[1]>;
 import type { toolSuggestionSchema, variantSchema, plannerResultSchema } from "./providers/planner.js";
 
-export type KnowledgeMode = "off" | "planner" | "worker" | "all";
+export type KnowledgeMode = Exclude<typeof import("./knowledge/config.js").KNOWLEDGE_MODES[number], "on">;
 
 export interface ToolDefinition {
   name: string;
@@ -153,6 +153,7 @@ export interface KnowledgeRuntime {
   retriever: KnowledgeRetriever;
   snapshot: KnowledgeSnapshot;
   dispose: () => Promise<void>;
+  search?: (input: KnowledgeSearchInput) => Promise<KnowledgeHit[]>;
 }
 
 export interface LlmConfig {
@@ -495,3 +496,49 @@ export type SolveProgressPayload =
   | (WorkerProgress & { type: "worker-finished"; attemptCount: number; passed: boolean; reason: string | undefined })
   | { type: "session-finished"; attemptCount: number; candidateCount: number; failedWorkerCount: number; stopReason: string | null; selectedCandidateId: string | null };
 export type SolveProgressEvent = SolveProgressPayload & { sessionId: string };
+
+export interface KnowledgeRecord {
+  id: string;
+  kind: string;
+  command: string;
+  option: string;
+  text: string;
+  source: string;
+}
+export type KnowledgeVector = number[] | Float32Array;
+export interface KnowledgeHit extends KnowledgeRecord { distance: number; score: number }
+export interface KnowledgeIdentity {
+  provider: "openrouter";
+  model: string;
+  inputProfile: string;
+  dimensions: number;
+  datasetPath: string;
+}
+export interface KnowledgeGeneration {
+  generationId: number;
+  datasetFingerprint: string;
+  itemCount: number;
+  dimensions: number;
+}
+export interface KnowledgeBuild { generationId: number; baseGeneration: number | null }
+export interface KnowledgeSearchInput { query: string; topK?: number; maxPerCommand?: number }
+export interface KnowledgeStoreSearchInput { generationId: number; vector: KnowledgeVector; topK?: number; maxPerCommand?: number }
+export interface KnowledgeStore {
+  inspect(): { identity: KnowledgeIdentity | null; active: KnowledgeGeneration | null };
+  assertCompatible(input: Omit<KnowledgeIdentity, "provider" | "dimensions"> & { datasetFingerprint: string }): KnowledgeGeneration;
+  beginBuild(input: { identity: KnowledgeIdentity; datasetFingerprint: string; itemCount: number; createdAt?: string }): KnowledgeBuild;
+  appendBatch(input: { generationId: number; records: KnowledgeRecord[]; vectors: KnowledgeVector[] }): void;
+  publishBuild(input: KnowledgeBuild): void;
+  abortBuild(input: Pick<KnowledgeBuild, "generationId">): void;
+  search(input: KnowledgeStoreSearchInput): KnowledgeHit[];
+  close(): void;
+}
+export type KnowledgeRecovery = "fresh" | "force" | "missing";
+export interface KnowledgeDatabaseError extends Error { knowledgeRecovery: KnowledgeRecovery }
+export type ManProfileName = typeof import("./knowledge/manProfile.js").MAN_PROFILE_NAMES[number];
+export type ManKnowledgeProfile =
+  | { name: "all"; sections: string[]; commands: null; patternCommands: null }
+  | { name: "shellgei"; sections: string[]; commands: string[]; patternCommands: string[] };
+export interface ManSection { title: string; lines: string[] }
+export interface ManRecordContext extends ManSection { command: string; section: string }
+export interface ManDefinition { term: string; description: string[]; indent: number; optionOnly: boolean }

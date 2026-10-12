@@ -9,7 +9,7 @@ import {
   dedupeManKnowledgeRecords,
   extractKnowledgeRecordsFromManPage,
   parseManIndex
-} from "../dist/knowledge/manKnowledge.js";
+} from "../dist/knowledge/man.js";
 import {
   loadManKnowledgeProfile,
   SUPPORTED_MAN_PROFILES

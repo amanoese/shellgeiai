@@ -11,8 +11,8 @@ import { executeWorkerTask, runWorkerAttempt } from "../dist/solve/worker.js";
 import { createExecutionSummary } from "../dist/solve/orchestrator.js";
 import { createExecutionControl } from "../dist/solve/orchestrator.js";
 import { runSolveOrchestrator } from "../dist/solve/orchestrator.js";
-import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
-import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/runtime.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 
 afterEach(() => vi.useRealTimers());

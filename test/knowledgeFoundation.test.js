@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_KNOWLEDGE_MODEL, resolveKnowledgeModel } from "../dist/knowledge/modelConfig.js";
-import * as inputs from "../dist/knowledge/embeddingInputs.js";
-import * as paths from "../dist/knowledge/knowledgePaths.js";
+import { DEFAULT_KNOWLEDGE_MODEL, resolveKnowledgeModel } from "../dist/knowledge/config.js";
+import * as inputs from "../dist/knowledge/config.js";
+import * as paths from "../dist/knowledge/config.js";
 
 describe("knowledge embedding configuration", () => {
   it("defaults to Qwen and gives explicit model priority over the environment", () => {

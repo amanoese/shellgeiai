@@ -7,7 +7,7 @@ export interface EmbedderOptions {
 class EmbeddingRequestError extends Error { retryable = false; response?: Response }
 function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function isNumberVector(value: unknown): value is number[] { return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === "number" && Number.isFinite(item)); }
-import { DEFAULT_KNOWLEDGE_MODEL } from "../knowledge/modelConfig.js";
+import { DEFAULT_KNOWLEDGE_MODEL } from "../knowledge/config.js";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/embeddings";
 

@@ -66,7 +66,7 @@ jobs:
             if (!DEFAULT_KNOWLEDGE_DATASET.endsWith("shellgei-basic.jsonl")) throw new Error("Unexpected bundled dataset");
             const records = (await readFile(DEFAULT_KNOWLEDGE_DATASET, "utf8")).trim().split("\n");
             if (!records.length || !JSON.parse(records[0]).id) throw new Error("Missing bundled seed records");
-          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/dist/knowledge/knowledgePaths.js"
+          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/dist/knowledge/config.js"
           node --input-type=module -e '
             import { pathToFileURL } from "node:url";
             import path from "node:path";
