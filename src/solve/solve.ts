@@ -1,7 +1,7 @@
 import type { SolveProblemOptions, SolveSession, InitializingSolveSession, ExecutionSummary, ExecutionPlan, ProblemSpec, PlanVariant, WorkerTask, KnowledgeRuntime } from "../types.js";
 function readPlannerProperty(value: unknown, key: string): unknown { return value == null ? undefined : Reflect.get(Object(value), key); }
 function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
-import { writeSolveSessionLog } from "../io/logs/writer.js";
+import { writeSolveSessionLog } from "../io/logs.js";
 import { runSolveOrchestrator } from "./orchestrator.js";
 import { scoreShellgeiCandidate, selectSolveOutcome } from "./selection.js";
 import { reportSessionPhase } from "./events.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatResult } from "../dist/io/formatter/formatResult.js";
+import { formatResult } from "../dist/cli/commands.js";
 
 describe("formatResult", () => {
   it("includes rubric breakdown, notes, penalties, planner provider, and worker variants", () => {

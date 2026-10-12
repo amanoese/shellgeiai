@@ -112,11 +112,11 @@ describe("npm publish metadata", () => {
   it("exposes io and shared modules from the grouped dist hierarchy", async () => {
     const modules = [
       "../dist/solve/solve.js",
-      "../dist/io/logs/writer.js",
-      "../dist/io/logs/catalog.js",
-      "../dist/io/formatter/formatResult.js",
-      "../dist/io/formatter/logs.js",
-      "../dist/io/formatter/progressReporter.js",
+      "../dist/io/logs.js",
+      "../dist/io/logs.js",
+      "../dist/cli/commands.js",
+      "../dist/cli/commands.js",
+      "../dist/io/progress.js",
       "../dist/shared.js"
     ];
 

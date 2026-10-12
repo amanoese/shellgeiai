@@ -12,29 +12,10 @@ const commands = vi.hoisted(() => ({
   runSolveCommand: vi.fn()
 }));
 
-vi.mock("../dist/cli/commands/logsList.js", () => ({
-  runLogsListCommand: commands.runLogsListCommand
-}));
-vi.mock("../dist/cli/commands/logsPrune.js", () => ({
-  runLogsPruneCommand: commands.runLogsPruneCommand
-}));
-vi.mock("../dist/cli/commands/logsSearch.js", () => ({
-  runLogsSearchCommand: commands.runLogsSearchCommand
-}));
-vi.mock("../dist/cli/commands/logsShow.js", () => ({
-  runLogsShowCommand: commands.runLogsShowCommand
-}));
-vi.mock("../dist/cli/commands/knowledge.js", () => ({
-  runKnowledgeBuildCommand: commands.runKnowledgeBuildCommand,
-  runKnowledgeManCommand: commands.runKnowledgeManCommand,
-  runKnowledgePrepareCommand: commands.runKnowledgePrepareCommand,
-  runKnowledgeSearchCommand: commands.runKnowledgeSearchCommand
-}));
-vi.mock("../dist/cli/commands/solve.js", () => ({
-  runSolveCommand: commands.runSolveCommand
-}));
 
-import { runCli } from "../dist/cli/index.js";
+vi.mock("../dist/cli/commands.js", () => commands);
+
+import { runCli } from "../dist/cli/program.js";
 
 function withKnowledgeModelEnv(value, fn) {
   const original = process.env.SHELLGEIAI_KNOWLEDGE_MODEL;

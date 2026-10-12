@@ -5,6 +5,8 @@
     "noEmit": true,
     "declaration": false
   },
-  "files": ["../src/cli.js"],
-  "include": ["../src/**/*.ts", "types/**/*.ts"]
+  "include": [
+    "../src/**/*.ts",
+    "types/**/*.ts"
+  ]
 }

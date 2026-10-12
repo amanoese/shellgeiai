@@ -14,12 +14,11 @@ const mocks = vi.hoisted(() => {
       plannerProvider: { name: "mock-planner" },
       llmConfig: { provider: "openrouter", model: "resolved-model" }
     })),
-    solveProblem: vi.fn(),
-    formatResult: vi.fn(() => "formatted result")
+    solveProblem: vi.fn()
   };
 });
 
-vi.mock("../dist/io/formatter/progressReporter.js", () => ({
+vi.mock("../dist/io/progress.js", () => ({
   createProgressReporter: mocks.createProgressReporter
 }));
 
@@ -31,11 +30,8 @@ vi.mock("../dist/solve/solve.js", () => ({
   solveProblem: mocks.solveProblem
 }));
 
-vi.mock("../dist/io/formatter/formatResult.js", () => ({
-  formatResult: mocks.formatResult
-}));
 
-import { runSolveCommand } from "../dist/cli/commands/solve.js";
+import { runSolveCommand } from "../dist/cli/commands.js";
 
 describe("runSolveCommand", () => {
   const originalExitCode = process.exitCode;
@@ -45,7 +41,6 @@ describe("runSolveCommand", () => {
     mocks.createProgressReporter.mockClear();
     mocks.createSolveRuntime.mockClear();
     mocks.solveProblem.mockReset();
-    mocks.formatResult.mockClear();
     mocks.reporter.mockClear();
     mocks.reporter.cleanup.mockClear();
     process.exitCode = undefined;
@@ -83,7 +78,7 @@ describe("runSolveCommand", () => {
       })
     );
     expect(mocks.reporter.cleanup).toHaveBeenCalledTimes(1);
-    expect(stdoutWrite).toHaveBeenCalledWith("formatted result\n");
+    expect(stdoutWrite.mock.calls.flat().join("")).toContain("CHECK:\nstatus: failed");
     expect(process.exitCode).toBe(1);
   });
 
@@ -150,7 +145,9 @@ describe("runSolveCommand", () => {
   it("forwards and formats the normalized all knowledge mode", async () => {
     const result = {
       knowledgeMode: "all",
-      plan: { knowledgeMode: "all" },
+      plan: { knowledgeMode: "all", workerTasks: [{ workerId: "worker-1", assignedVariant: { toolBias: ["awk"] } }] },
+      command: "awk 'BEGIN { print 42 }'",
+      candidates: [{ workerId: "worker-1", command: "awk 'BEGIN { print 42 }'", finalCheck: { passed: true } }],
       finalCheck: { passed: true }
     };
     mocks.solveProblem.mockResolvedValue(result);
@@ -172,8 +169,8 @@ describe("runSolveCommand", () => {
     expect(mocks.solveProblem).toHaveBeenCalledWith(
       expect.objectContaining({ knowledgeMode: "all" })
     );
-    expect(mocks.formatResult).toHaveBeenCalledWith(result);
-    expect(stdoutWrite).toHaveBeenCalledWith("formatted result\n");
+    expect(stdoutWrite.mock.calls.flat().join("")).toContain("CHECK:\nstatus: passed");
+    expect(stdoutWrite.mock.calls.flat().join("")).toContain("knowledge: all # [awk] # awk 'BEGIN { print 42 }'");
     expect(process.exitCode).toBe(0);
   });
 

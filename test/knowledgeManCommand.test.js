@@ -5,7 +5,7 @@ const commands = vi.hoisted(() => ({
 }));
 vi.mock("../dist/knowledge/commands.js", () => commands);
 
-import { runKnowledgeManCommand, runKnowledgePrepareCommand, runKnowledgeBuildCommand, runKnowledgeSearchCommand } from "../dist/cli/commands/knowledge.js";
+import { runKnowledgeManCommand, runKnowledgePrepareCommand, runKnowledgeBuildCommand, runKnowledgeSearchCommand } from "../dist/cli/commands.js";
 
 describe("knowledge SQLite command output", () => {
   it("forwards build configuration and reports the active generation", async () => {

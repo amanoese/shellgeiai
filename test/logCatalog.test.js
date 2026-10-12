@@ -2,7 +2,7 @@ import path from "node:path";
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { listSavedLogs, pruneSavedLogs, searchSavedLogs } from "../dist/io/logs/catalog.js";
+import { listSavedLogs, pruneSavedLogs, searchSavedLogs } from "../dist/io/logs.js";
 import { writeJson } from "../dist/shared.js";
 
 const tempDirs = [];

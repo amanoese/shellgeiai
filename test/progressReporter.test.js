@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Writable } from "node:stream";
 
 const logUpdateMocks = vi.hoisted(() => {
   const logUpdate = vi.fn();
@@ -15,7 +16,7 @@ vi.mock("log-update", () => ({
   createLogUpdate: logUpdateMocks.createLogUpdate
 }));
 
-import { createProgressReporter } from "../dist/io/formatter/progressReporter.js";
+import { createProgressReporter } from "../dist/io/progress.js";
 
 describe("createProgressReporter", () => {
   beforeEach(() => {
@@ -256,9 +257,12 @@ describe("createProgressReporter", () => {
 
     expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledTimes(1);
     expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ write }),
+      expect.objectContaining({ write: expect.any(Function) }),
       expect.objectContaining({ showCursor: false })
     );
+    const stream = logUpdateMocks.createLogUpdate.mock.calls[0][0];
+    stream.write("progress frame 日本語\n");
+    expect(write).toHaveBeenCalledWith("progress frame 日本語\n");
     const lastFrame = logUpdateMocks.logUpdate.mock.calls.at(-1)[0];
     expect(lastFrame).toContain("Solve [");
     expect(lastFrame).toContain("Workers [");
@@ -309,5 +313,67 @@ describe("createProgressReporter", () => {
 
   it("returns no reporter when progress output is disabled", () => {
     expect(createProgressReporter("off")).toBeUndefined();
+  });
+
+  it("passes existing Node writable streams through to log-update", () => {
+    const stream = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    createProgressReporter("bar", stream, { isTTY: true });
+    expect(logUpdateMocks.createLogUpdate).toHaveBeenCalledWith(stream, { showCursor: false });
+    stream.destroy();
+  });
+
+  it("preserves a sparse stream sink's receiver and terminal dimensions", () => {
+    const stream = { isTTY: true, columns: 120, rows: 30, text: "", write(text) { this.text += text; } };
+    createProgressReporter("bar", stream, { isTTY: true });
+    const adapter = logUpdateMocks.createLogUpdate.mock.calls[0][0];
+    expect(adapter).toMatchObject({ isTTY: true, columns: 120, rows: 30 });
+    stream.columns = 40;
+    stream.rows = 10;
+    expect(adapter).toMatchObject({ columns: 40, rows: 10 });
+    adapter.write("frame 日本語");
+    expect(stream.text).toBe("frame 日本語");
+    adapter.destroy();
+  });
+
+  it("reads resized fallback dimensions for callback sinks unless explicitly overridden", () => {
+    const stream = { columns: 120, rows: 30, write: vi.fn() };
+    createProgressReporter("bar", vi.fn(), { isTTY: true, stream });
+    const adapter = logUpdateMocks.createLogUpdate.mock.calls[0][0];
+    expect(adapter).toMatchObject({ columns: 120, rows: 30 });
+    stream.columns = 40;
+    stream.rows = 10;
+    expect(adapter).toMatchObject({ columns: 40, rows: 10 });
+    adapter.destroy();
+
+    createProgressReporter("bar", vi.fn(), { isTTY: true, stream, columns: 80, rows: 24 });
+    const overridden = logUpdateMocks.createLogUpdate.mock.calls[1][0];
+    stream.columns = 60;
+    stream.rows = 15;
+    expect(overridden).toMatchObject({ columns: 80, rows: 24 });
+    overridden.destroy();
+  });
+
+  it("reads resized stderr dimensions when the callback uses the default stream", () => {
+    const originalColumns = Object.getOwnPropertyDescriptor(process.stderr, "columns");
+    const originalRows = Object.getOwnPropertyDescriptor(process.stderr, "rows");
+    let adapter;
+    try {
+      Object.defineProperties(process.stderr, {
+        columns: { configurable: true, writable: true, value: 120 },
+        rows: { configurable: true, writable: true, value: 30 }
+      });
+      createProgressReporter("bar", undefined, { isTTY: true });
+      adapter = logUpdateMocks.createLogUpdate.mock.calls[0][0];
+      expect(adapter).toMatchObject({ columns: 120, rows: 30 });
+      process.stderr.columns = 40;
+      process.stderr.rows = 10;
+      expect(adapter).toMatchObject({ columns: 40, rows: 10 });
+    } finally {
+      adapter?.destroy();
+      if (originalColumns) Object.defineProperty(process.stderr, "columns", originalColumns);
+      else delete process.stderr.columns;
+      if (originalRows) Object.defineProperty(process.stderr, "rows", originalRows);
+      else delete process.stderr.rows;
+    }
   });
 });

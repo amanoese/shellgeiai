@@ -4,7 +4,7 @@ import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const boundaries = vi.hoisted(() => ({ execute: vi.fn(), log: vi.fn() }));
 vi.mock("../dist/solve/orchestrator.js", () => ({ runSolveOrchestrator: boundaries.execute }));
-vi.mock("../dist/io/logs/writer.js", () => ({ writeSolveSessionLog: boundaries.log }));
+vi.mock("../dist/io/logs.js", () => ({ writeSolveSessionLog: boundaries.log }));
 
 function options(runtime) {
   return { problemInput: "print ok", engine: { name: "mock" }, runner: { name: "mock" }, judge: {}, maxIterations: 1,

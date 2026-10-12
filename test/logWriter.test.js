@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writeSolveSessionLog } from "../dist/io/logs/writer.js";
+import { writeSolveSessionLog } from "../dist/io/logs.js";
 import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import { generateWorkerCommand } from "../dist/solve/tools.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
