@@ -51,6 +51,8 @@ npx vitest run test/llmProviderContract.test.js
 
 `npm test` は fake embedding API と実際の `better-sqlite3` / `sqlite-vec` を使い、ネットワーク接続や `OPENROUTER_API_KEY` なしで provider validation、cosine 検索、generation の公開・失敗回復、CLI、Planner / Worker runtime を確認します。native dependency は Node.js 22以上が必要です。CI は Node.js 22 / 24 / 26 で `npm ci` と全テストを実行し、tarball を global install して任意の cwd から help と bundled seed dataset の存在、および fake embedder による native database build / cosine search を確認します。
 
+Worker のキャンセルは未完了の Tool 結果を待つ処理を即座に終了します。同じ query の embedding は session 所有で共有され、個別 Worker の停止後も他の Worker が利用でき、session のキャンセル・終了時に停止します。
+
 実 API による確認は任意です。`OPENROUTER_API_KEY` を設定した環境で `knowledge prepare`、`knowledge build --db /tmp/shellgeiai-check.sqlite`、`knowledge search "CSV" --db /tmp/shellgeiai-check.sqlite` を実行します。これらは課金対象の remote embedding request を送るので CI に secret は設定しません。生成済み database / WAL / SHM は package と Git に含めません。
 
 この移行では Node.js 最低版が20から22へ変わり、旧 Ruri / Transformers.js と JSON/JSONL vector cache は廃止されます。dataset は引き続き JSONL です。旧 cache は import せず `knowledge build` で SQLite database を再生成し、旧 CLI vector flag は1回の移行リリース中に専用エラーで案内します。利用者のローカル man dataset や旧 vector file は migration のために削除しません。

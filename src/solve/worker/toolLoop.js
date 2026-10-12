@@ -1,3 +1,5 @@
+import { awaitWithSignal } from "../../knowledge/retriever.js";
+
 export class WorkerToolLoopError extends Error {
   constructor(message, toolCalls = []) {
     super(message);
@@ -48,10 +50,11 @@ export async function generateWorkerCommand({ engine, context, toolRegistry, sig
   }
 
   const call = firstTurn.calls[0];
-  const toolResult = await toolRegistry.execute({
+  // Cancel this worker's wait; shared Knowledge embeddings remain session-owned.
+  const toolResult = await awaitWithSignal(() => toolRegistry.execute({
     name: call.name,
     arguments: call.arguments
-  });
+  }), signal);
   const summary = createToolCallSummary(call, toolResult);
   signal?.throwIfAborted();
   const { validatedArguments: _validatedArguments, ...publicToolResult } = toolResult;

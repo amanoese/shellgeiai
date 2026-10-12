@@ -11,6 +11,9 @@ import { runWorkerAttempt } from "../src/solve/worker/attemptRunner.js";
 import { createExecutionSummary } from "../src/solve/orchestration/executionSummary.js";
 import { createExecutionControl } from "../src/solve/orchestration/executionControl.js";
 import { runSolveOrchestrator } from "../src/solve/orchestration/orchestrator.js";
+import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
+import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
+import { createToolRegistry } from "../src/tools/toolRegistry.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -22,6 +25,52 @@ function waitForAbort(signal) {
 }
 
 describe("orchestrator generation cancellation", () => {
+  it("returns the passing candidate after grace-stop while knowledge embedding is still pending", async () => {
+    vi.useFakeTimers();
+    const sessionController = new AbortController();
+    const embedding = Promise.withResolvers();
+    const embedder = { embed: vi.fn(() => embedding.promise) };
+    const retriever = createKnowledgeRetriever({
+      store: { search: () => [] }, generationId: 7, embedder, signal: sessionController.signal
+    });
+    const toolRegistry = createToolRegistry();
+    toolRegistry.register(createSearchKnowledgeTool({ retriever }));
+    let passed = false;
+    const engine = {
+      name: "fake",
+      generateTurn: vi.fn(async ({ context }) => context.workerId === "worker-1"
+        ? { type: "command", command: "printf ok" }
+        : { type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} })
+    };
+    const session = {
+      problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
+      signal: sessionController.signal, engine, toolRegistry,
+      runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
+      judge: { judge: async () => ({ passed: true, reason: "ok" }) },
+      onProgress: event => { if (event.type === "attempt-finished" && event.passed) passed = true; },
+      plan: { parallelism: 2, workerTasks: ["worker-1", "worker-2"].map(workerId => ({ workerId, strategy: "default", maxAttempts: 1 })) }
+    };
+    let outcome;
+    const run = runSolveOrchestrator(session)
+      .then(value => { outcome = { value }; }, error => { outcome = { error }; });
+
+    try {
+      await vi.waitFor(() => { expect(embedder.embed).toHaveBeenCalledOnce(); expect(passed).toBe(true); });
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(outcome, "orchestrator must finish before the embedding resolves").toBeDefined();
+      expect(outcome.error).toBeUndefined();
+      expect(outcome.value.passingCandidateId).toBe("worker-1");
+      expect(outcome.value.candidates[0].finalCheck.passed).toBe(true);
+      expect(outcome.value.workerSummaries[1]).toMatchObject({ state: "stopped", reason: "Stopped after first passing candidate was produced." });
+      expect(sessionController.signal.aborted).toBe(false);
+      expect(engine.generateTurn).toHaveBeenCalledTimes(2);
+      expect(session.runner.run).toHaveBeenCalledOnce();
+    } finally {
+      embedding.resolve([1, 0]);
+      await run;
+    }
+  });
+
   it.each(["command", "first-tool-turn", "resume-tool-turn"])("preserves the passing candidate when grace-stop cancels %s", async path => {
     vi.useFakeTimers();
     let waiting = false;
