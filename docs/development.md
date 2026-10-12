@@ -22,6 +22,8 @@ npm run test:docker
 
 `src/` は strict TypeScript です。`npm run build` は `dist/` を削除して NodeNext の JavaScript、`.d.ts`、source map を生成します。CLI は `dist/cli.js` を実行します。npm global install は build 済み runtime を配布するため、利用者の TypeScript compile は不要です。`npm test` / `dev` / `start` / `knowledge:man` と `prepack` は build を先に行います。`typecheck` は source と `test/types/` の型契約を別々に検査し、どちらも strict です。
 
+型契約では、初期化済み session の plan と生成方式、Tool の入力・出力・summary、停止状態の組み合わせを検査します。Runner の省略可能な結果は Worker 境界で一度正規化し、内部処理へ渡します。これらは外部入力の実行時検証を置き換えません。JavaScript から注入する Engine / registry / retriever、CLI・LLM・Policy 入力、数値制限と安全性は境界で検証し、互換入口の動作とログ・provider payload は実行テストで確認してください。型と schema の所有は [src-file-map.md](src-file-map.md) を参照してください。
+
 ```bash
 npm run dev -- solve "CSVの3列目の合計を出してください"
 node dist/cli.js --help
