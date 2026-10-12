@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { solveProblem } from "../dist/solve/solve.js";
-import { SimpleJudge } from "../dist/execution/judge/simpleJudge.js";
-import { DockerRunner } from "../dist/execution/runner/dockerRunner.js";
-import { createDefaultRunnerLimits } from "../dist/execution/runner/limits.js";
+import { SimpleJudge } from "../dist/execution/judge.js";
+import { DockerRunner } from "../dist/execution/dockerRunner.js";
+import { createDefaultRunnerLimits } from "../dist/execution/safety.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const IMAGE_CANDIDATES = [

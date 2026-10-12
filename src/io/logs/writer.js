@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { publicLlmSnapshot } from "../../providers/llm/config.js";
+import { publicLlmSnapshot } from "../../providers/llm.js";
 
 function buildKnowledgeSnapshot(session) {
   const snapshot = session.knowledgeSnapshot;

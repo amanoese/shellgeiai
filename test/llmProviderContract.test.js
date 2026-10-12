@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveLlmConfig } from "../dist/providers/llm/config.js";
+import { resolveLlmConfig } from "../dist/providers/llm.js";
 import { createSolveRuntime } from "../dist/solve/runtime.js";
 
 const plan = { variants: [{

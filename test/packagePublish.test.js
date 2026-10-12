@@ -81,12 +81,12 @@ describe("npm publish metadata", () => {
 
   it("exposes execution modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../dist/execution/runner/localRunner.js",
-      "../dist/execution/runner/dockerRunner.js",
-      "../dist/execution/runner/limits.js",
-      "../dist/execution/safety/checker.js",
-      "../dist/execution/safety/policyLoader.js",
-      "../dist/execution/judge/simpleJudge.js"
+      "../dist/execution/localRunner.js",
+      "../dist/execution/dockerRunner.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/judge.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -94,16 +94,16 @@ describe("npm publish metadata", () => {
 
   it("exposes provider modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../dist/providers/engines/openaiEngine.js",
-      "../dist/providers/engines/mockEngine.js",
-      "../dist/providers/engines/codexCliEngine.js",
-      "../dist/providers/engines/cursorCliEngine.js",
-      "../dist/providers/planner/llmPlanner.js",
-      "../dist/providers/planner/plannerPrompt.js",
-      "../dist/providers/planner/plannerSchema.js",
-      "../dist/providers/llm/config.js",
-      "../dist/providers/llm/client.js",
-      "../dist/providers/llm/responsesHistory.js"
+      "../dist/providers/apiEngine.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -170,14 +170,14 @@ describe("npm publish metadata", () => {
       "../dist/knowledge/embeddingInputs.js",
       "../dist/knowledge/sqliteStore.js",
       "../dist/knowledge/sqliteSchema.js",
-      "../dist/providers/embeddings/openRouterEmbedder.js",
+      "../dist/providers/embedder.js",
       "../dist/solve/tools.js",
       "../dist/knowledge/searchKnowledgeTool.js",
-      "../dist/providers/llm/config.js",
-      "../dist/providers/llm/client.js",
-      "../dist/providers/llm/responsesHistory.js",
-      "../dist/providers/planner/llmPlanner.js",
-      "../dist/providers/engines/openaiEngine.js"
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/apiEngine.js"
     ];
     const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
 

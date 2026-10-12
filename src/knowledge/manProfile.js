@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { defaultCommandPolicy } from "../execution/safety/commandPolicy.js";
+import { defaultCommandPolicy } from "../execution/safety.js";
 
 const supportedManProfiles = Object.freeze(["shellgei", "all"]);
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createResponsesContinuation, resumeResponsesInput } from "../dist/providers/llm/responsesHistory.js";
+import { createResponsesContinuation, resumeResponsesInput } from "../dist/providers/llm.js";
 
 const call = (id) => ({ type: "function_call", id: `fc-${id}`, call_id: id,
   name: "search_knowledge", arguments: '{"query":"printf"}', status: "completed" });

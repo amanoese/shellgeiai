@@ -19,7 +19,7 @@ import type {
   CandidateFinalCheck
 } from "../types.js";
 import { reportSolveProgress } from "./events.js";
-import { isSafeCommand } from "../execution/safety/checker.js";
+import { isSafeCommand } from "../execution/safety.js";
 import { generateWorkerCommand, WorkerToolLoopError } from "./tools.js";
 
 type FailedAttempt = SolveAttempt & { passed: false };

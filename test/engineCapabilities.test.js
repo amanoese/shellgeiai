@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { CodexCliEngine } from "../dist/providers/engines/codexCliEngine.js";
-import { CursorCliEngine } from "../dist/providers/engines/cursorCliEngine.js";
-import { MockEngine } from "../dist/providers/engines/mockEngine.js";
+import { CodexCliEngine } from "../dist/providers/engines.js";
+import { CursorCliEngine } from "../dist/providers/engines.js";
+import { MockEngine } from "../dist/providers/engines.js";
 
 describe("engine capabilities", () => {
   it.each([

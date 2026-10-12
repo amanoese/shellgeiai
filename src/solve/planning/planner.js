@@ -1,5 +1,5 @@
-import { llmPlanner } from "../../providers/planner/llmPlanner.js";
-import { normalizePlannerResult } from "../../providers/planner/plannerSchema.js";
+import { llmPlanner } from "../../providers/planner.js";
+import { normalizePlannerResult } from "../../providers/planner.js";
 
 export async function createExecutionPlan(session) {
   const plannerProvider = session.plannerProvider ?? llmPlanner;

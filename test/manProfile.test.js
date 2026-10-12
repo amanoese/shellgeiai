@@ -2,7 +2,7 @@ import { isAbsolute, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { defaultCommandPolicy } from "../dist/execution/safety/commandPolicy.js";
+import { defaultCommandPolicy } from "../dist/execution/safety.js";
 import {
   loadManKnowledgeProfile,
   SUPPORTED_MAN_PROFILES

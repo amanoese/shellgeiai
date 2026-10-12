@@ -5,7 +5,7 @@ import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "./knowledgePaths.js";
 import { EMBEDDING_INPUT_PROFILE } from "./embeddingInputs.js";
 import { createKnowledgeRetriever } from "./retriever.js";
-import { createOpenRouterEmbedder } from "../providers/embeddings/openRouterEmbedder.js";
+import { createOpenRouterEmbedder } from "../providers/embedder.js";
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;

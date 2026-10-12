@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProgressReporter } from "../dist/io/formatter/progressReporter.js";
 import { formatResult } from "../dist/io/formatter/formatResult.js";
 import { solveProblem } from "../dist/solve/solve.js";
-import { SimpleJudge } from "../dist/execution/judge/simpleJudge.js";
-import { LocalRunner } from "../dist/execution/runner/localRunner.js";
+import { SimpleJudge } from "../dist/execution/judge.js";
+import { LocalRunner } from "../dist/execution/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];

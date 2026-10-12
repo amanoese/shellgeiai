@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildDockerRunArgs } from "../dist/execution/runner/dockerRunner.js";
-import { createDefaultRunnerLimits } from "../dist/execution/runner/limits.js";
-import { LocalRunner } from "../dist/execution/runner/localRunner.js";
+import { buildDockerRunArgs } from "../dist/execution/dockerRunner.js";
+import { createDefaultRunnerLimits } from "../dist/execution/safety.js";
+import { LocalRunner } from "../dist/execution/localRunner.js";
 
 describe("LocalRunner", () => {
   it("returns the common run result shape", async () => {

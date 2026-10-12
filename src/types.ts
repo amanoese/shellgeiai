@@ -1,6 +1,8 @@
 import type { z } from "zod";
+import type { Response, ParsedResponse, ResponseCreateParamsNonStreaming, ResponseParseParams } from "openai/resources/responses/responses";
 import type OpenAI from "openai";
-import type { toolSuggestionSchema, variantSchema, plannerResultSchema } from "./providers/planner/plannerSchema.js";
+type RequestOptions = NonNullable<Parameters<OpenAI["responses"]["create"]>[1]>;
+import type { toolSuggestionSchema, variantSchema, plannerResultSchema } from "./providers/planner.js";
 
 export type KnowledgeMode = "off" | "planner" | "worker" | "all";
 
@@ -281,7 +283,12 @@ export type Engine = EngineBase & (
   | { capabilities: { toolCalling: true }; generateTurn(input: GenerateTurnInput): Promise<EngineTurn> }
   | { capabilities?: { toolCalling: false }; generateTurn?: (input: GenerateTurnInput) => Promise<EngineTurn> }
 );
-export type LlmClient = Pick<OpenAI, "responses">;
+export interface LlmClient {
+  responses: {
+    create(request: ResponseCreateParamsNonStreaming, options?: RequestOptions): PromiseLike<Response>;
+    parse(request: ResponseParseParams, options?: RequestOptions): PromiseLike<ParsedResponse<unknown>>;
+  };
+}
 export interface LlmClientOptions {
   apiKey: string;
   baseURL: string;
@@ -289,7 +296,7 @@ export interface LlmClientOptions {
   maxRetries: number;
   fetchImpl?: typeof globalThis.fetch;
 }
-export type LlmClientFactory = (options: LlmClientOptions) => LlmClient | Promise<LlmClient>;
+export type LlmClientFactory = (options: LlmClientOptions) => LlmClient | PromiseLike<LlmClient>;
 
 export interface ToolRegistration<T extends Record<string, unknown> = Record<string, unknown>> {
   name: string;

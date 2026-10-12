@@ -1,10 +1,10 @@
-import { MockEngine } from "../providers/engines/mockEngine.js";
-import { OpenAIEngine } from "../providers/engines/openaiEngine.js";
-import { SimpleJudge } from "../execution/judge/simpleJudge.js";
-import { DockerRunner } from "../execution/runner/dockerRunner.js";
-import { LocalRunner } from "../execution/runner/localRunner.js";
-import { resolveLlmConfig } from "../providers/llm/config.js";
-import { createLlmPlanner } from "../providers/planner/llmPlanner.js";
+import { MockEngine } from "../providers/engines.js";
+import { OpenAIEngine } from "../providers/apiEngine.js";
+import { SimpleJudge } from "../execution/judge.js";
+import { DockerRunner } from "../execution/dockerRunner.js";
+import { LocalRunner } from "../execution/localRunner.js";
+import { resolveLlmConfig } from "../providers/llm.js";
+import { createLlmPlanner } from "../providers/planner.js";
 
 const DEFAULT_RUNNER = "docker";
 

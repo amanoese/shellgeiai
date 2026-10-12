@@ -4,7 +4,7 @@ import { loadKnowledgeDatasetWithFingerprint, MAX_EMBEDDING_INPUT_BYTES } from "
 import { DEFAULT_KNOWLEDGE_MODEL } from "./modelConfig.js";
 import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "./knowledgePaths.js";
 import { EMBEDDING_INPUT_PROFILE, formatEmbeddingDocument, formatEmbeddingQuery } from "./embeddingInputs.js";
-import { createOpenRouterEmbedder } from "../providers/embeddings/openRouterEmbedder.js";
+import { createOpenRouterEmbedder } from "../providers/embedder.js";
 import { assertKnowledgeModel, createKnowledgeRuntime } from "./knowledgeRuntime.js";
 import { awaitWithSignal } from "../shared.js";
 import { validateDimensions } from "./sqliteSchema.js";

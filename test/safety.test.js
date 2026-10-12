@@ -2,8 +2,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { isSafeCommand } from "../dist/execution/safety/checker.js";
-import { loadCommandPolicy, loadSandboxPolicy } from "../dist/execution/safety/policyLoader.js";
+import { isSafeCommand } from "../dist/execution/safety.js";
+import { loadCommandPolicy, loadSandboxPolicy } from "../dist/execution/safety.js";
 
 describe("isSafeCommand", () => {
   it("allows simple awk command", async () => {

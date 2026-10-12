@@ -6,7 +6,7 @@ import { writeSolveSessionLog } from "../dist/io/logs/writer.js";
 import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
 import { generateWorkerCommand } from "../dist/solve/tools.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
-import { OpenAIEngine } from "../dist/providers/engines/openaiEngine.js";
+import { OpenAIEngine } from "../dist/providers/apiEngine.js";
 import { solveProblem } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 

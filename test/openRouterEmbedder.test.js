@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../dist/knowledge/modelConfig.js";
-import { createOpenRouterEmbedder } from "../dist/providers/embeddings/openRouterEmbedder.js";
+import { createOpenRouterEmbedder } from "../dist/providers/embedder.js";
 
 const model = "test/embedding";
 const vectorResponse = (vectors = [[1, 2]], responseModel = model) => new Response(JSON.stringify({

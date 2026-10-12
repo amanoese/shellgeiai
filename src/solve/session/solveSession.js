@@ -10,15 +10,15 @@ import { createKnowledgeRuntime } from "../../knowledge/knowledgeRuntime.js";
 import { awaitWithSignal } from "../../shared.js";
 import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "../../knowledge/knowledgePaths.js";
 import { createSearchKnowledgeTool } from "../../knowledge/searchKnowledgeTool.js";
-import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
-import { normalizeReadonlyDockerDevices } from "../../execution/runner/dockerDevices.js";
-import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
+import { createDefaultRunnerLimits } from "../../execution/safety.js";
+import { normalizeReadonlyDockerDevices } from "../../execution/dockerRunner.js";
+import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared.js";
 import { createExecutionPlan } from "../planning/planner.js";
 import { createToolRegistry } from "../tools.js";
 import { reportSessionPhase } from "../events.js";
-import { createLlmPlanner } from "../../providers/planner/llmPlanner.js";
-import { resolveLlmConfig } from "../../providers/llm/config.js";
+import { createLlmPlanner } from "../../providers/planner.js";
+import { resolveLlmConfig } from "../../providers/llm.js";
 
 export async function createSolveSession(options) {
   const startedAt = new Date().toISOString();

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildLlmPlan } from "../dist/providers/planner/llmPlanner.js";
-import * as plannerModule from "../dist/providers/planner/llmPlanner.js";
-import { buildPlannerUserPrompt } from "../dist/providers/planner/plannerPrompt.js";
-import { resolveLlmConfig } from "../dist/providers/llm/config.js";
+import { buildLlmPlan } from "../dist/providers/planner.js";
+import * as plannerModule from "../dist/providers/planner.js";
+import { buildPlannerUserPrompt } from "../dist/providers/planner.js";
+import { resolveLlmConfig } from "../dist/providers/llm.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("buildLlmPlan", () => {
@@ -197,6 +197,33 @@ describe("configured LLM planner", () => {
   ])("rejects %s without falling back or leaking response bodies", async (_label, response, message) => {
     const parse = vi.fn(async () => response);
     await expect(buildLlmPlan(session, { config, client: { responses: { parse } } })).rejects.toThrow(message);
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["a message without content", [{ type: "message" }]],
+    ["a null output item", [null]]
+  ])("keeps a clear missing-plan failure for %s", async (_label, output) => {
+    const parse = vi.fn(async () => ({ output, output_parsed: null }));
+    await expect(buildLlmPlan(session, { config, client: { responses: { parse } } }))
+      .rejects.toThrow("The planner model returned no parsed structured output.");
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it("rejects refusal content without a message type even alongside a parsed plan", async () => {
+    const parse = vi.fn(async () => ({
+      output: [{ content: [{ type: "refusal", refusal: "private refusal body" }] }],
+      output_parsed: await parsedPlan()
+    }));
+    await expect(buildLlmPlan(session, { config, client: { responses: { parse } } }))
+      .rejects.toThrow("The planner model refused to produce a plan.");
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it("keeps structured-output classification for a plain ZodError rejection", async () => {
+    const parse = vi.fn(async () => { throw { name: "ZodError", message: "private schema body" }; });
+    await expect(buildLlmPlan(session, { config, client: { responses: { parse } } }))
+      .rejects.toThrow("The planner model returned invalid structured output.");
     expect(parse).toHaveBeenCalledOnce();
   });
 

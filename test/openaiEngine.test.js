@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { OpenAIEngine, __testUtils } from "../dist/providers/engines/openaiEngine.js";
+import { OpenAIEngine, __testUtils } from "../dist/providers/apiEngine.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 
 beforeEach(() => {

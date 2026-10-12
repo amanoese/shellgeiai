@@ -6,8 +6,8 @@ import { SESSION_PHASES } from "../dist/solve/events.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { buildKnowledgeVectors } from "../dist/knowledge/commands.js";
 import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";
-import { OpenAIEngine } from "../dist/providers/engines/openaiEngine.js";
-import { resolveLlmConfig } from "../dist/providers/llm/config.js";
+import { OpenAIEngine } from "../dist/providers/apiEngine.js";
+import { resolveLlmConfig } from "../dist/providers/llm.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
