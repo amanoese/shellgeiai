@@ -1,7 +1,9 @@
 import type { Engine, EngineTurn, InitializingSolveSession, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
 import { z } from "zod";
 import { createToolRegistry } from "../../src/solve/tools.js";
-import { runWorkerAttempt } from "../../src/solve/worker.js";
+import { runSolveOrchestrator } from "../../src/solve/orchestrator.js";
+import { createSolveSession } from "../../src/solve/solve.js";
+import { runWorkerAttempt, executeWorkerTask } from "../../src/solve/worker.js";
 
 
 const success: ToolExecutionResult<number> = { ok: true, value: 3, validatedArguments: {} };
@@ -72,3 +74,17 @@ async function attemptReturnContract(input: Parameters<typeof runWorkerAttempt>[
   return outcome;
 }
 void [exhaustiveEngineTurn, exhaustiveToolResult, registry, attemptReturnContract];
+
+async function readySessionContracts(options: Parameters<typeof createSolveSession>[0], task: Parameters<typeof executeWorkerTask>[1], control: Parameters<typeof executeWorkerTask>[2], state: Parameters<typeof executeWorkerTask>[3]) {
+  const session: SolveSession = await createSolveSession(options);
+  await runSolveOrchestrator(session);
+  await executeWorkerTask(session, task, control, state);
+  // @ts-expect-error Orchestration requires a completed plan.
+  await runSolveOrchestrator(initializing);
+  // @ts-expect-error Workers require a completed plan.
+  await executeWorkerTask(initializing, task, control, state);
+  // @ts-expect-error Injected planner metadata stays unknown until a consumer validates it.
+  const prompt: string = session.plan.planner.prompt;
+  return prompt;
+}
+void readySessionContracts;

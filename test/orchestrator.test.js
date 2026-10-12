@@ -6,11 +6,11 @@ import {
   createWorkerSummary
 } from "../dist/solve/worker.js";
 import { getRemainingBudgetMs, getWorkerStopReason } from "../dist/solve/worker.js";
-import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../dist/solve/worker/taskQueue.js";
+import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../dist/solve/orchestrator.js";
 import { executeWorkerTask, runWorkerAttempt } from "../dist/solve/worker.js";
-import { createExecutionSummary } from "../dist/solve/orchestration/executionSummary.js";
-import { createExecutionControl } from "../dist/solve/orchestration/executionControl.js";
-import { runSolveOrchestrator } from "../dist/solve/orchestration/orchestrator.js";
+import { createExecutionSummary } from "../dist/solve/orchestrator.js";
+import { createExecutionControl } from "../dist/solve/orchestrator.js";
+import { runSolveOrchestrator } from "../dist/solve/orchestrator.js";
 import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
 import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
 import { createToolRegistry } from "../dist/solve/tools.js";

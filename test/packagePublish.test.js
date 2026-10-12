@@ -111,7 +111,7 @@ describe("npm publish metadata", () => {
 
   it("exposes io and shared modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../dist/io/problem/parseProblem.js",
+      "../dist/solve/solve.js",
       "../dist/io/logs/writer.js",
       "../dist/io/logs/catalog.js",
       "../dist/io/formatter/formatResult.js",
@@ -127,7 +127,7 @@ describe("npm publish metadata", () => {
   const modules = [
     "../dist/solve/solve.js",
     "../dist/solve/runtime.js",
-    "../dist/solve/session/solveSession.js",
+    "../dist/solve/solve.js",
  "../dist/solve/events.js",
  "../dist/types.js"
  ];
@@ -137,15 +137,15 @@ describe("npm publish metadata", () => {
 
   it("exposes solve flow modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../dist/solve/orchestration/orchestrator.js",
-      "../dist/solve/orchestration/executionControl.js",
-      "../dist/solve/orchestration/executionSummary.js",
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/orchestrator.js",
       "../dist/solve/worker.js",
       "../dist/solve/tools.js",
-      "../dist/solve/worker/taskQueue.js",
-      "../dist/solve/planning/planner.js",
-      "../dist/solve/selection/selector.js",
-      "../dist/solve/scoring/shellgeiScorer.js"
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/solve.js",
+      "../dist/solve/selection.js",
+      "../dist/solve/selection.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -153,7 +153,12 @@ describe("npm publish metadata", () => {
       "dist/solve/worker/executeWorkerTask.js", "dist/solve/worker/attemptRunner.js",
       "dist/solve/worker/attemptFactory.js", "dist/solve/worker/stopReason.js",
       "dist/solve/worker/taskExecutor.js", "dist/solve/worker/toolLoop.js",
-      "dist/tools/toolRegistry.js"
+      "dist/tools/toolRegistry.js",
+      "dist/solve/session/solveSession.js", "dist/io/problem/parseProblem.js",
+      "dist/solve/planning/planner.js", "dist/solve/orchestration/orchestrator.js",
+      "dist/solve/orchestration/executionControl.js", "dist/solve/orchestration/executionSummary.js",
+      "dist/solve/worker/taskQueue.js", "dist/solve/selection/selector.js",
+      "dist/solve/scoring/shellgeiScorer.js"
     ]) expect(existsSync(path.join(repoRoot, oldPath))).toBe(false);
   });
 

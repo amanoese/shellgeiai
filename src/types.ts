@@ -116,7 +116,7 @@ export interface ExecutionPlan {
   variants: PlanVariant[];
   workerTasks: WorkerTask[];
   knowledgeMode?: KnowledgeMode;
-  planner: { provider: string, attemptedProvider: string | null, fallbackReason: string | null, promptVersion: string | null, prompt: string | null, rawResponse: string | null};
+  planner: { provider: string, attemptedProvider: string | null, fallbackReason: string | null, promptVersion: unknown, prompt: unknown, rawResponse: unknown};
 }
 
 export interface PlannerKnowledgeHint {
@@ -350,7 +350,8 @@ export interface CandidateFinalCheck {
   iterations: number;
   engine: string;
   reason: string | undefined;
-  score?: JudgeScore;
+  score?: JudgeScore | null;
+  gate?: { disqualified?: boolean; stderrAllowed?: boolean; expectedOutputMatched?: boolean };
 }
 export interface WorkerCandidate {
   candidateId: string;
@@ -361,7 +362,7 @@ export interface WorkerCandidate {
   explanation: string;
   attempts: SolveAttempt[];
   finalCheck: CandidateFinalCheck;
-  shellgeiScore?: ShellgeiScore;
+  shellgeiScore?: ShellgeiScore | null;
 }
 export interface WorkerSummary {
   workerId: string;

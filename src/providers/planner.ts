@@ -1,6 +1,6 @@
-import type { InitializingSolveSession, ExecutionPlan, PlanVariant, WorkerTask, LlmConfig, PlannerProvider, PlannerKnowledgeHint } from "../types.js";
+import type { InitializingSolveSession, LlmConfig, PlannerProvider, PlannerKnowledgeHint } from "../types.js";
 import type { LlmClient, LlmClientFactory, LlmConfigOptions } from "./llm.js";
-export interface PlannerOptions extends LlmConfigOptions { config?: LlmConfig; client?: LlmClient; clientFactory?: LlmClientFactory; fetchImpl?: typeof globalThis.fetch }
+export interface PlannerOptions extends LlmConfigOptions { config?: LlmConfig; client?: LlmClient | null; clientFactory?: LlmClientFactory; fetchImpl?: typeof globalThis.fetch }
 function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
 /** SDK and injected responses still cross an untrusted runtime boundary. */
 function hasRefusal(output: unknown): boolean {
@@ -80,46 +80,6 @@ export const variantSchema = z.object({
 export const plannerResultSchema = z.object({
     variants: z.array(variantSchema).min(1)
 });
-
-function buildWorkerTask(index: number, variants: PlanVariant[], session: InitializingSolveSession): WorkerTask {
-    const assignedVariant = variants[index % variants.length];
-    return {
-        workerId: `worker-${index + 1}`,
-        strategy: assignedVariant.label,
-        strategyProfile: {
-            name: assignedVariant.label,
-            focus: assignedVariant.approach,
-            retryHint: assignedVariant.explorationHint,
-            rubricFocus: assignedVariant.toolBias
-        },
-        assignedVariant,
-        maxAttempts: session.maxIterations
-    };
-}
-
-export function normalizePlannerResult(rawPlan: unknown, session: InitializingSolveSession, plannerMeta: { provider: string; attemptedProvider?: string | null; promptVersion?: string | null; prompt?: string | null; rawResponse?: string | null }): ExecutionPlan {
-    const source = isRecord(rawPlan) &&
-        rawPlan.plan &&
-        typeof rawPlan.plan === "object"
-        ? rawPlan.plan
-        : rawPlan;
-    const parsed = plannerResultSchema.parse(source);
-    const workerCount = Math.max(2, session.parallelism ?? 4);
-    return {
-        mode: session.mode ?? "single",
-        parallelism: workerCount,
-        variants: parsed.variants,
-        workerTasks: Array.from({ length: workerCount }, (_, index) => buildWorkerTask(index, parsed.variants, session)),
-        planner: {
-            provider: plannerMeta.provider,
-            attemptedProvider: plannerMeta.attemptedProvider ?? plannerMeta.provider,
-            fallbackReason: null,
-            promptVersion: plannerMeta.promptVersion ?? null,
-            prompt: plannerMeta.prompt ?? null,
-            rawResponse: plannerMeta.rawResponse ?? null
-        }
-    };
-}
 
 async function requestPlan(session: InitializingSolveSession, client: LlmClient, config: LlmConfig) {
     session.signal?.throwIfAborted();

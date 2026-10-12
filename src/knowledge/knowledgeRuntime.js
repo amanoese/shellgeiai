@@ -38,7 +38,10 @@ async function recoveryHint(cause, { datasetPath, dbPath, model }) {
     `shellgeiai solve --knowledge-db ${shellQuote(target)} --knowledge-dataset ${shellQuote(datasetPath)} --knowledge-model ${shellQuote(model)} --knowledge planner 'your problem'`;
 }
 
-/** Owns one read-only connection and pins its active generation for the entire solve. */
+/** Owns one read-only connection and pins its active generation for the entire solve.
+ * @param {Partial<import("../types.js").KnowledgeRuntimeOptions>} [options]
+ * @returns {Promise<import("../types.js").KnowledgeRuntime>}
+ */
 export async function createKnowledgeRuntime({
   datasetPath = DEFAULT_KNOWLEDGE_DATASET, dbPath, model = DEFAULT_KNOWLEDGE_MODEL,
   embedder, embedderFactory = createOpenRouterEmbedder, signal

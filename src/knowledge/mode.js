@@ -6,6 +6,7 @@ export const SUPPORTED_KNOWLEDGE_MODES = new Set([
   "on"
 ]);
 
+/** @param {import("../types.js").KnowledgeMode | "on"} [mode] */
 export function normalizeKnowledgeMode(mode = "off") {
   return mode === "on" ? "all" : mode;
 }

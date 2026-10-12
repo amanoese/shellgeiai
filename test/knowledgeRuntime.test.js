@@ -5,7 +5,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildKnowledgeVectors, searchKnowledge } from "../dist/knowledge/commands.js";
 import { createKnowledgeRuntime } from "../dist/knowledge/knowledgeRuntime.js";
-import { createSolveSession } from "../dist/solve/session/solveSession.js";
+import { createSolveSession } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { documentEmbedder, knowledgeFixture, knowledgeRecord } from "./support/knowledgeFixture.js";
 
@@ -125,7 +125,7 @@ describe("knowledge runtime lifecycle", () => {
   it("imports solve and commands and creates an off session without loading native dependencies or fetching", async () => {
     const source = `import { createRequire } from 'node:module';
       globalThis.fetch = () => { throw new Error('unexpected fetch'); };
-      const { createSolveSession } = await import('./dist/solve/session/solveSession.js');
+      const { createSolveSession } = await import('./dist/solve/solve.js');
       await import('./dist/knowledge/commands.js');
       const { createTestPlannerProvider } = await import('./test/support/testPlannerProvider.js');
       const session = await createSolveSession({ problemInput: 'print ok', engine: { name: 'mock' }, runner: { name: 'mock' }, judge: {},

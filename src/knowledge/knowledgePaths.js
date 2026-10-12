@@ -23,6 +23,7 @@ export function defaultKnowledgeDbPath(datasetPath = DEFAULT_KNOWLEDGE_DATASET, 
   return path.join(cache, "shellgeiai", "knowledge", `${fingerprint}.sqlite`);
 }
 
+/** @param {{ dbPath?: string, datasetPath?: string, model?: string, env?: NodeJS.ProcessEnv, platform?: NodeJS.Platform, homedir?: string | (() => string), inputProfile?: string }} [options] */
 export function resolveKnowledgeDbPath({
   dbPath,
   datasetPath = DEFAULT_KNOWLEDGE_DATASET,

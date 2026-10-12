@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportSessionPhase } from "../dist/solve/events.js";
-import { createSolveSession } from "../dist/solve/session/solveSession.js";
+import { createSolveSession } from "../dist/solve/solve.js";
 import { SESSION_PHASES } from "../dist/solve/events.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { buildKnowledgeVectors } from "../dist/knowledge/commands.js";
@@ -374,6 +374,20 @@ describe("createSolveSession", () => {
     const plannerProvider = stage === "planning" ? { buildPlan: async () => { throw new Error("planning failed"); } } : createTestPlannerProvider();
     await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", plannerProvider,
       knowledgeRuntimeFactory: async () => runtime })).rejects.toThrow(stage + " failed");
+    expect(runtime.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("retains initialization and cleanup errors in an AggregateError", async () => {
+    const initializationError = new Error("planning failed");
+    const cleanupError = new Error("cleanup failed");
+    const runtime = { retriever: { retrieveForPlanner: async () => [] }, snapshot: {},
+      dispose: vi.fn(async () => { throw cleanupError; }) };
+    const error = await createSolveSession({ ...sessionOptions(), knowledgeMode: "planner",
+      knowledgeRuntimeFactory: async () => runtime,
+      plannerProvider: { buildPlan: async () => { throw initializationError; } }
+    }).catch(error => error);
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.errors).toEqual([initializationError, cleanupError]);
     expect(runtime.dispose).toHaveBeenCalledOnce();
   });
 
