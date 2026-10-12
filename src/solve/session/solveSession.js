@@ -7,16 +7,16 @@ import {
   usesWorkerKnowledge
 } from "../../knowledge/mode.js";
 import { createKnowledgeRuntime } from "../../knowledge/knowledgeRuntime.js";
-import { awaitWithSignal } from "../../knowledge/retriever.js";
+import { awaitWithSignal } from "../../shared.js";
 import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "../../knowledge/knowledgePaths.js";
 import { createSearchKnowledgeTool } from "../../knowledge/searchKnowledgeTool.js";
 import { createDefaultRunnerLimits } from "../../execution/runner/limits.js";
 import { normalizeReadonlyDockerDevices } from "../../execution/runner/dockerDevices.js";
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
-import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
+import { ensureDirectory, resolveRequestedWorkdir } from "../../shared.js";
 import { createExecutionPlan } from "../planning/planner.js";
 import { createToolRegistry } from "../../tools/toolRegistry.js";
-import { reportSessionPhase } from "./progress.js";
+import { reportSessionPhase } from "../events.js";
 import { createLlmPlanner } from "../../providers/planner/llmPlanner.js";
 import { resolveLlmConfig } from "../../providers/llm/config.js";
 

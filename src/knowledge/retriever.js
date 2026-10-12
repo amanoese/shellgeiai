@@ -1,21 +1,6 @@
+import { awaitWithSignal } from "../shared.js";
 import { formatKnowledgeRecords } from "./hints.js";
 import { formatEmbeddingQuery } from "./embeddingInputs.js";
-
-/** Propagate cancellation even when an injected provider does not honor its signal. */
-export function awaitWithSignal(operation, signal) {
-  signal?.throwIfAborted();
-  if (!signal) return Promise.resolve().then(operation);
-  return new Promise((resolve, reject) => {
-    const aborted = () => reject(signal.reason ?? new Error("Knowledge operation aborted."));
-    signal.addEventListener("abort", aborted, { once: true });
-    let result;
-    try { result = operation(); } catch (error) { result = Promise.reject(error); }
-    Promise.resolve(result).then(value => {
-      if (signal.aborted) aborted();
-      else resolve(value);
-    }, reject).finally(() => signal.removeEventListener("abort", aborted));
-  });
-}
 
 /** Query embeddings are cached only in this runtime; persisted vectors remain in SQLite. */
 export function createKnowledgeRetriever({ store, generationId, embedder, signal } = {}) {

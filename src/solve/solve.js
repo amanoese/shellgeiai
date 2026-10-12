@@ -2,7 +2,7 @@ import { writeSolveSessionLog } from "../io/logs/writer.js";
 import { runSolveOrchestrator } from "./orchestration/orchestrator.js";
 import { scoreShellgeiCandidate } from "./scoring/shellgeiScorer.js";
 import { selectSolveOutcome } from "./selection/selector.js";
-import { reportSessionPhase } from "./session/progress.js";
+import { reportSessionPhase } from "./events.js";
 import { createSolveSession } from "./session/solveSession.js";
 
 export async function solveProblem(options) {

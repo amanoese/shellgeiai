@@ -1,4 +1,4 @@
-import { analyzeShellCommand } from "../../solve/scoring/commandAnalyzer.js";
+import { analyzeShellCommand } from "../../shell/analyzer.js";
 import { defaultCommandPolicy } from "./commandPolicy.js";
 
 function blockedCommandReason(commandName, policy) {

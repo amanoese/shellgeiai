@@ -2,7 +2,7 @@ import path from "node:path";
 import { z } from "zod";
 import { defaultCommandPolicy } from "./commandPolicy.js";
 import { createDefaultSandboxPolicy } from "./sandboxPolicy.js";
-import { readJson } from "../../shared/fs.js";
+import { readJson } from "../../shared.js";
 
 const blockedCommandSchema = z
   .object({

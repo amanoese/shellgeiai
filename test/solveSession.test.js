@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { reportSessionPhase } from "../dist/solve/session/progress.js";
+import { reportSessionPhase } from "../dist/solve/events.js";
 import { createSolveSession } from "../dist/solve/session/solveSession.js";
-import { SESSION_PHASES } from "../dist/solve/session/sessionPhases.js";
+import { SESSION_PHASES } from "../dist/solve/events.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { buildKnowledgeVectors } from "../dist/knowledge/commands.js";
 import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";

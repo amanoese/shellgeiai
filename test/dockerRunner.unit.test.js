@@ -9,7 +9,7 @@ vi.mock("node:child_process", async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-vi.mock("../dist/shared/exec.js", () => ({
+vi.mock("../dist/shared.js", () => ({
   commandExists: commandExistsMock
 }));
 

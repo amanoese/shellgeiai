@@ -1,4 +1,49 @@
-import { getBashParser } from "./treeSitterLoader.js";
+import type { Node } from "web-tree-sitter";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+import { Language, Parser } from "web-tree-sitter";
+
+const require = createRequire(import.meta.url);
+const TREE_SITTER_WASM_PATH = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
+const BASH_WASM_URL = new URL("../../wasm/tree-sitter-bash.wasm", import.meta.url);
+
+let parserPromise: Promise<Parser> | null = null;
+
+async function createBashParser() {
+  await Parser.init({
+    locateFile() {
+      return TREE_SITTER_WASM_PATH;
+    }
+  });
+
+  const parser = new Parser();
+  const bash = await Language.load(fileURLToPath(BASH_WASM_URL));
+  parser.setLanguage(bash);
+  return parser;
+}
+
+export async function getBashParser() {
+  parserPromise ??= createBashParser();
+  return parserPromise;
+}
+
+export interface ShellCommandFeatures {
+  parsed: boolean;
+  parser: string;
+  commandNames: string[];
+  simpleCommandCount: number;
+  pipelineCount: number;
+  hasRedirection: boolean;
+  hasCommandSubstitution: boolean;
+  hasHereDoc: boolean;
+  hasAndOrList: boolean;
+  languageOneLiners: { command: string; option: string; inPipeline: boolean }[];
+  dangerousCommands: string[];
+  redirections: { operator: string; destination: string }[];
+  recursiveBackgroundFunctions: string[];
+}
+
 
 const DANGEROUS_COMMANDS = new Set([
   "rm",
@@ -18,7 +63,7 @@ const DANGEROUS_COMMANDS = new Set([
   "ftp"
 ]);
 
-const LANGUAGE_ONE_LINER_FLAGS = {
+const LANGUAGE_ONE_LINER_FLAGS: Record<string, Set<string>> = {
   node: new Set(["-p", "-pe", "-e"]),
   perl: new Set(["-n", "-p", "-a", "-e", "-ne", "-pe", "-ane", "-lane", "-ple"]),
   python: new Set(["-c"]),
@@ -26,7 +71,7 @@ const LANGUAGE_ONE_LINER_FLAGS = {
   ruby: new Set(["-n", "-p", "-a", "-e", "-ne", "-pe", "-ane"])
 };
 
-function baseFeatures() {
+function baseFeatures(): ShellCommandFeatures {
   return {
     parsed: true,
     parser: "tree-sitter-bash",
@@ -44,25 +89,25 @@ function baseFeatures() {
   };
 }
 
-function walk(node, visit) {
+function walk(node: Node, visit: (node: Node) => void): void {
   visit(node);
   for (const child of node.children ?? []) {
     walk(child, visit);
   }
 }
 
-function isCommandNode(node) {
+function isCommandNode(node: Node) {
   return node.type === "command" || node.type === "simple_command";
 }
 
-function commandWords(node) {
+function commandWords(node: Node) {
   return node.namedChildren
     .filter((child) => ["command_name", "word", "string", "raw_string"].includes(child.type))
     .map((child) => child.text)
     .filter(Boolean);
 }
 
-function commandNameFromNode(node) {
+function commandNameFromNode(node: Node) {
   const nameNode = node.childForFieldName?.("name");
   if (nameNode?.text) {
     return nameNode.text;
@@ -76,7 +121,7 @@ function commandNameFromNode(node) {
   return commandWords(node)[0] ?? null;
 }
 
-function pipelineAncestor(node) {
+function pipelineAncestor(node: Node) {
   let current = node.parent;
   while (current) {
     if (current.type === "pipeline") {
@@ -87,7 +132,7 @@ function pipelineAncestor(node) {
   return null;
 }
 
-function oneLinerOption(commandName, words) {
+function oneLinerOption(commandName: string, words: string[]) {
   const flags = LANGUAGE_ONE_LINER_FLAGS[commandName];
   if (!flags) {
     return null;
@@ -96,7 +141,7 @@ function oneLinerOption(commandName, words) {
   return words.find((word) => flags.has(word)) ?? null;
 }
 
-function hasErrorNode(node) {
+function hasErrorNode(node: Node) {
   let found = false;
   walk(node, (child) => {
     if (child.type === "ERROR") {
@@ -106,11 +151,11 @@ function hasErrorNode(node) {
   return found;
 }
 
-function isHereDocNode(node) {
+function isHereDocNode(node: Node) {
   return node.type === "heredoc_redirect" || node.type === "heredoc_body";
 }
 
-function redirectionFromNode(node) {
+function redirectionFromNode(node: Node) {
   if (node.type !== "file_redirect") {
     return null;
   }
@@ -121,7 +166,7 @@ function redirectionFromNode(node) {
   }
 
   const operator = Array.from({ length: node.childCount }, (_, index) => node.child(index))
-    .find((child) => !child.isNamed && [">", ">>", "<", "<>", ">|"].includes(child.text))
+    .find((child) => child != null && !child.isNamed && [">", ">>", "<", "<>", ">|"].includes(child.text))
     ?.text;
 
   return {
@@ -130,17 +175,17 @@ function redirectionFromNode(node) {
   };
 }
 
-function functionNameFromNode(node) {
+function functionNameFromNode(node: Node) {
   const nameNode = node.childForFieldName?.("name") ?? node.namedChildren.find((child) => child.type === "word");
   return nameNode?.text ?? null;
 }
 
-function functionBodyFromNode(node) {
+function functionBodyFromNode(node: Node) {
   return node.childForFieldName?.("body") ?? node.namedChildren.find((child) => child.type === "compound_statement");
 }
 
-function commandNamesInNode(node) {
-  const names = [];
+function commandNamesInNode(node: Node) {
+  const names: string[] = [];
   walk(node, (child) => {
     if (!isCommandNode(child)) {
       return;
@@ -154,12 +199,12 @@ function commandNamesInNode(node) {
   return names;
 }
 
-function hasBackgroundOperator(node) {
+function hasBackgroundOperator(node: Node) {
   let found = false;
   walk(node, (child) => {
     for (let index = 0; index < child.childCount; index += 1) {
       const descendant = child.child(index);
-      if (!descendant.isNamed && descendant.text === "&") {
+      if (descendant != null && !descendant.isNamed && descendant.text === "&") {
         found = true;
       }
     }
@@ -167,7 +212,7 @@ function hasBackgroundOperator(node) {
   return found;
 }
 
-function recursiveBackgroundFunctionFromNode(node) {
+function recursiveBackgroundFunctionFromNode(node: Node) {
   if (node.type !== "function_definition") {
     return null;
   }
@@ -181,7 +226,7 @@ function recursiveBackgroundFunctionFromNode(node) {
   return commandNamesInNode(body).includes(functionName) ? functionName : null;
 }
 
-export async function analyzeShellCommand(command, options = {}) {
+export async function analyzeShellCommand(command: string, options: { parserProvider?: () => Promise<Pick<Parser, "parse">> } = {}): Promise<ShellCommandFeatures> {
   const parserProvider = options.parserProvider ?? getBashParser;
 
   try {

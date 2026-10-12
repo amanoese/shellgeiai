@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { findCommandPath } from "../../shared/exec.js";
+import { findCommandPath } from "../../shared.js";
 
 let cachedShellPath;
 

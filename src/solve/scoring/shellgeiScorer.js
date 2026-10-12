@@ -1,4 +1,4 @@
-import { analyzeShellCommand } from "./commandAnalyzer.js";
+import { analyzeShellCommand } from "../../shell/analyzer.js";
 
 const DEFAULT_MODE = "simple";
 

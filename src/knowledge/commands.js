@@ -6,7 +6,7 @@ import { DEFAULT_KNOWLEDGE_DATASET, resolveKnowledgeDbPath } from "./knowledgePa
 import { EMBEDDING_INPUT_PROFILE, formatEmbeddingDocument, formatEmbeddingQuery } from "./embeddingInputs.js";
 import { createOpenRouterEmbedder } from "../providers/embeddings/openRouterEmbedder.js";
 import { assertKnowledgeModel, createKnowledgeRuntime } from "./knowledgeRuntime.js";
-import { awaitWithSignal } from "./retriever.js";
+import { awaitWithSignal } from "../shared.js";
 import { validateDimensions } from "./sqliteSchema.js";
 
 export { DEFAULT_KNOWLEDGE_DATASET, DEFAULT_KNOWLEDGE_MODEL };

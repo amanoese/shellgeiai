@@ -66,6 +66,19 @@ describe("npm publish metadata", () => {
     expect(ignoredPaths).toContain("data/knowledge/man.vectors.json");
   });
 
+  it("publishes consolidated shared, type, event and shell analysis modules", async () => {
+    const modules = ["../dist/types.js", "../dist/shared.js", "../dist/solve/events.js", "../dist/shell/analyzer.js"];
+    const exports = await Promise.all(modules.map((modulePath) => import(modulePath)));
+    expect(Object.keys(exports[0])).toEqual([]);
+    for (const oldPath of [
+      "dist/solve/session/types.js", "dist/providers/engines/Engine.js",
+      "dist/execution/runner/Runner.js", "dist/execution/judge/Judge.js",
+      "dist/shared/fs.js", "dist/shared/exec.js", "dist/solve/session/progress.js",
+      "dist/solve/session/sessionPhases.js", "dist/solve/scoring/commandAnalyzer.js",
+      "dist/solve/scoring/treeSitterLoader.js"
+    ]) expect(existsSync(path.join(repoRoot, oldPath))).toBe(false);
+  });
+
   it("exposes execution modules from the grouped dist hierarchy", async () => {
     const modules = [
       "../dist/execution/runner/localRunner.js",
@@ -81,7 +94,6 @@ describe("npm publish metadata", () => {
 
   it("exposes provider modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../dist/providers/engines/Engine.js",
       "../dist/providers/engines/openaiEngine.js",
       "../dist/providers/engines/mockEngine.js",
       "../dist/providers/engines/codexCliEngine.js",
@@ -105,8 +117,7 @@ describe("npm publish metadata", () => {
       "../dist/io/formatter/formatResult.js",
       "../dist/io/formatter/logs.js",
       "../dist/io/formatter/progressReporter.js",
-      "../dist/shared/fs.js",
-      "../dist/shared/exec.js"
+      "../dist/shared.js"
     ];
 
  await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -117,9 +128,8 @@ describe("npm publish metadata", () => {
     "../dist/solve/solve.js",
     "../dist/solve/runtime.js",
     "../dist/solve/session/solveSession.js",
- "../dist/solve/session/sessionPhases.js",
- "../dist/solve/session/progress.js",
- "../dist/solve/session/types.js"
+ "../dist/solve/events.js",
+ "../dist/types.js"
  ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -146,6 +156,10 @@ describe("npm publish metadata", () => {
 
   it("includes LLM, Planner and Worker knowledge runtime modules in the packed files", async () => {
     const modulePaths = [
+      "../dist/types.js",
+      "../dist/shared.js",
+      "../dist/solve/events.js",
+      "../dist/shell/analyzer.js",
       "../dist/knowledge/mode.js",
       "../dist/knowledge/hints.js",
       "../dist/knowledge/knowledgePaths.js",

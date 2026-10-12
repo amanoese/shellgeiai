@@ -1,4 +1,4 @@
-import { awaitWithSignal } from "../../knowledge/retriever.js";
+import { awaitWithSignal } from "../../shared.js";
 
 export class WorkerToolLoopError extends Error {
   constructor(message, toolCalls = []) {
