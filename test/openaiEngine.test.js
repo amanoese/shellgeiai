@@ -1,10 +1,102 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { OpenAIEngine, __testUtils } from "../src/providers/engines/openaiEngine.js";
 import { createToolRegistry } from "../src/tools/toolRegistry.js";
 
+beforeEach(() => {
+  for (const name of ["LLM_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
+    "SHELLGEIAI_LLM_API_KEY", "SHELLGEIAI_LLM_MODEL", "SHELLGEIAI_PLANNER_MODEL",
+    "SHELLGEIAI_LLM_TIMEOUT_MS", "SHELLGEIAI_LLM_MAX_RETRIES", "OPENAI_MODEL",
+    "OPENAI_PLANNER_MODEL", "OPENAI_TIMEOUT_MS", "OPENAI_MAX_RETRIES"]) {
+    vi.stubEnv(name, undefined);
+  }
+});
+afterEach(() => vi.unstubAllEnvs());
+
 describe("OpenAIEngine", () => {
+  it("does not bypass missing credentials for an injected factory", () => {
+    expect(() => new OpenAIEngine({ clientFactory: vi.fn() })).toThrow("Set OPENROUTER_API_KEY");
+  });
+
+  it.each([{ model: "" }, { baseURL: "http://remote.invalid/v1" }])("rejects invalid configuration before calling the factory", (options) => {
+    const clientFactory = vi.fn();
+    expect(() => new OpenAIEngine({ apiKey: "test-key", clientFactory, ...options })).toThrow();
+    expect(clientFactory).not.toHaveBeenCalled();
+  });
+
+  it("resolves shared defaults and allows a directly injected client without credentials", async () => {
+    const create = vi.fn(async () => ({ output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await engine.generateCommand({ problem: "print ok", attempts: [], workdir: "/tmp/workdir" });
+    expect(engine.model).toBe("openai/gpt-6.1-sol");
+    expect(engine.baseURL).toBe("https://openrouter.ai/api/v1");
+    expect(engine.timeoutMs).toBe(30000);
+    expect(engine.maxRetries).toBe(2);
+    expect(engine.llmConfig.provider).toBe("openrouter");
+    expect(create.mock.calls[0][0]).toMatchObject({ model: "openai/gpt-6.1-sol", store: false });
+  });
+
+  it("honors resolved config and creates one client lazily under parallel calls", async () => {
+    const config = {
+      provider: "openai", apiKey: "test-key", baseURL: "https://api.openai.com/v1",
+      model: "gpt-6.1-sol", plannerModel: "gpt-6.1-sol", timeoutMs: 1234, maxRetries: 0
+    };
+    const create = vi.fn(async () => ({ output_text: '{"command":"printf ok"}' }));
+    const fetchImpl = vi.fn();
+    const clientFactory = vi.fn(async () => ({ responses: { create } }));
+    const engine = new OpenAIEngine({ config, clientFactory, fetchImpl });
+    expect(engine.llmConfig).toBe(config);
+    expect(clientFactory).not.toHaveBeenCalled();
+    const context = { problem: "print ok", attempts: [], workdir: "/tmp/workdir" };
+    await Promise.all([engine.generateCommand(context), engine.generateCommand(context)]);
+    expect(clientFactory).toHaveBeenCalledTimes(1);
+    expect(clientFactory).toHaveBeenCalledWith({ apiKey: "test-key", baseURL: config.baseURL,
+      timeoutMs: 1234, maxRetries: 0, fetchImpl });
+  });
+
+  it("honors zero model JSON retries", async () => {
+    const create = vi.fn(async () => ({ output_text: "not JSON" }));
+    const engine = new OpenAIEngine({ client: { responses: { create } }, maxRetries: 0 });
+    await expect(engine.generateCommand({ problem: "print ok", attempts: [], workdir: "/tmp/workdir" }))
+      .rejects.toThrow("The API engine returned non-JSON response.");
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["incomplete", "failed"])("rejects %s command responses even when they contain text", async (status) => {
+    const create = vi.fn(async () => ({ status, output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateCommand({ problem: "print ok", attempts: [], workdir: "/tmp/workdir" }))
+      .rejects.toThrow("The API engine returned a non-completed response.");
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("forwards cancellation and store:false for both entry points", async () => {
+    const create = vi.fn(async () => ({ output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    const signal = new AbortController().signal;
+    const context = { problem: "print ok", attempts: [], workdir: "/tmp/workdir" };
+    await engine.generateCommand(context, { signal });
+    await engine.generateTurn({ context, tools: [], signal });
+    for (const [request, options] of create.mock.calls) {
+      expect(request.store).toBe(false);
+      expect(options).toEqual({ signal });
+    }
+  });
+
+  it("does not reinterpret HTTP failures as model JSON errors or retry them", async () => {
+    const create = vi.fn(async () => { throw Object.assign(new Error("private prompt secret"), {
+      status: 404, error: { message: "secret" }, headers: { authorization: "secret" }
+    }); });
+    const engine = new OpenAIEngine({ client: { responses: { create } }, maxRetries: 2 });
+    const error = await engine.generateCommand({ problem: "print ok", attempts: [], workdir: "/tmp/workdir" })
+      .catch((value) => value);
+    expect(error.message).toMatch(/404.*Responses API.*model/);
+    expect(error.message).not.toContain("secret");
+    expect(error.cause).toBeUndefined();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("advertises tool calling support", () => {
     const engine = new OpenAIEngine({ apiKey: "test-key" });
 
@@ -139,7 +231,7 @@ describe("OpenAIEngine", () => {
         ]
       })
     ).rejects.toThrow(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
+      "The API engine received a Tool schema incompatible with strict mode."
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -170,7 +262,7 @@ describe("OpenAIEngine", () => {
         ]
       })
     ).rejects.toThrow(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
+      "The API engine received a Tool schema incompatible with strict mode."
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -209,7 +301,7 @@ describe("OpenAIEngine", () => {
         ]
       })
     ).rejects.toThrow(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
+      "The API engine received a Tool schema incompatible with strict mode."
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -247,7 +339,7 @@ describe("OpenAIEngine", () => {
         tools
       })
     ).rejects.toThrow(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
+      "The API engine received a Tool schema incompatible with strict mode."
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -291,7 +383,7 @@ describe("OpenAIEngine", () => {
         tools
       })
     ).rejects.toThrow(
-      "The OpenAI engine received a Tool schema incompatible with strict mode."
+      "The API engine received a Tool schema incompatible with strict mode."
     );
     expect(create).not.toHaveBeenCalled();
   });
@@ -429,7 +521,7 @@ describe("OpenAIEngine", () => {
         toolResults: [{ callId: "call-1", result: makeResult() }]
       })
     ).rejects.toMatchObject({
-      message: "The OpenAI engine could not serialize a Tool result."
+      message: "The API engine could not serialize a Tool result."
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -506,7 +598,7 @@ describe("OpenAIEngine", () => {
         },
         tools: []
       })
-    ).rejects.toThrow("The OpenAI engine returned invalid Tool call arguments.");
+    ).rejects.toThrow("The API engine returned invalid Tool call arguments.");
   });
 
   it("rejects Tool arguments that are not an object", async () => {
@@ -535,7 +627,7 @@ describe("OpenAIEngine", () => {
         },
         tools: []
       })
-    ).rejects.toThrow("The OpenAI engine returned invalid Tool call arguments.");
+    ).rejects.toThrow("The API engine returned invalid Tool call arguments.");
   });
 
   it("rejects responses containing both a command and Tool calls", async () => {
@@ -565,7 +657,7 @@ describe("OpenAIEngine", () => {
         },
         tools: []
       })
-    ).rejects.toThrow("The OpenAI engine returned both a command and Tool calls.");
+    ).rejects.toThrow("The API engine returned both a command and Tool calls.");
   });
 
   it("rejects a Tool response whose status is not completed", async () => {
@@ -595,7 +687,7 @@ describe("OpenAIEngine", () => {
         },
         tools: []
       })
-    ).rejects.toThrow("The OpenAI engine returned a non-completed response.");
+    ).rejects.toThrow("The API engine returned a non-completed response.");
   });
 
   it("rejects a function call whose status is not completed", async () => {
@@ -626,7 +718,7 @@ describe("OpenAIEngine", () => {
         },
         tools: []
       })
-    ).rejects.toThrow("The OpenAI engine returned a non-completed Tool call.");
+    ).rejects.toThrow("The API engine returned a non-completed Tool call.");
   });
 
   it.each([
@@ -635,21 +727,21 @@ describe("OpenAIEngine", () => {
       responseId: "",
       callId: "call-1",
       name: "search_knowledge",
-      message: "The OpenAI engine returned Tool calls without a response ID."
+      message: "The API engine returned Tool calls without a response ID."
     },
     {
       label: "call ID",
       responseId: "resp-1",
       callId: "",
       name: "search_knowledge",
-      message: "The OpenAI engine returned a Tool call without a call ID."
+      message: "The API engine returned a Tool call without a call ID."
     },
     {
       label: "name",
       responseId: "resp-1",
       callId: "call-1",
       name: " ",
-      message: "The OpenAI engine returned a Tool call without a name."
+      message: "The API engine returned a Tool call without a name."
     }
   ])(
     "rejects a Tool response with an empty $label",
@@ -735,12 +827,8 @@ describe("OpenAIEngine", () => {
     expect(JSON.stringify(create.mock.calls[0][0].input)).toContain("Shellgei rubric focus:");
   });
 
-  it("fails with a clear message when the API key is missing", async () => {
-    const engine = new OpenAIEngine({ apiKey: "" });
-
-    await expect(
-      engine.generateCommand({ problem: "print 123", attempts: [], workdir: "/tmp/workdir" })
-    ).rejects.toThrow("OPENAI_API_KEY is not set. Set it and retry, or use --engine mock.");
+  it("rejects an explicitly empty API key before a request", () => {
+    expect(() => new OpenAIEngine({ apiKey: "" })).toThrow("apiKey / SHELLGEIAI_LLM_API_KEY must be a non-empty string.");
   });
 
   it("extracts text from structured response output blocks", async () => {
@@ -780,6 +868,7 @@ describe("OpenAIEngine", () => {
     const engine = new OpenAIEngine({
       apiKey: "test-key",
       baseURL: "https://example.invalid/v1",
+      model: "custom-model",
       timeoutMs: "2500",
       maxRetries: "4",
       clientFactory
@@ -842,7 +931,7 @@ describe("OpenAIEngine", () => {
         attempts: [],
         workdir: "/tmp/workdir"
       })
-    ).rejects.toThrow("The OpenAI engine returned non-JSON response.");
+    ).rejects.toThrow("The API engine returned non-JSON response.");
 
     expect(create).toHaveBeenCalledTimes(3);
   });
@@ -928,7 +1017,7 @@ describe("openaiEngine test utils", () => {
 
     expect(parseEngineResponse('```json\n{"command":"printf \\"ok\\\\n\\""}\n```')).toEqual({
       command: 'printf "ok\\n"',
-      explanation: "Generated by OpenAI API."
+      explanation: "Generated by LLM API."
     });
   });
 
@@ -936,7 +1025,7 @@ describe("openaiEngine test utils", () => {
     const { parseEngineResponse } = __testUtils();
 
     expect(() => parseEngineResponse("not json")).toThrow(
-      "The OpenAI engine returned non-JSON response."
+      "The API engine returned non-JSON response."
     );
   });
 });
