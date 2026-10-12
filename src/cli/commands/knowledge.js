@@ -3,10 +3,11 @@ import {
   prepareKnowledgeModel,
   searchKnowledge
 } from "../../knowledge/commands.js";
-import {
+// The standalone script is packaged alongside dist, outside the compiler's rootDir.
+const {
   buildManKnowledge,
-  parseArgs as parseManKnowledgeArgs
-} from "../../../scripts/build-man-knowledge.js";
+  parseArgs: parseManKnowledgeArgs
+} = await import(new URL("../../../scripts/build-man-knowledge.js", import.meta.url).href);
 
 function resolveModel(options) {
   return options.model ?? options.knowledgeModel;

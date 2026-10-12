@@ -2,10 +2,10 @@ import path from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { showSavedLog } from "../src/io/logs/catalog.js";
-import { solveProblem } from "../src/solve/solve.js";
-import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
-import { LocalRunner } from "../src/execution/runner/localRunner.js";
+import { showSavedLog } from "../dist/io/logs/catalog.js";
+import { solveProblem } from "../dist/solve/solve.js";
+import { SimpleJudge } from "../dist/execution/judge/simpleJudge.js";
+import { LocalRunner } from "../dist/execution/runner/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];

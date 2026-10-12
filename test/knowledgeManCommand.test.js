@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 const commands = vi.hoisted(() => ({
   prepareKnowledgeModel: vi.fn(), buildKnowledgeVectors: vi.fn(), searchKnowledge: vi.fn()
 }));
-vi.mock("../src/knowledge/commands.js", () => commands);
+vi.mock("../dist/knowledge/commands.js", () => commands);
 
-import { runKnowledgeManCommand, runKnowledgePrepareCommand, runKnowledgeBuildCommand, runKnowledgeSearchCommand } from "../src/cli/commands/knowledge.js";
+import { runKnowledgeManCommand, runKnowledgePrepareCommand, runKnowledgeBuildCommand, runKnowledgeSearchCommand } from "../dist/cli/commands/knowledge.js";
 
 describe("knowledge SQLite command output", () => {
   it("forwards build configuration and reports the active generation", async () => {

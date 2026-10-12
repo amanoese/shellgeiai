@@ -2,11 +2,11 @@ import { isAbsolute, join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { defaultCommandPolicy } from "../src/execution/safety/commandPolicy.js";
+import { defaultCommandPolicy } from "../dist/execution/safety/commandPolicy.js";
 import {
   loadManKnowledgeProfile,
   SUPPORTED_MAN_PROFILES
-} from "../src/knowledge/manProfile.js";
+} from "../dist/knowledge/manProfile.js";
 
 const EXPECTED_COMMANDS = [
   "7z",

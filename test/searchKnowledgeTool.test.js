@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
 import {
   MAX_KNOWLEDGE_RESULT_FIELD_CHARS
-} from "../src/knowledge/hints.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+} from "../dist/knowledge/hints.js";
+import { createToolRegistry } from "../dist/tools/toolRegistry.js";
 
 function createTool(records = []) {
   const retriever = {

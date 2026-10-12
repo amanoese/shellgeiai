@@ -4,16 +4,16 @@ import {
   createGenerationFailedAttempt,
   createWorkerCandidate,
   createWorkerSummary
-} from "../src/solve/worker/attemptFactory.js";
-import { getRemainingBudgetMs, getWorkerStopReason } from "../src/solve/worker/stopReason.js";
-import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/solve/worker/taskQueue.js";
-import { runWorkerAttempt } from "../src/solve/worker/attemptRunner.js";
-import { createExecutionSummary } from "../src/solve/orchestration/executionSummary.js";
-import { createExecutionControl } from "../src/solve/orchestration/executionControl.js";
-import { runSolveOrchestrator } from "../src/solve/orchestration/orchestrator.js";
-import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+} from "../dist/solve/worker/attemptFactory.js";
+import { getRemainingBudgetMs, getWorkerStopReason } from "../dist/solve/worker/stopReason.js";
+import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../dist/solve/worker/taskQueue.js";
+import { runWorkerAttempt } from "../dist/solve/worker/attemptRunner.js";
+import { createExecutionSummary } from "../dist/solve/orchestration/executionSummary.js";
+import { createExecutionControl } from "../dist/solve/orchestration/executionControl.js";
+import { runSolveOrchestrator } from "../dist/solve/orchestration/orchestrator.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createToolRegistry } from "../dist/tools/toolRegistry.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -181,8 +181,8 @@ describe("createExecutionControl", () => {
 
 describe("worker task executor imports", () => {
   it("keeps the compatibility export identical to the direct worker executor export", async () => {
-    const direct = await import("../src/solve/worker/executeWorkerTask.js");
-    const compat = await import("../src/solve/worker/taskExecutor.js");
+    const direct = await import("../dist/solve/worker/executeWorkerTask.js");
+    const compat = await import("../dist/solve/worker/taskExecutor.js");
 
     expect(compat.executeWorkerTask).toBe(direct.executeWorkerTask);
   });

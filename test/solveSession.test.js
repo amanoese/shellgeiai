@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { reportSessionPhase } from "../src/solve/session/progress.js";
-import { createSolveSession } from "../src/solve/session/solveSession.js";
-import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
+import { reportSessionPhase } from "../dist/solve/session/progress.js";
+import { createSolveSession } from "../dist/solve/session/solveSession.js";
+import { SESSION_PHASES } from "../dist/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
-import { buildKnowledgeVectors } from "../src/knowledge/commands.js";
+import { buildKnowledgeVectors } from "../dist/knowledge/commands.js";
 import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { resolveLlmConfig } from "../src/providers/llm/config.js";
+import { OpenAIEngine } from "../dist/providers/engines/openaiEngine.js";
+import { resolveLlmConfig } from "../dist/providers/llm/config.js";
 
 afterEach(() => vi.unstubAllEnvs());
 

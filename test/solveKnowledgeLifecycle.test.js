@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { solveProblem } from "../src/solve/solve.js";
+import { solveProblem } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const boundaries = vi.hoisted(() => ({ execute: vi.fn(), log: vi.fn() }));
-vi.mock("../src/solve/orchestration/orchestrator.js", () => ({ runSolveOrchestrator: boundaries.execute }));
-vi.mock("../src/io/logs/writer.js", () => ({ writeSolveSessionLog: boundaries.log }));
+vi.mock("../dist/solve/orchestration/orchestrator.js", () => ({ runSolveOrchestrator: boundaries.execute }));
+vi.mock("../dist/io/logs/writer.js", () => ({ writeSolveSessionLog: boundaries.log }));
 
 function options(runtime) {
   return { problemInput: "print ok", engine: { name: "mock" }, runner: { name: "mock" }, judge: {}, maxIterations: 1,

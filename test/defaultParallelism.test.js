@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createSolveSession } from "../src/solve/session/solveSession.js";
+import { createSolveSession } from "../dist/solve/session/solveSession.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("default parallelism", () => {

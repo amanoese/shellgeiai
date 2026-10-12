@@ -15,7 +15,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("shared LLM client", () => {
   it.each([undefined, "", "   ", null, 123, {}])("rejects an invalid explicit key even with ambient OpenAI credentials", async (apiKey) => {
-    const { createLlmClient } = await import("../src/providers/llm/client.js");
+    const { createLlmClient } = await import("../dist/providers/llm/client.js");
     vi.stubEnv("OPENAI_API_KEY", "ambient-private-key");
     const fetchImpl = vi.fn(async () => success());
     await expect(createLlmClient({ ...options, apiKey, fetchImpl }))
@@ -24,14 +24,14 @@ describe("shared LLM client", () => {
   });
 
   it.each([-1, 6, 1.5, undefined, "2"])("rejects invalid client retry budgets", async (maxRetries) => {
-    const { createLlmClient } = await import("../src/providers/llm/client.js");
+    const { createLlmClient } = await import("../dist/providers/llm/client.js");
     await expect(createLlmClient({ ...options, maxRetries }))
       .rejects.toThrow("maxRetries must be an integer from 0 to 5 for the LLM client.");
   });
 
   it.each([undefined, "", "not-a-url", "http://remote.invalid/v1", "https://user:secret@example.invalid/v1",
     "https://example.invalid/v1?key=secret", "https://example.invalid/v1#secret"])("rejects invalid explicit client endpoints safely", async (baseURL) => {
-    const { createLlmClient } = await import("../src/providers/llm/client.js");
+    const { createLlmClient } = await import("../dist/providers/llm/client.js");
     const error = await createLlmClient({ ...options, baseURL }).catch((value) => value);
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toMatch(/baseURL/);
@@ -40,7 +40,7 @@ describe("shared LLM client", () => {
   });
 
   it("uses the configured endpoint and credentials and disables SDK logging", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     vi.stubEnv("OPENAI_LOG", "debug");
     vi.stubEnv("OPENAI_ORG_ID", "private-org");
     vi.stubEnv("OPENAI_PROJECT_ID", "private-project");
@@ -66,7 +66,7 @@ describe("shared LLM client", () => {
   });
 
   it("supports the explicitly configured OpenAI endpoint", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => success());
     const client = await createLlmClient({ ...options, baseURL: "https://api.openai.com/v1", fetchImpl });
     await requestLlmResponse(client, { ...request, model: "gpt-6.1-sol" });
@@ -74,7 +74,7 @@ describe("shared LLM client", () => {
   });
 
   it.each([400, 401, 402, 403, 404, 429, 500, 503])("sanitizes HTTP %s failures without a fallback request", async (status) => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: {
       message: "private problem test-router-key https://secret.invalid", type: "private-type"
     } }), { status, headers: { "content-type": "application/json", "x-secret": "private-header" } }));
@@ -91,7 +91,7 @@ describe("shared LLM client", () => {
   });
 
   it("allows only SDK retries for retryable HTTP failures", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => new Response("{}", {
       status: 503, headers: { "content-type": "application/json", "retry-after-ms": "1" }
     }));
@@ -101,7 +101,7 @@ describe("shared LLM client", () => {
   });
 
   it("never follows a redirect to another destination", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => new Response(null, {
       status: 302, headers: { location: "https://secret.invalid/responses" }
     }));
@@ -112,7 +112,7 @@ describe("shared LLM client", () => {
   });
 
   it("passes cancellation through the SDK request options", async () => {
-    const { requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const signal = new AbortController().signal;
     const create = vi.fn(async () => ({ status: "completed" }));
     await requestLlmResponse({ responses: { create } }, request, { signal });
@@ -120,7 +120,7 @@ describe("shared LLM client", () => {
   });
 
   it("rejects attempts to change the configured destination without making a fetch", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => success());
     const client = await createLlmClient({ ...options, fetchImpl });
     await expect(requestLlmResponse(client.withOptions({ baseURL: "https://else.invalid/v1" }), request))
@@ -129,7 +129,7 @@ describe("shared LLM client", () => {
   });
 
   it("sanitizes connection failures including their nested causes", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => { throw new Error("private key and prompt", {
       cause: new Error("private request headers")
     }); });
@@ -141,7 +141,7 @@ describe("shared LLM client", () => {
   });
 
   it("keeps cancellation identifiable without exposing SDK request details", async () => {
-    const { createLlmClient, requestLlmResponse } = await import("../src/providers/llm/client.js");
+    const { createLlmClient, requestLlmResponse } = await import("../dist/providers/llm/client.js");
     const fetchImpl = vi.fn(async () => success());
     const client = await createLlmClient({ ...options, fetchImpl });
     const controller = new AbortController();
@@ -154,7 +154,7 @@ describe("shared LLM client", () => {
   });
 
   it("rejects timeout values that overflow the Node timer", async () => {
-    const { createLlmClient } = await import("../src/providers/llm/client.js");
+    const { createLlmClient } = await import("../dist/providers/llm/client.js");
     await expect(createLlmClient({ ...options, timeoutMs: 2147483648 })).rejects.toThrow(/timeoutMs.*2147483647/);
   });
 });

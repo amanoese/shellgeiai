@@ -5,7 +5,7 @@ import {
   extractKnowledgeRecordsFromManPage,
   parseManIndex,
   stripManControlCharacters
-} from "../src/knowledge/manKnowledge.js";
+} from "../dist/knowledge/manKnowledge.js";
 
 describe("man knowledge extraction", () => {
   it("deduplicates compact content while preserving legacy id deduplication", () => {

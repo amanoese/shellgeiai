@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scoreShellgeiCandidate } from "../src/solve/scoring/shellgeiScorer.js";
+import { scoreShellgeiCandidate } from "../dist/solve/scoring/shellgeiScorer.js";
 
 function passingCandidate(command, overrides = {}) {
   return {

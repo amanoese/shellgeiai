@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+import { createToolRegistry } from "../dist/tools/toolRegistry.js";
 
 function echoTool(overrides = {}) {
   return {

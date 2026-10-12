@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildLlmPlan } from "../src/providers/planner/llmPlanner.js";
-import * as plannerModule from "../src/providers/planner/llmPlanner.js";
-import { buildPlannerUserPrompt } from "../src/providers/planner/plannerPrompt.js";
-import { resolveLlmConfig } from "../src/providers/llm/config.js";
+import { buildLlmPlan } from "../dist/providers/planner/llmPlanner.js";
+import * as plannerModule from "../dist/providers/planner/llmPlanner.js";
+import { buildPlannerUserPrompt } from "../dist/providers/planner/plannerPrompt.js";
+import { resolveLlmConfig } from "../dist/providers/llm/config.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("buildLlmPlan", () => {

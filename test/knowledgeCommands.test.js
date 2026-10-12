@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildKnowledgeVectors, prepareKnowledgeModel, searchKnowledge } from "../src/knowledge/commands.js";
-import { openKnowledgeStore } from "../src/knowledge/sqliteStore.js";
-import { formatEmbeddingQuery } from "../src/knowledge/embeddingInputs.js";
+import { buildKnowledgeVectors, prepareKnowledgeModel, searchKnowledge } from "../dist/knowledge/commands.js";
+import { openKnowledgeStore } from "../dist/knowledge/sqliteStore.js";
+import { formatEmbeddingQuery } from "../dist/knowledge/embeddingInputs.js";
 import { documentEmbedder, knowledgeFixture, knowledgeRecord } from "./support/knowledgeFixture.js";
 
 const dirs = [];

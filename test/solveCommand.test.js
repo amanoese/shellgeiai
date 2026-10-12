@@ -19,23 +19,23 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("../src/io/formatter/progressReporter.js", () => ({
+vi.mock("../dist/io/formatter/progressReporter.js", () => ({
   createProgressReporter: mocks.createProgressReporter
 }));
 
-vi.mock("../src/solve/runtime.js", () => ({
+vi.mock("../dist/solve/runtime.js", () => ({
   createSolveRuntime: mocks.createSolveRuntime
 }));
 
-vi.mock("../src/solve/solve.js", () => ({
+vi.mock("../dist/solve/solve.js", () => ({
   solveProblem: mocks.solveProblem
 }));
 
-vi.mock("../src/io/formatter/formatResult.js", () => ({
+vi.mock("../dist/io/formatter/formatResult.js", () => ({
   formatResult: mocks.formatResult
 }));
 
-import { runSolveCommand } from "../src/cli/commands/solve.js";
+import { runSolveCommand } from "../dist/cli/commands/solve.js";
 
 describe("runSolveCommand", () => {
   const originalExitCode = process.exitCode;

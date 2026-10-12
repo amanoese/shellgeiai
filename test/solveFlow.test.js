@@ -2,11 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createProgressReporter } from "../src/io/formatter/progressReporter.js";
-import { formatResult } from "../src/io/formatter/formatResult.js";
-import { solveProblem } from "../src/solve/solve.js";
-import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
-import { LocalRunner } from "../src/execution/runner/localRunner.js";
+import { createProgressReporter } from "../dist/io/formatter/progressReporter.js";
+import { formatResult } from "../dist/io/formatter/formatResult.js";
+import { solveProblem } from "../dist/solve/solve.js";
+import { SimpleJudge } from "../dist/execution/judge/simpleJudge.js";
+import { LocalRunner } from "../dist/execution/runner/localRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];

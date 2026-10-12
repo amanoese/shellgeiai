@@ -9,7 +9,7 @@ vi.mock("node:child_process", async (importOriginal) => ({
   spawn: spawnMock
 }));
 
-vi.mock("../src/shared/exec.js", () => ({
+vi.mock("../dist/shared/exec.js", () => ({
   commandExists: commandExistsMock
 }));
 
@@ -39,7 +39,7 @@ describe("DockerRunner", () => {
   });
 
   it("times out only after the child closes", async () => {
-    const { DockerRunner } = await import("../src/execution/runner/dockerRunner.js");
+    const { DockerRunner } = await import("../dist/execution/runner/dockerRunner.js");
     const child = createFakeChild();
     const cleanupChild = createFakeChild();
     spawnMock
@@ -84,7 +84,7 @@ describe("DockerRunner", () => {
   });
 
   it("marks aborted runs separately from timeouts", async () => {
-    const { DockerRunner } = await import("../src/execution/runner/dockerRunner.js");
+    const { DockerRunner } = await import("../dist/execution/runner/dockerRunner.js");
     const child = createFakeChild();
     const cleanupChild = createFakeChild();
     spawnMock
@@ -124,7 +124,7 @@ describe("DockerRunner", () => {
   });
 
   it("classifies docker cli failures from stderr", async () => {
-    const { DockerRunner } = await import("../src/execution/runner/dockerRunner.js");
+    const { DockerRunner } = await import("../dist/execution/runner/dockerRunner.js");
     const child = createFakeChild();
     spawnMock.mockReturnValue(child);
 
@@ -152,7 +152,7 @@ describe("DockerRunner", () => {
   });
 
   it("records cleanup failures after a timed out run", async () => {
-    const { DockerRunner } = await import("../src/execution/runner/dockerRunner.js");
+    const { DockerRunner } = await import("../dist/execution/runner/dockerRunner.js");
     const child = createFakeChild();
     const cleanupChild = createFakeChild();
     spawnMock
@@ -190,7 +190,7 @@ describe("DockerRunner", () => {
 
   it("fails early when docker is unavailable", async () => {
     commandExistsMock.mockResolvedValue(false);
-    const { DockerRunner } = await import("../src/execution/runner/dockerRunner.js");
+    const { DockerRunner } = await import("../dist/execution/runner/dockerRunner.js");
 
     await expect(
       new DockerRunner({ image: "shellgeiai:test" }).run("printf ok", {

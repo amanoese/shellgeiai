@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { publicLlmSnapshot, resolveLlmConfig } from "../src/providers/llm/config.js";
+import { publicLlmSnapshot, resolveLlmConfig } from "../dist/providers/llm/config.js";
 
 const routerEnv = { OPENROUTER_API_KEY: "router-key" };
 

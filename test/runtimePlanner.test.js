@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createExecutionPlan } from "../src/solve/planning/planner.js";
-import { createSolveRuntime } from "../src/solve/runtime.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
+import { createExecutionPlan } from "../dist/solve/planning/planner.js";
+import { createSolveRuntime } from "../dist/solve/runtime.js";
+import { OpenAIEngine } from "../dist/providers/engines/openaiEngine.js";
+import { DockerRunner } from "../dist/execution/runner/dockerRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });

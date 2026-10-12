@@ -2,12 +2,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writeSolveSessionLog } from "../src/io/logs/writer.js";
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
-import { generateWorkerCommand } from "../src/solve/worker/toolLoop.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { solveProblem } from "../src/solve/solve.js";
+import { writeSolveSessionLog } from "../dist/io/logs/writer.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { generateWorkerCommand } from "../dist/solve/worker/toolLoop.js";
+import { createToolRegistry } from "../dist/tools/toolRegistry.js";
+import { OpenAIEngine } from "../dist/providers/engines/openaiEngine.js";
+import { solveProblem } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];

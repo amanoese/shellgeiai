@@ -27,6 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build runtime
+        run: npm run build
+
+      - name: Check TypeScript types
+        run: npm run typecheck
+
       - name: Run test suite
         run: npm test
 
@@ -35,19 +41,19 @@ jobs:
 
       - name: Verify CLI help entrypoints
         run: |
-          node src/cli.js --help
-          node src/cli.js solve --help
-          node src/cli.js knowledge --help
-          node src/cli.js knowledge prepare --help
-          node src/cli.js knowledge build --help
-          node src/cli.js knowledge search --help
+          node dist/cli.js --help
+          node dist/cli.js solve --help
+          node dist/cli.js knowledge --help
+          node dist/cli.js knowledge prepare --help
+          node dist/cli.js knowledge build --help
+          node dist/cli.js knowledge search --help
 
       - name: Verify packed contents
         run: npm pack --dry-run
 
       - name: Verify global install from tarball
         run: |
-          PACKAGE_TGZ="$(npm pack)"
+          PACKAGE_TGZ="$(npm pack --foreground-scripts=false)"
           npm install -g "./${PACKAGE_TGZ}"
           GLOBAL_MODULE_ROOT="$(npm root -g)"
           cd "$(mktemp -d)"
@@ -60,7 +66,7 @@ jobs:
             if (!DEFAULT_KNOWLEDGE_DATASET.endsWith("shellgei-basic.jsonl")) throw new Error("Unexpected bundled dataset");
             const records = (await readFile(DEFAULT_KNOWLEDGE_DATASET, "utf8")).trim().split("\n");
             if (!records.length || !JSON.parse(records[0]).id) throw new Error("Missing bundled seed records");
-          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/src/knowledge/knowledgePaths.js"
+          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/dist/knowledge/knowledgePaths.js"
           node --input-type=module -e '
             import { pathToFileURL } from "node:url";
             import path from "node:path";
@@ -75,4 +81,4 @@ jobs:
             if (built.dimensions !== 4096 || built.itemCount < 1) throw new Error("Installed package build failed");
             const searched = await searchKnowledge({ query: "CSV", dbPath, embedder, topK: 5 });
             if (!searched.results.length || Math.abs(searched.results[0].score - 1) > 0.000001) throw new Error("Installed package cosine search failed");
-          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/src/knowledge/commands.js"
+          ' "${GLOBAL_MODULE_ROOT}/shellgeiai/dist/knowledge/commands.js"

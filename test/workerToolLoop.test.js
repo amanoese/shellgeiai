@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
+import { createToolRegistry } from "../dist/tools/toolRegistry.js";
 import {
   WorkerToolLoopError,
   generateWorkerCommand
-} from "../src/solve/worker/toolLoop.js";
+} from "../dist/solve/worker/toolLoop.js";
 
 function createRegistry(execute = async () => ({ records: [] })) {
   const registry = createToolRegistry();
