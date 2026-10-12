@@ -109,7 +109,7 @@ export async function executeWorkerTask(session: SolveSession, task: WorkerTask,
             force: true
           }, 5000);
         } else {
-          control.passingCandidateId ??= task.workerId;
+          control.recordPassingCandidate(task.workerId);
         }
         finalState = "idle";
         break;
@@ -482,21 +482,8 @@ export function createWorkerSummary({ task, attempts, finalCheck, finalState }: 
   };
 }
 
-export function getWorkerStopReason(session: SolveSession, control: ExecutionControl): string {
-  if (control.stopRequested) {
-    if (control.stopReason) {
-      return control.stopReason;
-    }
-    if (control.passingCandidateId != null) {
-      return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
-    }
-    return "Execution was stopped.";
-  }
-  if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
-    control.stopReason = "Stopped because the overall time budget was exhausted.";
-    return control.stopReason;
-  }
-  return "";
+export function getWorkerStopReason(_session: SolveSession, control: ExecutionControl): string {
+  return control.getStopReason();
 }
 
 export function getRemainingBudgetMs(session: SolveSession): number | undefined {

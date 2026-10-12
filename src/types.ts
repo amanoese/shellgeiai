@@ -335,15 +335,21 @@ export interface StopOptions {
   exceptWorkerId?: string;
   force?: boolean;
 }
+export type ExecutionStopState =
+  | { kind: "running"; passingCandidateId: string | null }
+  | { kind: "grace"; reason: string; passingCandidateId: string | null }
+  | { kind: "deadline-observed"; reason: string; passingCandidateId: string | null }
+  | { kind: "stopped"; reason: string; passingCandidateId: string | null };
 export interface ExecutionControl {
-  stopRequested: boolean;
-  stopReason: string;
-  passingCandidateId: string | null;
+  readonly stopRequested: boolean;
+  readonly stopReason: string;
+  readonly passingCandidateId: string | null;
   deadlineTimer: ReturnType<typeof setTimeout> | null;
   graceStopTimer: ReturnType<typeof setTimeout> | null;
   workers: Map<string, WorkerState>;
   requestStop(options: StopOptions): void;
   scheduleGraceStop(options: StopOptions, delayMs: number): void;
+  recordPassingCandidate(candidateId: string): void;
   createWorkerState(task: WorkerTask): WorkerState;
   getStopReason(): string;
   dispose(): void;

@@ -1,4 +1,4 @@
-import type { SolveSession, WorkerTask, WorkerState, WorkerResult, ExecutionControl, ExecutionSummary, StopOptions } from "../types.js";
+import type { SolveSession, WorkerTask, WorkerState, WorkerResult, ExecutionControl, ExecutionSummary, ExecutionStopState } from "../types.js";
 
 import { executeWorkerTask } from "./worker.js";
 import { reportSessionPhase, reportSolveProgress } from "./events.js";
@@ -57,39 +57,86 @@ async function runWorkerLoop(session: SolveSession, queue: ReturnType<typeof cre
 }
 
 export function createExecutionControl(session: SolveSession, workers: Map<string, WorkerState>): ExecutionControl {
+    let state: ExecutionStopState = { kind: "running", passingCandidateId: null };
+    const deadlineReason = "Stopped because the overall time budget was exhausted.";
     const control: ExecutionControl = {
-        stopRequested: false,
-        stopReason: "",
-        passingCandidateId: null,
+        get stopRequested() {
+            return state.kind === "stopped";
+        },
+        get stopReason() {
+            switch (state.kind) {
+                case "running": return "";
+                case "grace":
+                case "deadline-observed":
+                case "stopped": return state.reason;
+                default: { const unreachable: never = state; return unreachable; }
+            }
+        },
+        get passingCandidateId() {
+            return state.passingCandidateId;
+        },
         deadlineTimer: null,
         graceStopTimer: null,
         workers,
         requestStop(options) {
-            requestStop(control, options);
+            if (control.graceStopTimer) {
+                clearTimeout(control.graceStopTimer);
+                control.graceStopTimer = null;
+            }
+            if (options.passingCandidateId) {
+                control.recordPassingCandidate(options.passingCandidateId);
+            }
+            if (!options.force && state.kind === "stopped") {
+                return;
+            }
+            state = { kind: "stopped", reason: options.reason, passingCandidateId: state.passingCandidateId };
+            for (const workerState of control.workers.values()) {
+                if (workerState.workerId === options.exceptWorkerId) {
+                    continue;
+                }
+                if (!workerState.abortController.signal.aborted) {
+                    workerState.abortController.abort();
+                }
+            }
         },
         scheduleGraceStop(options, delayMs) {
             if (control.stopRequested || control.graceStopTimer != null) {
                 return;
             }
-            if (!control.stopReason) {
-                control.stopReason = options.reason;
+            if (options.passingCandidateId) {
+                control.recordPassingCandidate(options.passingCandidateId);
             }
-            if (options.passingCandidateId && control.passingCandidateId == null) {
-                control.passingCandidateId = options.passingCandidateId;
+            // A synchronously observed deadline keeps its reason until a timer requests a stop.
+            if (state.kind !== "deadline-observed") {
+                state = { kind: "grace", reason: control.stopReason || options.reason, passingCandidateId: state.passingCandidateId };
             }
             control.graceStopTimer = setTimeout(() => {
                 control.graceStopTimer = null;
                 if (control.stopRequested) {
                     return;
                 }
-                requestStop(control, options);
+                control.requestStop(options);
             }, delayMs);
+        },
+        recordPassingCandidate(candidateId) {
+            if (state.passingCandidateId == null) {
+                state = { ...state, passingCandidateId: candidateId };
+            }
         },
         createWorkerState(task) {
             return createWorkerState(task);
         },
         getStopReason() {
-            return getStopReason(session, control);
+            if (state.kind === "stopped") {
+                return state.reason || (state.passingCandidateId != null
+                    ? `Stopped because ${state.passingCandidateId} already produced a passing candidate.`
+                    : "Execution was stopped.");
+            }
+            if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
+                state = { kind: "deadline-observed", reason: deadlineReason, passingCandidateId: state.passingCandidateId };
+                return state.reason;
+            }
+            return "";
         },
         dispose() {
             if (control.deadlineTimer) {
@@ -105,8 +152,8 @@ export function createExecutionControl(session: SolveSession, workers: Map<strin
     if (session.deadlineAtMs != null) {
         const delayMs = Math.max(0, session.deadlineAtMs - Date.now());
         control.deadlineTimer = setTimeout(() => {
-            requestStop(control, {
-                reason: "Stopped because the overall time budget was exhausted.",
+            control.requestStop({
+                reason: deadlineReason,
                 force: true
             });
         }, delayMs);
@@ -122,46 +169,6 @@ function createWorkerState(task: WorkerTask): WorkerState {
         command: "",
         abortController: new AbortController()
     };
-}
-
-function requestStop(control: ExecutionControl, options: StopOptions) {
-    if (control.graceStopTimer) {
-        clearTimeout(control.graceStopTimer);
-        control.graceStopTimer = null;
-    }
-    if (options.passingCandidateId && control.passingCandidateId == null) {
-        control.passingCandidateId = options.passingCandidateId;
-    }
-    if (!options.force && control.stopRequested) {
-        return;
-    }
-    control.stopRequested = true;
-    control.stopReason = options.reason;
-    for (const workerState of control.workers.values()) {
-        if (workerState.workerId === options.exceptWorkerId) {
-            continue;
-        }
-        if (!workerState.abortController.signal.aborted) {
-            workerState.abortController.abort();
-        }
-    }
-}
-
-function getStopReason(session: SolveSession, control: ExecutionControl) {
-    if (control.stopRequested) {
-        if (control.stopReason) {
-            return control.stopReason;
-        }
-        if (control.passingCandidateId != null) {
-            return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
-        }
-        return "Execution was stopped.";
-    }
-    if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
-        control.stopReason = "Stopped because the overall time budget was exhausted.";
-        return control.stopReason;
-    }
-    return "";
 }
 
 export function createExecutionSummary({ results, taskOrder, control }: { results: WorkerResult[]; taskOrder: Map<string, number>; control: ExecutionControl }): ExecutionSummary {

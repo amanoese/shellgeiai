@@ -1,4 +1,4 @@
-import type { Engine, EngineTurn, InitializingSolveSession, RunResult, Runner, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
+import type { Engine, EngineTurn, ExecutionControl, ExecutionStopState, InitializingSolveSession, RunResult, Runner, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
 import { z } from "zod";
 import { createToolRegistry } from "../../src/solve/tools.js";
 import { runSolveOrchestrator } from "../../src/solve/orchestrator.js";
@@ -150,3 +150,32 @@ function exhaustiveGeneration(session: SolveSession): string {
   }
 }
 void [commandSession, toolSession, wrongToolEngine, noToolRegistry, wrongCommandMode, wrongCommandRegistry, missingReadyPlan, exhaustiveGeneration];
+
+const runningStopState: ExecutionStopState = { kind: "running", passingCandidateId: null };
+const graceStopState: ExecutionStopState = { kind: "grace", reason: "first pass", passingCandidateId: "worker-1" };
+const observedStopState: ExecutionStopState = { kind: "deadline-observed", reason: "deadline", passingCandidateId: null };
+const stoppedState: ExecutionStopState = { kind: "stopped", reason: "", passingCandidateId: "worker-1" };
+// @ts-expect-error A stopped state must carry a reason, including when it is empty.
+const stopWithoutReason: ExecutionStopState = { kind: "stopped", passingCandidateId: null };
+// @ts-expect-error A grace state must carry its pending reason.
+const graceWithoutReason: ExecutionStopState = { kind: "grace", passingCandidateId: null };
+// @ts-expect-error An observed deadline must retain its reason.
+const deadlineWithoutReason: ExecutionStopState = { kind: "deadline-observed", passingCandidateId: null };
+declare const executionControl: ExecutionControl;
+// @ts-expect-error Stop projections cannot be independently changed by workers.
+executionControl.stopRequested = true;
+// @ts-expect-error Stop projections cannot be independently changed by workers.
+executionControl.stopReason = "worker stop";
+// @ts-expect-error Passing candidates are recorded through the control method.
+executionControl.passingCandidateId = "worker-1";
+executionControl.recordPassingCandidate("worker-1");
+function exhaustiveExecutionStop(state: ExecutionStopState): string {
+  switch (state.kind) {
+    case "running": return state.passingCandidateId ?? "";
+    case "grace": return state.reason;
+    case "deadline-observed": return state.reason;
+    case "stopped": return state.reason;
+    default: { const unreachable: never = state; return unreachable; }
+  }
+}
+void [runningStopState, graceStopState, observedStopState, stoppedState, stopWithoutReason, graceWithoutReason, deadlineWithoutReason, exhaustiveExecutionStop];
