@@ -86,7 +86,10 @@ describe("npm publish metadata", () => {
       "../src/providers/engines/cursorCliEngine.js",
       "../src/providers/planner/llmPlanner.js",
       "../src/providers/planner/plannerPrompt.js",
-      "../src/providers/planner/plannerSchema.js"
+      "../src/providers/planner/plannerSchema.js",
+      "../src/providers/llm/config.js",
+      "../src/providers/llm/client.js",
+      "../src/providers/llm/responsesHistory.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -139,7 +142,7 @@ describe("npm publish metadata", () => {
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 
-  it("includes Planner and Worker knowledge runtime modules in the packed files", async () => {
+  it("includes LLM, Planner and Worker knowledge runtime modules in the packed files", async () => {
     const modulePaths = [
       "../src/knowledge/mode.js",
       "../src/knowledge/hints.js",
@@ -151,7 +154,12 @@ describe("npm publish metadata", () => {
       "../src/providers/embeddings/openRouterEmbedder.js",
       "../src/tools/toolRegistry.js",
       "../src/knowledge/searchKnowledgeTool.js",
-      "../src/solve/worker/toolLoop.js"
+      "../src/solve/worker/toolLoop.js",
+      "../src/providers/llm/config.js",
+      "../src/providers/llm/client.js",
+      "../src/providers/llm/responsesHistory.js",
+      "../src/providers/planner/llmPlanner.js",
+      "../src/providers/engines/openaiEngine.js"
     ];
     const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
 

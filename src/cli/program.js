@@ -35,6 +35,14 @@ function parsePositiveInteger(value, message) {
   return parsed;
 }
 
+function parseLlmInteger(value, min, max, message) {
+  const parsed = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    throw new InvalidArgumentError(message);
+  }
+  return parsed;
+}
+
 function parseNonNegativeNumber(value, message) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -141,7 +149,20 @@ export function createCliProgram() {
     .command("solve")
     .description("solve a ShellGei problem")
     .argument("<problem...>", "problem statement")
-    .option("--engine <engine>", "agent engine", "openai")
+    .option("--engine <engine>", "agent engine: api, openai (API alias), or mock (Worker only)", "api")
+    .option("--llm-base-url <url>", "Responses API base URL (env: LLM_BASE_URL; default: https://openrouter.ai/api/v1)")
+    .option("--llm-model <model>", "Worker model (env: SHELLGEIAI_LLM_MODEL; default on OpenRouter: openai/gpt-6.1-sol)")
+    .option("--planner-model <model>", "Planner model (env: SHELLGEIAI_PLANNER_MODEL; default: Worker model)")
+    .option(
+      "--llm-timeout <ms>",
+      "LLM request timeout (env: SHELLGEIAI_LLM_TIMEOUT_MS; default: 30000)",
+      (value) => parseLlmInteger(value, 1, Number.MAX_SAFE_INTEGER, "Invalid --llm-timeout value. Use positive safe integer.")
+    )
+    .option(
+      "--llm-max-retries <n>",
+      "LLM request retries (env: SHELLGEIAI_LLM_MAX_RETRIES; default: 2)",
+      (value) => parseLlmInteger(value, 0, 5, "Invalid --llm-max-retries value. Use integer 0 to 5.")
+    )
     .option("--runner <runner>", "command runner", "docker")
     .option(
       "--max-iter <number>",

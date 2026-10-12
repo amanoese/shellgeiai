@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { publicLlmSnapshot } from "../../providers/llm/config.js";
 
 function buildKnowledgeSnapshot(session) {
   const snapshot = session.knowledgeSnapshot;
@@ -72,6 +73,7 @@ export async function writeSolveSessionLog({
     rawProblem: session.problem.raw,
     problemSpec: session.problem,
     engine: session.engine?.name ?? "unknown",
+    ...(session.llmConfig ? { llm: publicLlmSnapshot(session.llmConfig) } : {}),
     iterations: attempts.length,
     attempts,
     candidates,

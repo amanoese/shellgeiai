@@ -70,7 +70,7 @@ describe("runCli", () => {
     expect(commands.runSolveCommand).toHaveBeenCalledWith(
       expect.objectContaining({
         problem: "print 42",
-        engine: "openai",
+        engine: "api",
         runner: "docker",
         maxIter: 3,
         mode: "single",
@@ -81,6 +81,50 @@ describe("runCli", () => {
         progress: "bar"
       })
     );
+  });
+
+  it("leaves LLM defaults and environment resolution to the runtime resolver", async () => {
+    vi.stubEnv("LLM_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("SHELLGEIAI_LLM_MODEL", "env-worker");
+    vi.stubEnv("SHELLGEIAI_PLANNER_MODEL", "env-planner");
+    vi.stubEnv("SHELLGEIAI_LLM_TIMEOUT_MS", "1234");
+    vi.stubEnv("SHELLGEIAI_LLM_MAX_RETRIES", "4");
+    try {
+      await runCli(["solve", "print 42"]);
+      const options = commands.runSolveCommand.mock.calls[0][0];
+      for (const name of ["llmBaseUrl", "llmModel", "plannerModel", "llmTimeout", "llmMaxRetries"]) {
+        expect(options[name]).toBeUndefined();
+      }
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("dispatches explicit LLM settings and preserves the openai engine alias", async () => {
+    await runCli([
+      "solve", "print 42", "--engine", "openai",
+      "--llm-base-url", "https://api.openai.com/v1", "--llm-model", "worker-model",
+      "--planner-model", "planner-model", "--llm-timeout", "12000", "--llm-max-retries", "0"
+    ]);
+    expect(commands.runSolveCommand).toHaveBeenCalledWith(expect.objectContaining({
+      engine: "openai", llmBaseUrl: "https://api.openai.com/v1", llmModel: "worker-model",
+      plannerModel: "planner-model", llmTimeout: 12000, llmMaxRetries: 0
+    }));
+  });
+
+  it.each([
+    ["--llm-timeout", "0"], ["--llm-timeout", "-1"], ["--llm-timeout", "1.5"],
+    ["--llm-timeout", "9007199254740992"], ["--llm-timeout", "NaN"],
+    ["--llm-max-retries", "-1"], ["--llm-max-retries", "6"], ["--llm-max-retries", "1.5"]
+  ])("rejects invalid LLM option %s %s before dispatch", async (flag, value) => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await runCli(["solve", "print 42", flag, value]);
+      expect(stderr.mock.calls.flat().join("")).toContain(`Invalid ${flag} value.`);
+      expect(commands.runSolveCommand).not.toHaveBeenCalled();
+    } finally {
+      stderr.mockRestore();
+    }
   });
 
   it("collects both read-only Docker device option spellings in order", async () => {

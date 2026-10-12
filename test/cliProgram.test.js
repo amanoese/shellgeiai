@@ -43,6 +43,17 @@ describe("createCliProgram", () => {
     expect(solve.helpInformation()).toContain("--docker-device-readonly <path>");
     expect(solve.helpInformation()).toContain("--device-ro <path>");
     expect(solve.helpInformation()).toContain("--knowledge-db <path>");
+    expect(solve.helpInformation()).toContain("--llm-base-url <url>");
+    expect(solve.helpInformation()).toContain("--llm-model <model>");
+    expect(solve.helpInformation()).toContain("--planner-model <model>");
+    expect(solve.helpInformation()).toContain("--llm-timeout <ms>");
+    expect(solve.helpInformation()).toContain("--llm-max-retries <n>");
+    expect(solve.helpInformation()).toContain("https://openrouter.ai/api/v1");
+    expect(solve.helpInformation()).toContain("openai/gpt-6.1-sol");
+    expect(solve.helpInformation()).toContain("LLM_BASE_URL");
+    expect(solve.helpInformation()).toContain("SHELLGEIAI_PLANNER_MODEL");
+    expect(solve.helpInformation()).toMatch(/default:.*api/);
+    expect(solve.helpInformation()).not.toContain("--api-key");
   });
 
   it("summarizes knowledge subcommand options in knowledge help", () => {

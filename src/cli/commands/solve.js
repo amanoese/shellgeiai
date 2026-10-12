@@ -5,17 +5,25 @@ import { solveProblem } from "../../solve/solve.js";
 
 export async function runSolveCommand(options) {
   const progressReporter = createProgressReporter(options.progress);
-  const runtime = createSolveRuntime({
-    engine: options.engine,
-    runner: options.runner
-  });
-
   try {
+    const runtime = createSolveRuntime({
+      engine: options.engine,
+      runner: options.runner,
+      llm: {
+        baseURL: options.llmBaseUrl,
+        model: options.llmModel,
+        plannerModel: options.plannerModel,
+        timeoutMs: options.llmTimeout,
+        maxRetries: options.llmMaxRetries
+      }
+    });
     const result = await solveProblem({
       problemInput: options.problem,
       engine: runtime.engine,
       runner: runtime.runner,
       judge: runtime.judge,
+      plannerProvider: runtime.plannerProvider,
+      llmConfig: runtime.llmConfig,
       maxIterations: options.maxIter,
       requestedWorkdir: options.workdir,
       mode: options.mode,
