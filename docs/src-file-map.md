@@ -8,7 +8,8 @@
 - `src/cli*`: CLI の入口、引数解析、サブコマンド実行。
 - `src/solve/`: solve のアプリケーション本体。session、planner、orchestrator、worker、selector を持つ。
 - `src/execution/`: コマンド実行、runner、judge、safety policy。
-- `src/providers/`: OpenAI や外部 CLI など、AI / planner provider 依存。
+- `src/providers/`: OpenRouter / OpenAI / 互換 gateway の共通 LLM 設定と AI / planner / embedding provider 依存。
+- `src/knowledge/`: dataset、SQLite generation、検索 runtime と reference hints。
 - `src/io/`: 問題文入力、ログ、表示整形。
 - `src/shared/`: 汎用的な fs / exec 補助。
 
@@ -42,21 +43,16 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### CLI Commands
 
 - `src/cli/commands/solve.js`: solve 用 runtime を作り、`solveProblem()` を実行して結果を表示する。
+- `src/cli/commands/knowledge.js`: prepare / build / search の database オプションを渡して表示し、man generator へ委譲する。
 - `src/cli/commands/logsShow.js`: 指定ログを読み、詳細表示する。
 - `src/cli/commands/logsList.js`: logs directory のログ一覧を表示する。
 - `src/cli/commands/logsSearch.js`: 保存済みログを条件検索して表示する。
 - `src/cli/commands/logsPrune.js`: 保存済みログを削除する。
 
-### CLI Options
-
-- `src/cli/options/solveOptions.js`: `solve` の問題文と実行オプションを parse する。
-- `src/cli/options/logsOptions.js`: `logs show/list/search/prune` を parse する。
-- `src/cli/options/shared.js`: option parser 共通の flag 判定、数値 parse、値取得 helper。
-
 ### Solve Entry
 
 - `src/solve/solve.js`: solve の薄い入口。session 作成、orchestration、selection、log 書き込みをつなぐ。
-- `src/solve/runtime.js`: CLI option から engine / runner / judge / planner provider を組み立てる。
+- `src/solve/runtime.js`: CLI option から engine / runner / judge / planner provider を組み立て、共通 `llmConfig` を Planner / Worker に渡す。既定 engine は `api`、`openai` は互換 alias。
 
 ### Solve Session
 
@@ -82,6 +78,7 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 - `src/solve/worker/executeWorkerTask.js`: worker ごとの retry loop を制御する。
 - `src/solve/worker/attemptRunner.js`: 1 attempt の command 生成、safety check、runner 実行、judge 判定を行う。
 - `src/solve/worker/attemptFactory.js`: attempt / candidate object を組み立てる。
+- `src/solve/worker/toolLoop.js`: provider-neutral な Tool turn を進め、引数検証、Tool budget、continuation と結果を管理する。
 - `src/solve/worker/stopReason.js`: worker の停止理由や deadline 到達を判定する。
 
 ### Solve Selection / Scoring
@@ -111,13 +108,33 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### Providers
 
 - `src/providers/engines/Engine.js`: engine interface の JSDoc 型定義。
-- `src/providers/engines/openaiEngine.js`: OpenAI API を使って command を生成する engine。
+- `src/providers/engines/openaiEngine.js`: Responses API を使う URL-neutral な command / Tool Calling engine。`OpenAIEngine` の export / class 名は互換維持。
 - `src/providers/engines/codexCliEngine.js`: Codex CLI を外部 process として呼ぶ engine。
 - `src/providers/engines/cursorCliEngine.js`: Cursor CLI を外部 process として呼ぶ engine。
 - `src/providers/engines/mockEngine.js`: テストや dry run 用の固定 command engine。
-- `src/providers/planner/llmPlanner.js`: LLM planner provider の入口。planner prompt を投げて plan を得る。
+- `src/providers/llm/config.js`: 共通 endpoint / key / Worker model / Planner model / timeout / retry 解決、旧設定の互換性と公開設定 allowlist。
+- `src/providers/llm/client.js`: lazy OpenAI SDK client、送信先と header の制限、HTTP retry / timeout / abort と安全な error 表示。
+- `src/providers/llm/responsesHistory.js`: response output 全体を保持する stateless continuation と function call / output の整合性検証。暗号化 reasoning も再送する。
+- `src/providers/planner/llmPlanner.js`: configured Planner の入口。共有 LLM 設定、Zod Structured Outputs と `responses.parse()` を使い plan を得る。
 - `src/providers/planner/plannerPrompt.js`: planner に渡す prompt を組み立てる。
 - `src/providers/planner/plannerSchema.js`: planner response の schema と validation。
+- `src/providers/embeddings/openRouterEmbedder.js`: OpenRouter embedding API、batch、timeout / abort / retry と response validation。
+
+### Knowledge
+
+- `src/knowledge/modelConfig.js`: Qwen embedding の既定 model と環境変数名。
+- `src/knowledge/knowledgePaths.js`: package-relative seed dataset と user cache database path の解決。
+- `src/knowledge/embeddingInputs.js`: version 付き query instruction と document text の整形。
+- `src/knowledge/dataset.js`: JSONL の正規化、重複 ID / byte cap 検証と SHA-256 fingerprint。
+- `src/knowledge/commands.js`: prepare / build / search の入口。batch と staged generation 公開を管理。
+- `src/knowledge/sqliteSchema.js`: SQLite schema version と dimension / identity / metadata validation。
+- `src/knowledge/sqliteStore.js`: native SQLite / sqlite-vec 接続、generation、float32 cosine 検索、互換性検証。
+- `src/knowledge/knowledgeRuntime.js`: session で共有する readonly database と OpenRouter query embedder の lifecycle。
+- `src/knowledge/retriever.js`: query embedding の共有 cache、ランキングと command ごとの件数制御。
+- `src/knowledge/mode.js`: off / planner / worker / all の正規化と capability 要件。
+- `src/knowledge/hints.js`: Planner に渡す bounded reference hints の整形。
+- `src/knowledge/searchKnowledgeTool.js`: Worker の read-only Tool 検索と record 上限。
+- `src/tools/toolRegistry.js`: provider-neutral Tool schema、引数検証と実行。
 
 ### IO
 

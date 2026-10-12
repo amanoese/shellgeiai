@@ -35,6 +35,14 @@ function parsePositiveInteger(value, message) {
   return parsed;
 }
 
+function parseLlmInteger(value, min, max, message) {
+  const parsed = /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    throw new InvalidArgumentError(message);
+  }
+  return parsed;
+}
+
 function parseNonNegativeNumber(value, message) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
@@ -74,6 +82,29 @@ function knowledgeModelOption(flags = "--knowledge-model <model>") {
   return new Option(flags, "knowledge embedding model")
     .env(KNOWLEDGE_MODEL_ENV)
     .default(DEFAULT_KNOWLEDGE_MODEL);
+}
+
+function knowledgeDbOption(flags = "--db <path>") {
+  return new Option(flags, "knowledge SQLite database")
+    .env("SHELLGEIAI_KNOWLEDGE_DB");
+}
+
+function legacyVectorsOption(flags, replacement) {
+  return new Option(flags, "removed JSON/JSONL vector option")
+    .hideHelp()
+    .argParser(() => {
+      throw new InvalidArgumentError(
+        `JSON/JSONL vector files are no longer supported. Regenerate with knowledge build --db <path>, then use ${replacement}.`
+      );
+    });
+}
+
+function parseBatchSize(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 64) {
+    throw new InvalidArgumentError("Invalid --batch-size value. Use integer 1 to 64.");
+  }
+  return parsed;
 }
 
 function summarizeSubcommandOptions(command) {
@@ -118,7 +149,20 @@ export function createCliProgram() {
     .command("solve")
     .description("solve a ShellGei problem")
     .argument("<problem...>", "problem statement")
-    .option("--engine <engine>", "agent engine", "openai")
+    .option("--engine <engine>", "agent engine: api, openai (API alias), or mock (Worker only)", "api")
+    .option("--llm-base-url <url>", "Responses API base URL (env: LLM_BASE_URL; default: https://openrouter.ai/api/v1)")
+    .option("--llm-model <model>", "Worker model (env: SHELLGEIAI_LLM_MODEL; default on OpenRouter: openai/gpt-6.1-sol)")
+    .option("--planner-model <model>", "Planner model (env: SHELLGEIAI_PLANNER_MODEL; default: Worker model)")
+    .option(
+      "--llm-timeout <ms>",
+      "LLM request timeout (env: SHELLGEIAI_LLM_TIMEOUT_MS; default: 30000)",
+      (value) => parseLlmInteger(value, 1, Number.MAX_SAFE_INTEGER, "Invalid --llm-timeout value. Use positive safe integer.")
+    )
+    .option(
+      "--llm-max-retries <n>",
+      "LLM request retries (env: SHELLGEIAI_LLM_MAX_RETRIES; default: 2)",
+      (value) => parseLlmInteger(value, 0, 5, "Invalid --llm-max-retries value. Use integer 0 to 5.")
+    )
     .option("--runner <runner>", "command runner", "docker")
     .option(
       "--max-iter <number>",
@@ -185,7 +229,8 @@ export function createCliProgram() {
     )
     .addOption(knowledgeModelOption())
     .option("--knowledge-dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--knowledge-vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption("--knowledge-db <path>"))
+    .addOption(legacyVectorsOption("--knowledge-vectors <path>", "solve --knowledge-db <path>"))
     .option(
       "--time-budget <ms>",
       "time budget in milliseconds",
@@ -224,18 +269,21 @@ export function createCliProgram() {
 
   knowledge
     .command("prepare")
-    .description("prepare knowledge data")
+    .description("check native SQLite connection and remote embedding API (one API call; no model download)")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .action((options) => runKnowledgePrepareCommand(options));
 
   knowledge
     .command("build")
-    .description("build knowledge vectors")
+    .description("build a knowledge SQLite database via remote embeddings")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption())
+    .addOption(legacyVectorsOption("--vectors <path>", "knowledge build/search --db <path>"))
+    .option("--batch-size <number>", "embedding batch size (1 to 64)", parseBatchSize, 16)
+    .option("--force", "rebuild even when the active generation matches")
     .action((options) => runKnowledgeBuildCommand(options));
 
   knowledge
@@ -266,12 +314,13 @@ export function createCliProgram() {
 
   knowledge
     .command("search")
-    .description("search knowledge vectors")
+    .description("search a prepared knowledge SQLite database")
     .argument("<query...>", "search query")
     .addOption(knowledgeModelOption())
     .addOption(new Option("--model <model>", "knowledge embedding model alias"))
     .option("--dataset <path>", "knowledge dataset", DEFAULT_KNOWLEDGE_DATASET)
-    .option("--vectors <path>", "knowledge vectors file")
+    .addOption(knowledgeDbOption())
+    .addOption(legacyVectorsOption("--vectors <path>", "knowledge build/search --db <path>"))
     .option(
       "--top-k <number>",
       "maximum number of search results",

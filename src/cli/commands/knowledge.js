@@ -3,7 +3,6 @@ import {
   prepareKnowledgeModel,
   searchKnowledge
 } from "../../knowledge/commands.js";
-import { defaultKnowledgeVectorsPath } from "../../knowledge/vectorFile.js";
 import {
   buildManKnowledge,
   parseArgs as parseManKnowledgeArgs
@@ -13,13 +12,11 @@ function resolveModel(options) {
   return options.model ?? options.knowledgeModel;
 }
 
-function resolveVectorsPath(options, model) {
-  return options.vectors ?? defaultKnowledgeVectorsPath(options.dataset, model);
-}
-
 export async function runKnowledgePrepareCommand(options) {
   const result = await prepareKnowledgeModel({ model: resolveModel(options) });
-  process.stdout.write(`Knowledge model prepared: ${result.model}\n`);
+  process.stdout.write(
+    `Knowledge API/native check passed: ${result.model} dimensions=${result.dimensions} provider=${result.provider}\n`
+  );
 }
 
 export async function runKnowledgeBuildCommand(options) {
@@ -27,10 +24,13 @@ export async function runKnowledgeBuildCommand(options) {
   const result = await buildKnowledgeVectors({
     datasetPath: options.dataset,
     model,
-    vectorsPath: resolveVectorsPath(options, model)
+    dbPath: options.db,
+    batchSize: options.batchSize,
+    force: options.force
   });
   process.stdout.write(
-    `Knowledge vectors built: ${result.itemCount} items -> ${result.vectorsPath}\n`
+    `Knowledge database ${result.reused ? "reused" : "built"}: ${result.itemCount} items -> ${result.dbPath}\n` +
+    `model: ${result.model}\ndimensions: ${result.dimensions}\ngeneration: ${result.generationId}\n`
   );
 }
 
@@ -76,12 +76,13 @@ export async function runKnowledgeSearchCommand(options) {
     datasetPath: options.dataset,
     model,
     topK: options.topK,
-    vectorsPath: resolveVectorsPath(options, model)
+    dbPath: options.db
   });
 
   const lines = [
     `Knowledge search: ${result.query}`,
     `model: ${result.model}`,
+    `database: ${result.dbPath}`,
     ...result.results.map(formatKnowledgeSearchResult)
   ];
   process.stdout.write(`${lines.join("\n")}\n`);

@@ -5,7 +5,7 @@ import { formatKnowledgeRecords } from "./hints.js";
 export function createSearchKnowledgeTool({ retriever }) {
   return {
     name: "search_knowledge",
-    description: "Search the local shell command knowledge base. This is a read-only operation.",
+    description: "Search the persisted local shell command knowledge database using an external query embedding API. The database operation is read-only.",
     inputSchema: z
       .object({
         query: z.string().trim().min(1).max(500)

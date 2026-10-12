@@ -10,7 +10,9 @@ const mocks = vi.hoisted(() => {
     createSolveRuntime: vi.fn(() => ({
       engine: { name: "mock-engine" },
       runner: { name: "mock-runner" },
-      judge: { name: "mock-judge" }
+      judge: { name: "mock-judge" },
+      plannerProvider: { name: "mock-planner" },
+      llmConfig: { provider: "openrouter", model: "resolved-model" }
     })),
     solveProblem: vi.fn(),
     formatResult: vi.fn(() => "formatted result")
@@ -108,6 +110,43 @@ describe("runSolveCommand", () => {
     expect(stdoutWrite).not.toHaveBeenCalled();
   });
 
+  it("cleans up progress output when runtime configuration fails", async () => {
+    mocks.createSolveRuntime.mockImplementationOnce(() => {
+      throw new Error("Set OPENROUTER_API_KEY");
+    });
+    await expect(runSolveCommand({ problem: "sum", progress: "bar" }))
+      .rejects.toThrow("Set OPENROUTER_API_KEY");
+    expect(mocks.reporter.cleanup).toHaveBeenCalledTimes(1);
+    expect(mocks.solveProblem).not.toHaveBeenCalled();
+    expect(stdoutWrite).not.toHaveBeenCalled();
+  });
+
+  it("forwards explicit LLM settings and shares resolved config and Planner with solve", async () => {
+    mocks.solveProblem.mockResolvedValue({ finalCheck: { passed: true } });
+    await runSolveCommand({
+      problem: "sum", engine: "api", runner: "docker", progress: "off",
+      llmBaseUrl: "https://api.openai.com/v1", llmModel: "worker", plannerModel: "planner",
+      llmTimeout: 15000, llmMaxRetries: 0
+    });
+    expect(mocks.createSolveRuntime).toHaveBeenCalledWith({
+      engine: "api", runner: "docker",
+      llm: { baseURL: "https://api.openai.com/v1", model: "worker", plannerModel: "planner", timeoutMs: 15000, maxRetries: 0 }
+    });
+    const runtime = mocks.createSolveRuntime.mock.results[0].value;
+    const solveOptions = mocks.solveProblem.mock.calls[0][0];
+    expect(solveOptions.plannerProvider).toBe(runtime.plannerProvider);
+    expect(solveOptions.llmConfig).toBe(runtime.llmConfig);
+  });
+
+  it("does not add LLM defaults that would override resolver environment settings", async () => {
+    mocks.solveProblem.mockResolvedValue({ finalCheck: { passed: true } });
+    await runSolveCommand({ problem: "sum", progress: "off" });
+    expect(mocks.createSolveRuntime).toHaveBeenCalledWith({
+      engine: undefined, runner: undefined,
+      llm: { baseURL: undefined, model: undefined, plannerModel: undefined, timeoutMs: undefined, maxRetries: undefined }
+    });
+  });
+
   it("forwards and formats the normalized all knowledge mode", async () => {
     const result = {
       knowledgeMode: "all",
@@ -161,5 +200,14 @@ describe("runSolveCommand", () => {
         dockerDevicesReadonly: ["/dev/loop40", "/dev/loop41"]
       })
     );
+  });
+
+  it("forwards the SQLite database without resolving a legacy vector file", async () => {
+    mocks.solveProblem.mockResolvedValue({ finalCheck: { passed: true } });
+    await runSolveCommand({problem: "sum", engine: "mock", runner: "docker", knowledge: "planner",
+      knowledgeDb: "custom.sqlite", knowledgeDataset: "custom.jsonl", knowledgeModel: "custom-model", progress: "off"});
+    expect(mocks.solveProblem).toHaveBeenCalledWith(expect.objectContaining({knowledgeDbPath: "custom.sqlite",
+      knowledgeDatasetPath: "custom.jsonl", knowledgeModel: "custom-model", knowledgeMode: "planner"}));
+    expect(mocks.solveProblem.mock.calls[0][0]).not.toHaveProperty("knowledgeVectorsPath");
   });
 });

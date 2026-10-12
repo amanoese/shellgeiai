@@ -1,25 +1,29 @@
 import { createProgressReporter } from "../../io/formatter/progressReporter.js";
 import { formatResult } from "../../io/formatter/formatResult.js";
-import { defaultKnowledgeVectorsPath } from "../../knowledge/vectorFile.js";
 import { createSolveRuntime } from "../../solve/runtime.js";
 import { solveProblem } from "../../solve/solve.js";
 
 export async function runSolveCommand(options) {
   const progressReporter = createProgressReporter(options.progress);
-  const knowledgeVectors =
-    options.knowledgeVectors ??
-    defaultKnowledgeVectorsPath(options.knowledgeDataset, options.knowledgeModel);
-  const runtime = createSolveRuntime({
-    engine: options.engine,
-    runner: options.runner
-  });
-
   try {
+    const runtime = createSolveRuntime({
+      engine: options.engine,
+      runner: options.runner,
+      llm: {
+        baseURL: options.llmBaseUrl,
+        model: options.llmModel,
+        plannerModel: options.plannerModel,
+        timeoutMs: options.llmTimeout,
+        maxRetries: options.llmMaxRetries
+      }
+    });
     const result = await solveProblem({
       problemInput: options.problem,
       engine: runtime.engine,
       runner: runtime.runner,
       judge: runtime.judge,
+      plannerProvider: runtime.plannerProvider,
+      llmConfig: runtime.llmConfig,
       maxIterations: options.maxIter,
       requestedWorkdir: options.workdir,
       mode: options.mode,
@@ -33,7 +37,7 @@ export async function runSolveCommand(options) {
       knowledgeMode: options.knowledge,
       knowledgeModel: options.knowledgeModel,
       knowledgeDatasetPath: options.knowledgeDataset,
-      knowledgeVectorsPath: knowledgeVectors,
+      knowledgeDbPath: options.knowledgeDb,
       onProgress: progressReporter
     });
 

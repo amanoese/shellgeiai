@@ -191,11 +191,44 @@
 
 /**
  * @typedef {Object} KnowledgeEmbedder
- * @property {(text: string) => Promise<number[]>} embed
+ * @property {(text: string, options?: {signal?: AbortSignal}) => Promise<number[]>} embed
+ * @property {(texts: string[], options?: {signal?: AbortSignal}) => Promise<number[][]>} [embedBatch]
  */
 
 /**
  * @typedef {(options: {model: string}) => KnowledgeEmbedder} KnowledgeEmbedderFactory
+ */
+
+/**
+ * Reproducible metadata for a pinned, persisted knowledge generation. Contains no credentials.
+ * @typedef {Object} KnowledgeSnapshot
+ * @property {"openrouter"} provider
+ * @property {string} model
+ * @property {string} inputProfile
+ * @property {string} dbPath
+ * @property {number} dimensions
+ * @property {number} generationId
+ * @property {string} datasetFingerprint
+ */
+
+/**
+ * A runtime owns its read-only SQLite connection. Injected retrievers remain caller-owned.
+ * @typedef {Object} KnowledgeRuntime
+ * @property {KnowledgeRetriever} retriever
+ * @property {KnowledgeSnapshot} snapshot
+ * @property {() => Promise<void>} dispose
+ */
+
+/**
+ * Resolved private configuration shared by API Engine and Planner.
+ * @typedef {Object} LlmConfig
+ * @property {"openrouter" | "openai" | "custom"} provider
+ * @property {string} baseURL
+ * @property {string} apiKey Never serialize into session logs.
+ * @property {string} model Worker model.
+ * @property {string} plannerModel Planner model, inherited from model unless overridden.
+ * @property {number} timeoutMs Per API request timeout, separate from the solve deadline.
+ * @property {number} maxRetries SDK transport retry budget.
  */
 
 /**
@@ -208,6 +241,12 @@
  * @property {KnowledgeMode} knowledgeMode
  * @property {PlannerKnowledgeHint[]} plannerKnowledgeHints
  * @property {KnowledgeRetriever} [knowledgeRetriever]
+ * @property {string} knowledgeDatasetPath
+ * @property {string} knowledgeDbPath
+ * @property {KnowledgeSnapshot} [knowledgeSnapshot]
+ * @property {AbortSignal} signal
+ * @property {LlmConfig} [llmConfig] Internal settings; public logs must use publicLlmSnapshot.
+ * @property {() => Promise<void>} dispose Call when finished with a session created directly; solveProblem calls it automatically.
  * @property {ToolRegistry} [toolRegistry]
  * @property {ExecutionPlan} [plan]
  * @property {string[]} [dockerDevicesReadonly]
@@ -219,7 +258,7 @@
  *
  * @typedef {Object} SolveProblemOptions
  * @property {string} problemInput
- * @property {{name: string, capabilities?: {toolCalling: boolean}, generateCommand(context: SolveContext): Promise<EngineResult>, generateTurn?(input: {context: SolveContext, tools: ToolDefinition[], continuation?: EngineContinuation, toolResults?: EngineToolResult[]}): Promise<CommandTurn | ToolCallsTurn>}} engine
+ * @property {import("../../providers/engines/Engine.js").Engine} engine
  * @property {{name?: string, run(command: string, options: import("../../execution/runner/Runner.js").RunOptions): Promise<import("../../execution/runner/Runner.js").RunResult>}} runner
  * @property {{judge(input: import("../../execution/judge/Judge.js").JudgeInput): Promise<import("../../execution/judge/Judge.js").JudgeDecision>}} judge
  * @property {number} maxIterations
@@ -239,10 +278,13 @@
  * @property {KnowledgeMode | "on"} [knowledgeMode]
  * @property {string} [knowledgeModel]
  * @property {string} [knowledgeDatasetPath]
- * @property {string} [knowledgeVectorsPath]
+ * @property {string} [knowledgeDbPath]
  * @property {KnowledgeRetriever} [knowledgeRetriever]
  * @property {KnowledgeEmbedder} [knowledgeEmbedder]
  * @property {KnowledgeEmbedderFactory} [knowledgeEmbedderFactory]
+ * @property {(options: {datasetPath: string, dbPath: string, model: string, embedder?: KnowledgeEmbedder, embedderFactory?: KnowledgeEmbedderFactory, signal?: AbortSignal}) => Promise<KnowledgeRuntime>} [knowledgeRuntimeFactory]
+ * @property {AbortSignal} [signal]
+ * @property {LlmConfig} [llmConfig] Shared resolved settings; API Engines supply these automatically.
  * @property {(event: SolveProgressEvent) => void} [onProgress]
  * @property {{name?: string, buildPlan(session: SolveSession): Promise<unknown>}} [plannerProvider]
  */

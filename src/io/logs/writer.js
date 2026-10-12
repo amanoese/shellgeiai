@@ -1,5 +1,21 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
+import { publicLlmSnapshot } from "../../providers/llm/config.js";
+
+function buildKnowledgeSnapshot(session) {
+  const snapshot = session.knowledgeSnapshot;
+  if (!snapshot) return { mode: session.knowledgeMode ?? "off" };
+  return {
+    mode: session.knowledgeMode,
+    provider: snapshot.provider,
+    model: snapshot.model,
+    inputProfile: snapshot.inputProfile,
+    dbPath: snapshot.dbPath,
+    dimensions: snapshot.dimensions,
+    generationId: snapshot.generationId,
+    datasetFingerprint: snapshot.datasetFingerprint
+  };
+}
 
 function buildRunnerSnapshot(session) {
   return {
@@ -57,6 +73,7 @@ export async function writeSolveSessionLog({
     rawProblem: session.problem.raw,
     problemSpec: session.problem,
     engine: session.engine?.name ?? "unknown",
+    ...(session.llmConfig ? { llm: publicLlmSnapshot(session.llmConfig) } : {}),
     iterations: attempts.length,
     attempts,
     candidates,
@@ -85,6 +102,7 @@ export async function writeSolveSessionLog({
     workdir: session.workdir,
     runner: buildRunnerSnapshot(session),
     shellgeiScoreMode: session.shellgeiScoreMode,
+    knowledge: buildKnowledgeSnapshot(session),
     plan: session.plan ?? null,
     planner: session.plan?.planner ?? null
   });

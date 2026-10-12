@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ describe("npm publish metadata", () => {
     });
     expect(packageJson.author).toBe("amanoese");
     expect(packageJson.engines).toEqual({
-      node: ">=20"
+      node: ">=22"
     });
     expect(packageJson.publishConfig).toEqual({
       access: "public",
@@ -39,13 +39,20 @@ describe("npm publish metadata", () => {
       "!data/knowledge/man.jsonl",
       "!data/knowledge/man.vectors.jsonl",
       "!data/knowledge/man.vectors.json",
+      "!**/*.sqlite",
+      "!**/*.sqlite-*",
+      "!**/*.sqlite3",
+      "!**/*.sqlite3-*",
+      "!**/*.db",
+      "!**/*.db-*",
       "README.md",
       "LICENSE"
     ]);
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "scripts/build-man-knowledge.js"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-man-profile.json"))).toBe(true);
-    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.jsonl"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.jsonl"))).toBe(true);
+    expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.jsonl"))).toBe(false);
     expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-basic.vectors.json"))).toBe(false);
   });
 
@@ -79,7 +86,10 @@ describe("npm publish metadata", () => {
       "../src/providers/engines/cursorCliEngine.js",
       "../src/providers/planner/llmPlanner.js",
       "../src/providers/planner/plannerPrompt.js",
-      "../src/providers/planner/plannerSchema.js"
+      "../src/providers/planner/plannerSchema.js",
+      "../src/providers/llm/config.js",
+      "../src/providers/llm/client.js",
+      "../src/providers/llm/responsesHistory.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
@@ -132,13 +142,24 @@ describe("npm publish metadata", () => {
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 
-  it("includes Planner and Worker knowledge runtime modules in the packed files", async () => {
+  it("includes LLM, Planner and Worker knowledge runtime modules in the packed files", async () => {
     const modulePaths = [
       "../src/knowledge/mode.js",
       "../src/knowledge/hints.js",
+      "../src/knowledge/knowledgePaths.js",
+      "../src/knowledge/knowledgeRuntime.js",
+      "../src/knowledge/embeddingInputs.js",
+      "../src/knowledge/sqliteStore.js",
+      "../src/knowledge/sqliteSchema.js",
+      "../src/providers/embeddings/openRouterEmbedder.js",
       "../src/tools/toolRegistry.js",
       "../src/knowledge/searchKnowledgeTool.js",
-      "../src/solve/worker/toolLoop.js"
+      "../src/solve/worker/toolLoop.js",
+      "../src/providers/llm/config.js",
+      "../src/providers/llm/client.js",
+      "../src/providers/llm/responsesHistory.js",
+      "../src/providers/planner/llmPlanner.js",
+      "../src/providers/engines/openaiEngine.js"
     ];
     const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
 
@@ -150,10 +171,17 @@ describe("npm publish metadata", () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-package-publish-"));
     const cacheDir = path.join(tempDir, "npm-cache");
     const packDir = path.join(tempDir, "pack-output");
+    const generatedArtifacts = [".sqlite", ".sqlite-wal", ".sqlite-shm", ".db", ".db-wal", ".db-shm", ".sqlite3", ".sqlite3-wal"]
+      .map((extension) => path.join(repoRoot, "data/knowledge", `${path.basename(tempDir)}${extension}`));
+    const createdArtifacts = [];
 
     try {
       await mkdir(cacheDir);
       await mkdir(packDir);
+      for (const artifact of generatedArtifacts) {
+        await writeFile(artifact, "test generated database", { flag: "wx" });
+        createdArtifacts.push(artifact);
+      }
       const stdout = execFileSync(
         "npm",
         ["pack", "--dry-run", "--json", "--pack-destination", packDir],
@@ -173,8 +201,15 @@ describe("npm publish metadata", () => {
       expect(packedPaths).not.toContain("data/knowledge/man.jsonl");
       expect(packedPaths).not.toContain("data/knowledge/man.vectors.jsonl");
       expect(packedPaths).not.toContain("data/knowledge/man.vectors.json");
+      expect(packedPaths).toContain("data/knowledge/shellgei-basic.jsonl");
+      expect(packedPaths).not.toContain("data/knowledge/shellgei-basic.vectors.jsonl");
+      for (const artifact of generatedArtifacts) expect(packedPaths).not.toContain(path.relative(repoRoot, artifact));
+      for (const legacy of ["ruriEmbedder.js", "vectorFile.js", "vectorSearch.js"]) {
+        expect(packedPaths).not.toContain(`src/knowledge/${legacy}`);
+      }
       expect((await readdir(packDir)).filter((name) => name.endsWith(".tgz"))).toEqual([]);
     } finally {
+      for (const artifact of createdArtifacts) await rm(artifact, { force: true });
       await rm(tempDir, { recursive: true, force: true });
     }
   });

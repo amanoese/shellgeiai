@@ -1,3 +1,5 @@
+import { awaitWithSignal } from "../../knowledge/retriever.js";
+
 export class WorkerToolLoopError extends Error {
   constructor(message, toolCalls = []) {
     super(message);
@@ -20,16 +22,22 @@ function createToolCallSummary(call, toolResult) {
   };
 }
 
-export async function generateWorkerCommand({ engine, context, toolRegistry }) {
+export async function generateWorkerCommand({ engine, context, toolRegistry, signal }) {
+  signal?.throwIfAborted();
   if (!toolRegistry) {
+    const engineResult = await (signal
+      ? engine.generateCommand(context, { signal })
+      : engine.generateCommand(context));
+    signal?.throwIfAborted();
     return {
-      engineResult: await engine.generateCommand(context),
+      engineResult,
       toolCalls: []
     };
   }
 
   const tools = toolRegistry.definitions();
-  const firstTurn = await engine.generateTurn({ context, tools });
+  const firstTurn = await engine.generateTurn({ context, tools, ...(signal ? { signal } : {}) });
+  signal?.throwIfAborted();
   if (firstTurn?.type === "command") {
     return { engineResult: firstTurn, toolCalls: [] };
   }
@@ -42,18 +50,22 @@ export async function generateWorkerCommand({ engine, context, toolRegistry }) {
   }
 
   const call = firstTurn.calls[0];
-  const toolResult = await toolRegistry.execute({
+  // Cancel this worker's wait; shared Knowledge embeddings remain session-owned.
+  const toolResult = await awaitWithSignal(() => toolRegistry.execute({
     name: call.name,
     arguments: call.arguments
-  });
+  }), signal);
   const summary = createToolCallSummary(call, toolResult);
+  signal?.throwIfAborted();
   const { validatedArguments: _validatedArguments, ...publicToolResult } = toolResult;
   const finalTurn = await engine.generateTurn({
     context,
     tools,
+    ...(signal ? { signal } : {}),
     continuation: firstTurn.continuation,
     toolResults: [{ callId: call.id, result: publicToolResult }]
   });
+  signal?.throwIfAborted();
 
   if (finalTurn?.type !== "command") {
     throw new WorkerToolLoopError("Worker Tool call limit exceeded.", [summary]);

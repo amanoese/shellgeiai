@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
+import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
 import { createToolRegistry } from "../src/tools/toolRegistry.js";
 import {
   WorkerToolLoopError,
@@ -18,7 +20,123 @@ function createRegistry(execute = async () => ({ records: [] })) {
   return registry;
 }
 
+function createSearchingEngine() {
+  return {
+    generateTurn: vi.fn(async ({ toolResults }) => toolResults
+      ? { type: "command", command: "printf ok" }
+      : {
+        type: "tool_calls",
+        calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }],
+        continuation: {}
+      })
+  };
+}
+
 describe("generateWorkerCommand", () => {
+  it.each(["resolve", "reject"])("cancels a pending Tool wait before its late %s without resuming the model", async settlement => {
+    const controller = new AbortController();
+    const reason = new Error("worker cancelled during Tool wait");
+    const pending = Promise.withResolvers();
+    const toolRegistry = { definitions: () => [], execute: vi.fn(() => pending.promise) };
+    const engine = createSearchingEngine();
+    let outcome;
+    const worker = generateWorkerCommand({ engine, context: {}, toolRegistry, signal: controller.signal })
+      .then(value => { outcome = { value }; }, error => { outcome = { error }; });
+
+    try {
+      await vi.waitFor(() => expect(toolRegistry.execute).toHaveBeenCalledOnce());
+      controller.abort(reason);
+      await vi.waitFor(() => expect(outcome?.error).toBe(reason), { timeout: 100 });
+      expect(engine.generateTurn).toHaveBeenCalledOnce();
+    } finally {
+      if (settlement === "reject") pending.reject(new Error("late Tool failure"));
+      else pending.resolve({ ok: true, value: { records: [] } });
+      await worker;
+      // Let a late rejection reach the event loop so Vitest also detects unhandled rejections.
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    expect(outcome.error).toBe(reason);
+    expect(engine.generateTurn).toHaveBeenCalledOnce();
+  });
+
+  it("cancels only one worker wait while sharing and caching the session query embedding", async () => {
+    const sessionController = new AbortController();
+    const cancelledController = new AbortController();
+    const activeController = new AbortController();
+    const reason = new Error("stop one worker");
+    const embedding = Promise.withResolvers();
+    const embedder = { embed: vi.fn(() => embedding.promise) };
+    const records = [{ id: "man:awk", command: "awk", option: "-F", text: "Split fields.", source: "test" }];
+    const store = { search: vi.fn(() => records) };
+    const retriever = createKnowledgeRetriever({ store, generationId: 7, embedder, signal: sessionController.signal });
+    const toolRegistry = createToolRegistry();
+    toolRegistry.register(createSearchKnowledgeTool({ retriever }));
+    const cancelledEngine = createSearchingEngine();
+    const activeEngine = createSearchingEngine();
+    let cancelledOutcome;
+    let activeOutcome;
+    const cancelledWorker = generateWorkerCommand({ engine: cancelledEngine, context: {}, toolRegistry, signal: cancelledController.signal })
+      .then(value => { cancelledOutcome = { value }; }, error => { cancelledOutcome = { error }; });
+    const activeWorker = generateWorkerCommand({ engine: activeEngine, context: {}, toolRegistry, signal: activeController.signal })
+      .then(value => { activeOutcome = { value }; }, error => { activeOutcome = { error }; });
+
+    try {
+      await vi.waitFor(() => expect(embedder.embed).toHaveBeenCalledOnce());
+      cancelledController.abort(reason);
+      await vi.waitFor(() => expect(cancelledOutcome?.error).toBe(reason), { timeout: 100 });
+      expect(sessionController.signal.aborted).toBe(false);
+      expect(embedder.embed.mock.calls[0][1].signal).toBe(sessionController.signal);
+      expect(activeOutcome).toBeUndefined();
+      expect(cancelledEngine.generateTurn).toHaveBeenCalledOnce();
+      expect(activeEngine.generateTurn).toHaveBeenCalledOnce();
+
+      embedding.resolve([1, 0]);
+      await activeWorker;
+      expect(activeOutcome.error).toBeUndefined();
+      expect(activeOutcome.value.engineResult.command).toBe("printf ok");
+      expect(activeEngine.generateTurn.mock.calls[1][0].toolResults[0].result.value.records).toEqual(records);
+
+      const cached = await generateWorkerCommand({ engine: createSearchingEngine(), context: {}, toolRegistry, signal: activeController.signal });
+      expect(cached.toolCalls[0].recordIds).toEqual(["man:awk"]);
+      expect(embedder.embed).toHaveBeenCalledOnce();
+      expect(sessionController.signal.aborted).toBe(false);
+    } finally {
+      embedding.resolve([1, 0]);
+      await Promise.all([cancelledWorker, activeWorker]);
+    }
+  });
+
+  it("passes cancellation to command generation", async () => {
+    const signal = new AbortController().signal;
+    const context = { problem: "print ok", attempts: [] };
+    const engine = { generateCommand: vi.fn(async () => ({ command: "printf ok" })) };
+    await generateWorkerCommand({ engine, context, signal });
+    expect(engine.generateCommand).toHaveBeenCalledWith(context, { signal });
+  });
+
+  it("passes the same cancellation signal to both Tool Calling turns", async () => {
+    const signal = new AbortController().signal;
+    const engine = { generateTurn: vi.fn()
+      .mockResolvedValueOnce({ type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} })
+      .mockResolvedValueOnce({ type: "command", command: "printf ok" }) };
+    await generateWorkerCommand({ engine, context: { problem: "print ok", attempts: [] }, toolRegistry: createRegistry(), signal });
+    expect(engine.generateTurn.mock.calls.map(([input]) => input.signal)).toEqual([signal, signal]);
+  });
+
+  it.each(["before-generation", "before-tool", "before-final"])("stops on cancellation %s", async stage => {
+    const controller = new AbortController();
+    const cancel = () => controller.abort(new Error("worker cancelled"));
+    if (stage === "before-generation") cancel();
+    const execute = vi.fn(async () => { if (stage === "before-final") cancel(); return { records: [] }; });
+    const engine = { generateTurn: vi.fn(async () => {
+      if (stage === "before-tool") cancel();
+      return { type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} };
+    }) };
+    await expect(generateWorkerCommand({ engine, context: {}, toolRegistry: createRegistry(execute), signal: controller.signal })).rejects.toThrow("worker cancelled");
+    expect(engine.generateTurn).toHaveBeenCalledTimes(stage === "before-generation" ? 0 : 1);
+    expect(execute).toHaveBeenCalledTimes(stage === "before-final" ? 1 : 0);
+  });
+
   it("uses the legacy command path when no Tool registry is configured", async () => {
     const engineResult = { command: "printf ok", explanation: "Print ok." };
     const engine = {

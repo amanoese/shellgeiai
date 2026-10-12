@@ -6,6 +6,9 @@ import { writeSolveSessionLog } from "../src/io/logs/writer.js";
 import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
 import { generateWorkerCommand } from "../src/solve/worker/toolLoop.js";
 import { createToolRegistry } from "../src/tools/toolRegistry.js";
+import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
+import { solveProblem } from "../src/solve/solve.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];
 
@@ -50,6 +53,97 @@ function buildSolveSession() {
 }
 
 describe("writeSolveSessionLog", () => {
+  it("logs only the public LLM allowlist without serializing providers or session secrets", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const session = buildSolveSession();
+    const snapshot = { provider: "openrouter", baseURL: "https://openrouter.ai/api/v1",
+      model: "openai/gpt-6.1-sol", plannerModel: "planner-model", timeoutMs: 30000, maxRetries: 2 };
+    const secret = "PRIVATE LLM SENTINEL";
+    session.llmConfig = { ...snapshot, apiKey: secret, Authorization: secret,
+      headers: { authorization: secret }, request: secret, error: { body: secret }, unexpected: secret };
+    session.engine.apiKey = secret;
+    session.plannerProvider = { privateClient: secret };
+    session.continuation = secret;
+    const { logPath } = await writeSolveSessionLog({ logsDir, session,
+      summary: { finishedAt: "2026-06-13T00:00:05.000Z" }, attempts: [], candidates: [], finalCheck: { passed: false } });
+    const content = await readFile(logPath, "utf8");
+    expect(JSON.parse(content).llm).toEqual(snapshot);
+    expect(content).not.toContain(secret);
+  });
+
+  it("omits LLM metadata for fully injected runtimes without config", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const { logPath } = await writeSolveSessionLog({ logsDir, session: buildSolveSession(),
+      summary: { finishedAt: "2026-06-13T00:00:05.000Z" }, attempts: [], candidates: [], finalCheck: { passed: false } });
+    expect(JSON.parse(await readFile(logPath, "utf8"))).not.toHaveProperty("llm");
+  });
+
+  it("keeps actual solve logs free of Responses reasoning, replay history and Tool bodies", async () => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-pipeline-"));
+    tempDirs.push(workdir);
+    const encrypted = "PRIVATE ENCRYPTED REASONING";
+    const reasoning = "PRIVATE REASONING SUMMARY";
+    const recordText = "PRIVATE TOOL RECORD BODY";
+    const apiKey = "PRIVATE API KEY";
+    let requests = 0;
+    const engine = new OpenAIEngine({
+      apiKey, baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-6.1-sol",
+      plannerModel: "openai/gpt-6.1-sol", timeoutMs: 30000, maxRetries: 0, client: {
+      responses: { async create(request) {
+        if (request.input.some((item) => item.role === "user" && item.content?.some((content) => content.text?.includes("Worker: worker-2")))) {
+          return { status: "completed", output_text: JSON.stringify({ command: "printf 'ok\\n'", explanation: "Print ok." }) };
+        }
+        requests += 1;
+        if (requests === 1) return { id: "private-response-id", status: "completed", output: [
+          { type: "reasoning", id: "private-reasoning-id", encrypted_content: encrypted,
+            summary: [{ type: "summary_text", text: reasoning }] },
+          { type: "function_call", id: "private-tool-id", call_id: "private-call-id",
+            name: "search_knowledge", arguments: JSON.stringify({ query: "print ok" }) }
+        ] };
+        expect(JSON.stringify(request.input)).toContain(encrypted);
+        expect(JSON.stringify(request.input)).toContain(recordText);
+        return { status: "completed", output_text: JSON.stringify({ command: "printf 'ok\\n'", explanation: "Print ok." }) };
+      } }
+    } });
+    const result = await solveProblem({
+      problemInput: "print ok", engine, maxIterations: 1, requestedWorkdir: workdir, parallelism: 2,
+      runner: { name: "mock", run: async () => ({ stdout: "ok\n", stderr: "", exitCode: 0, durationMs: 1 }) },
+      judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+      plannerProvider: createTestPlannerProvider(), knowledgeMode: "worker",
+      knowledgeRetriever: { search: async () => [{ id: "record-1", command: "printf", text: recordText, source: "test" }] }
+    });
+    const content = await readFile(result.logPath, "utf8");
+    expect(result.finalCheck.passed).toBe(true);
+    expect(requests).toBe(2);
+    expect(JSON.parse(content).llm).toEqual({ provider: "openrouter", baseURL: "https://openrouter.ai/api/v1",
+      model: "openai/gpt-6.1-sol", plannerModel: "openai/gpt-6.1-sol", timeoutMs: 30000, maxRetries: 0 });
+    expect(JSON.parse(content).attempts[0].toolCalls).toEqual([{
+      name: "search_knowledge", arguments: { query: "print ok" }, status: "completed", resultCount: 1, recordIds: ["record-1"]
+    }]);
+    for (const privateValue of [apiKey, encrypted, reasoning, recordText, "private-response-id", "private-reasoning-id", "private-tool-id", "private-call-id"]) {
+      expect(content).not.toContain(privateValue);
+    }
+    expect(content).not.toContain('"continuation"');
+    expect(content).not.toContain('"toolResults"');
+  });
+
+  it("logs a reproducible knowledge snapshot and excludes injected credential fields", async () => {
+    const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
+    tempDirs.push(logsDir);
+    const session = buildSolveSession();
+    const snapshot = { provider: "openrouter", model: "test-model", inputProfile: "qwen-retrieval-v1", dbPath: "/tmp/test.sqlite",
+      dimensions: 2, generationId: 7, datasetFingerprint: "abc" };
+    session.knowledgeMode = "planner";
+    session.knowledgeSnapshot = { ...snapshot, apiKey: "DO NOT LOG THIS", authorization: "SECRET" };
+    const { logPath } = await writeSolveSessionLog({ logsDir, session, summary: { finishedAt: "2026-06-13T00:00:05.000Z" },
+      attempts: [], candidates: [], finalCheck: { passed: false } });
+    const content = await readFile(logPath, "utf8");
+    expect(JSON.parse(content).knowledge).toEqual({ mode: "planner", ...snapshot });
+    expect(content).not.toContain("DO NOT LOG THIS");
+    expect(content).not.toContain("SECRET");
+  });
   it("uses a unique filename when timestamp would otherwise collide", async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));
     tempDirs.push(logsDir);

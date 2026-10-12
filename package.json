@@ -1,6 +1,6 @@
 {
   "name": "shellgeiai",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "ShellGeiAI is a local CLI that generates, runs, and verifies shell one-liners safely.",
   "type": "module",
   "author": "amanoese",
@@ -36,7 +36,7 @@
     "url": "https://github.com/amanoese/shellgeiai/issues"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public",
@@ -51,14 +51,21 @@
     "!data/knowledge/man.jsonl",
     "!data/knowledge/man.vectors.jsonl",
     "!data/knowledge/man.vectors.json",
+    "!**/*.sqlite",
+    "!**/*.sqlite-*",
+    "!**/*.sqlite3",
+    "!**/*.sqlite3-*",
+    "!**/*.db",
+    "!**/*.db-*",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
+    "better-sqlite3": "13.0.3",
     "commander": "^15.0.0",
     "log-update": "^8.0.0",
     "openai": "^6.9.1",
+    "sqlite-vec": "0.1.9",
     "web-tree-sitter": "^0.26.9",
     "zod": "^4.4.3"
   },

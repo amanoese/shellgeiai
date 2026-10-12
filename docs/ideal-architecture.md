@@ -6,7 +6,7 @@
 
 ## 現状の実装位置
 
-2026-06-28 時点の `src/` は、理想構成へ移行する途中段階です。ただし、主要な責務境界はすでに次の 6 つへ整理済みです。
+現在の `src/` は、複数 worker の並列探索を保ちながら理想構成へ移行する途中段階です。主要な責務境界は次の 6 つへ整理済みです。
 
 ```text
 src/
@@ -32,7 +32,8 @@ src/
 - `src/execution/runner/`: `DockerRunner` / `LocalRunner` と実行制限
 - `src/execution/safety/`: command policy / sandbox policy
 - `src/execution/judge/`: attempt 判定
-- `src/providers/engines/`: CLI / OpenAI / mock engine
+- `src/providers/engines/`: API / CLI / mock engine（CLI の既定は API）
+- `src/providers/llm/`: 共通設定、SDK client、stateless Responses 履歴
 - `src/providers/planner/`: LLM planner
 - `src/io/problem/`: 問題文の正規化
 - `src/io/logs/`: session log の保存と検索用 catalog
@@ -104,9 +105,11 @@ Planner prefetch (planner/all)
   -> command
 ```
 
-Engine adapter は provider 固有の Tool schema、Tool call、continuation を共通 turn 形式へ翻訳するだけです。Tool の選択、実行、回数制限は `src/solve/` の orchestration が所有します。現在 native Tool Calling に対応するのは `OpenAIEngine` だけで、`worker` / `all` を指定した非対応 Engine は Planner 実行前に fail fast します。`off` / `planner` は Tool Calling capability を要求しません。
+Engine adapter は provider 固有の Tool schema、Tool call、continuation を共通 turn 形式へ翻訳するだけです。Tool の選択、実行、回数制限は `src/solve/` の orchestration が所有します。現在 native Tool Calling に対応するのは API engine（互換 class 名 `OpenAIEngine`）で、OpenRouter / OpenAI / 互換 gateway の共通 LLM 設定を使います。`worker` / `all` を指定した非対応 Engine は Planner 実行前に fail fast します。`off` / `planner` は Tool Calling capability を要求しません。
 
-`shellgeiai knowledge prepare` は既定の Transformers.js / ONNX 対応 embedding model `sirasagi62/ruri-v3-30m-ONNX` の warmup、`shellgeiai knowledge build` は dataset vector file の生成を担当し、solve 時は事前生成 vectors があれば優先利用します。`--knowledge-model` と `SHELLGEIAI_KNOWLEDGE_MODEL` で solve / knowledge の model を揃えられます。
+`src/providers/embeddings/openRouterEmbedder.js` が OpenRouter の remote embedding API を扱い、`src/knowledge/` が dataset fingerprint、embedding input profile、SQLite generation と検索を管理します。この経路は回答生成の `LLM_BASE_URL` / model とは独立し、回答が OpenAI 直接接続でも embedding 用の `OPENROUTER_API_KEY` が必要です。既定 model は `qwen/qwen3-embedding-8b`、4096次元 float32 と sqlite-vec の cosine 検索を利用します。`knowledge prepare` は native 接続と1回の API request を確認し、`knowledge build` は batch embedding を staged generation に保存、完了時だけ active generation を切り替えます。失敗時は以前の completed generation を維持し、利用者の旧 man dataset / vector file を自動変更・削除しません。
+
+solve / search は dataset 内容・絶対パス・provider・model・input profile が一致する ready database を要求し、実行時 document embedding fallback はありません。Planner と Worker は session に1つの runtime と query cache を共有し、検索時の query だけを remote API に送ります。`off` は native database と embedding provider を初期化しません。`--knowledge-model` / `SHELLGEIAI_KNOWLEDGE_MODEL` で model、`--knowledge-db`（solve）/ `--db`（knowledge）/ `SHELLGEIAI_KNOWLEDGE_DB` で database を指定できます。省略 dataset は package 所在地、cache path は user cache 内の identity hash から解決します。旧 Ruri と JSON/JSONL vector cache は読み込みません。
 
 ### `src/execution/`
 
@@ -119,11 +122,17 @@ Engine adapter は provider 固有の Tool schema、Tool call、continuation を
 
 ### `src/providers/`
 
-- CLI engine、OpenAI engine、mock engine などを実装する
+- API engine、CLI engine、mock engine などを実装する
 - LLM planner の prompt、schema、正規化を扱う
 - model provider 固有の都合を solve flow から隔離する
 
 Tool Calling 対応 adapter は provider API と共通の `CommandTurn` / `ToolCallsTurn` の相互変換だけを行います。Tool の実行、validation policy、呼び出し budget は provider 層に置きません。
+
+現行 runtime は `resolveLlmConfig()` で接続先、明示 key、Worker / Planner model、timeout、retry を一度解決し、API engine と configured LLM Planner に渡します。既定は OpenRouter `https://openrouter.ai/api/v1` と `openai/gpt-6.1-sol`、OpenAI の URL を明示すると key は `OPENAI_API_KEY`、既定 model は `gpt-6.1-sol` になります。custom URL は明示 key と model が必要で、未知の host への provider key fallback はありません。CLI の `api` と `openai` は同じ engine で、接続先を選ぶのは URL です。`mock` は Worker だけを置き換え、Planner は provider を注入しない限り API を使います。
+
+Planner は Zod schema に基づく Structured Outputs を `responses.parse()` で受け取ります。SDK が HTTP retry、timeout と abort を担当し、通常 command の非 JSON 再生成は Engine が別ループで扱います。各 retry は設定回数だけ初回に追加され、Engine は HTTP error を再試行しません。Responses API / Structured Outputs / Function Calling を備えた互換 service を対象とし、Chat Completions fallback は持ちません。
+
+Worker の Tool continuation は `store: false` で request input、返された output 全体、`function_call_output` を順に再送します。`previous_response_id` に依存せず、reasoning / encrypted reasoning もメモリ内の履歴に保持します。履歴は worker turn ごとに独立し、公開ログには渡しません。既定の2 model ID は `reasoning.encrypted_content` を要求し、他の明示 model にその option を付けません。
 
 provider の失敗は、利用者が原因と次の対応を理解できる形で返します。
 
@@ -220,8 +229,9 @@ session log には次を残します。
 - 各 attempt の command、stdout、stderr、exit code、判定結果
 - runner limits と sandbox policy
 - selector が採用した候補と理由
+- LLM の `provider`、`baseURL`、`model`、`plannerModel`、`timeoutMs`、`maxRetries`（明示的 allowlist）
 
-Tool Calling は attempt ごとに Tool 名、検証済み引数、成否、件数、record ID だけを bounded summary として残します。Worker Tool result 内の record 本文、完全な Tool result、provider の response ID、continuation はログへ保存しません。
+Tool Calling は attempt ごとに Tool 名、検証済み引数、成否、件数、record ID だけを bounded summary として残します。API key、reasoning / encrypted reasoning、Worker Tool result 内の record 本文、完全な Tool result、provider の response ID、continuation はログへ保存しません。
 
 Planner prompt と raw response metadata は再現性のため既存 schema のまま保存し、bounded な Planner reference text を含む場合があります。この Planner metadata と、本文を保存しない Worker Tool summary の privacy contract は区別します。
 

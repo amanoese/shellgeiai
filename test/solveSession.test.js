@@ -1,18 +1,15 @@
 import fs from "node:fs/promises";
-import { createHash } from "node:crypto";
-import os from "node:os";
-import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportSessionPhase } from "../src/solve/session/progress.js";
 import { createSolveSession } from "../src/solve/session/solveSession.js";
 import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
-import { DEFAULT_KNOWLEDGE_VECTORS } from "../src/knowledge/commands.js";
-import { loadKnowledgeVectorFile } from "../src/knowledge/vectorFile.js";
+import { buildKnowledgeVectors } from "../src/knowledge/commands.js";
+import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";
+import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
+import { resolveLlmConfig } from "../src/providers/llm/config.js";
 
-function fingerprint(content) {
-  return createHash("sha256").update(content).digest("hex");
-}
+afterEach(() => vi.unstubAllEnvs());
 
 describe("SESSION_PHASES", () => {
   it("defines ordered main solve phases", () => {
@@ -52,6 +49,71 @@ describe("progress helpers", () => {
 });
 
 describe("createSolveSession", () => {
+  it("owns resolved default Planner settings for a programmatic mock Worker", async () => {
+    vi.stubEnv("LLM_BASE_URL", "https://openrouter.ai/api/v1");
+    vi.stubEnv("SHELLGEIAI_LLM_API_KEY", "mock-planner-key");
+    vi.stubEnv("SHELLGEIAI_LLM_MODEL", "worker-model");
+    vi.stubEnv("SHELLGEIAI_PLANNER_MODEL", "planner-model");
+    const parse = vi.fn(async () => ({ output_parsed: await createTestPlannerProvider().buildPlan() }));
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    const session = await createSolveSession({ ...options, engine: { ...options.engine, client: { responses: { parse } } } });
+    try {
+      expect(session.llmConfig).toMatchObject({ provider: "openrouter", apiKey: "mock-planner-key", model: "worker-model", plannerModel: "planner-model" });
+      expect(session.plannerProvider.name).toBe("llm");
+      expect(parse.mock.calls[0][0].model).toBe(session.llmConfig.plannerModel);
+    } finally { await session.dispose(); }
+  });
+
+  it("validates Worker capabilities before default Planner credentials", async () => {
+    vi.stubEnv("SHELLGEIAI_LLM_API_KEY", "");
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    await expect(createSolveSession({ ...options, knowledgeMode: "worker", engine: { name: "legacy", generateCommand: vi.fn() } })).rejects.toThrow("does not support Tool Calling");
+  });
+
+  it.each(["explicit", "engine"])("configures the default Planner from %s common settings", async source => {
+    const config = resolveLlmConfig({ apiKey: "test-key", baseURL: "https://api.openai.com/v1", model: "worker-model", plannerModel: "planner-model" }, { env: {} });
+    const parse = vi.fn(async () => ({ output_parsed: await createTestPlannerProvider().buildPlan() }));
+    const clientFactory = vi.fn(async () => ({ responses: { parse } }));
+    const engine = new OpenAIEngine({ config, clientFactory });
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    const session = await createSolveSession({ ...options, engine, ...(source === "explicit" ? { llmConfig: config } : {}) });
+    try {
+      expect(session.llmConfig).toBe(config);
+      expect(parse.mock.calls[0][0]).toMatchObject({ model: "planner-model", store: false });
+      expect(parse.mock.calls[0][1]).toEqual({ signal: session.signal });
+      expect(clientFactory).toHaveBeenCalledWith({ apiKey: "test-key", baseURL: config.baseURL,
+        timeoutMs: config.timeoutMs, maxRetries: config.maxRetries });
+      expect(session.plan.planner.provider).toBe("llm");
+    } finally { await session.dispose(); }
+  });
+
+  it("preserves an injected Planner even with explicit common settings", async () => {
+    const config = resolveLlmConfig({ apiKey: "test-key" }, { env: {} });
+    const options = sessionOptions();
+    const session = await createSolveSession({ ...options, llmConfig: config });
+    try {
+      expect(session.plannerProvider).toBe(options.plannerProvider);
+      expect(session.llmConfig).toBe(config);
+    } finally { await session.dispose(); }
+  });
+
+  it.each(["deadline", "external"])("passes %s cancellation through the default Planner SDK call", async source => {
+    const config = resolveLlmConfig({ apiKey: "test-key", timeoutMs: 30000 }, { env: {} });
+    const external = new AbortController();
+    let receivedSignal;
+    const parse = vi.fn(async (_request, { signal }) => {
+      receivedSignal = signal;
+      if (source === "external") external.abort(new Error("external planner cancellation"));
+      return new Promise(() => {});
+    });
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    await expect(createSolveSession({ ...options, engine: new OpenAIEngine({ config, client: { responses: { parse } } }),
+      signal: external.signal, ...(source === "deadline" ? { timeBudgetMs: 20 } : {})
+    })).rejects.toThrow(source === "deadline" ? /time budget/ : /external planner cancellation/);
+    expect(parse).toHaveBeenCalledOnce();
+    expect(receivedSignal.aborted).toBe(true);
+  });
+
   it("normalizes read-only devices for Docker sessions", async () => {
     const session = await createSolveSession({
       problemInput: "inspect device",
@@ -110,6 +172,14 @@ describe("createSolveSession", () => {
     });
 
     expect(session.knowledgeMode).toBe("off");
+  });
+  it("reports initializing, problem-parsing, and planning in order", async () => {
+    const events = [];
+    const session = await createSolveSession({ ...sessionOptions(), onProgress: event => events.push(event) });
+    expect(events.filter(event => event.type === "session-phase").map(event => event.phase)).toEqual([
+      "initializing", "problem-parsing", "planning"
+    ]);
+    await session.dispose();
   });
 
   it("normalizes programmatic on knowledge mode to all before capability validation", async () => {
@@ -246,293 +316,117 @@ describe("createSolveSession", () => {
     expect(session.plan.workerTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
   });
 
+
   it.each([
-    { knowledgeMode: "planner", retrievesForPlanner: true },
-    { knowledgeMode: "worker", retrievesForPlanner: false },
-    { knowledgeMode: "all", retrievesForPlanner: true }
-  ])(
-    "automatically initializes and routes $knowledgeMode knowledge",
-    async ({ knowledgeMode, retrievesForPlanner }) => {
-      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-mode-"));
-      const datasetPath = path.join(dir, "knowledge.jsonl");
-      const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-      const datasetContent = `${JSON.stringify({
-        id: "man:awk:-F",
-        kind: "option",
-        command: "awk",
-        option: "-F",
-        text: "awk -F: CSV columns",
-        source: "test"
-      })}\n`;
-      await fs.writeFile(datasetPath, datasetContent, "utf8");
-      await fs.writeFile(
-        vectorsPath,
-        [
-          JSON.stringify({
-            type: "metadata",
-            version: 2,
-            itemCount: 1,
-            model: "test-ruri-model",
-            dataset: datasetPath,
-            datasetFingerprint: fingerprint(datasetContent),
-            createdAt: "2026-08-02T00:00:00.000Z"
-          }),
-          JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
-          ""
-        ].join("\n"),
-        "utf8"
-      );
-      const embed = vi.fn(async () => [1, 0]);
-
-      const session = await createSolveSession({
-        problemInput: "CSV の 3列目を合計する",
-        engine: {
-          name: "mock",
-          capabilities: { toolCalling: true },
-          generateTurn: async () => ({ type: "command", command: "printf '42\\n'" })
-        },
-        runner: { name: "mock" },
-        judge: {
-          judge: async () => ({
-            passed: true,
-            reason: "ok",
-            score: { value: 100, breakdown: {} }
-          })
-        },
-        maxIterations: 1,
-        parallelism: 2,
-        knowledgeMode,
-        knowledgeModel: "test-ruri-model",
-        knowledgeDatasetPath: datasetPath,
-        knowledgeVectorsPath: vectorsPath,
-        knowledgeEmbedder: { embed },
-        plannerProvider: createTestPlannerProvider()
-      });
-
-      expect(session.knowledgeRetriever).toBeDefined();
-      expect(session.plan.knowledgeMode).toBe(knowledgeMode);
-      expect(session.plannerKnowledgeHints.length > 0).toBe(retrievesForPlanner);
-      expect(embed).toHaveBeenCalledTimes(retrievesForPlanner ? 1 : 0);
-      expect(session.plan.workerTasks.every((task) => !("knowledgeHints" in task))).toBe(true);
-    }
-  );
-
-  it("reports initializing, problem-parsing, planning while building a session", async () => {
-    const events = [];
-
-    await createSolveSession({
-      problemInput: "print 42",
-      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
-      runner: { name: "mock" },
-      judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
-      maxIterations: 1,
-      plannerProvider: createTestPlannerProvider(),
-      onProgress: (event) => events.push(event)
-    });
-
-  expect(
-    events.filter((event) => event.type === "session-phase").map((event) => event.phase)
-  ).toEqual(["initializing", "problem-parsing", "planning"]);
-  });
-
-  it("retrieves planner hints from precomputed vectors without recomputing document embeddings", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
-    const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-    const datasetContent = `${JSON.stringify({
-        id: "man:awk:-F",
-        kind: "option",
-        command: "awk",
-        option: "-F",
-        text: "awk -F: CSV columns",
-        source: "test"
-      })}\n`;
-    await fs.writeFile(datasetPath, datasetContent, "utf8");
-    await fs.writeFile(
-      vectorsPath,
-      [
-        JSON.stringify({
-          type: "metadata",
-          version: 2,
-          itemCount: 1,
-          model: "sirasagi62/ruri-v3-30m-ONNX",
-          dataset: datasetPath,
-          datasetFingerprint: fingerprint(datasetContent),
-          createdAt: "2026-06-29T00:00:00.000Z"
-        }),
-        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
-        ""
-      ].join("\n"),
-      "utf8"
-    );
-    const embedder = {
-      embed: vi.fn(async (text) => {
-        if (text.startsWith("検索文書:")) {
-          throw new Error("document embedding should not run");
-        }
-        return [1, 0];
-      })
-    };
-
-    const session = await createSolveSession({
-      problemInput: "CSV の 3列目を合計する",
-      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
-      runner: { name: "mock" },
-      judge: {
-        judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } })
-      },
-      maxIterations: 1,
-      parallelism: 2,
-      knowledgeMode: "planner",
-      knowledgeDatasetPath: datasetPath,
-      knowledgeVectorsPath: vectorsPath,
-      knowledgeEmbedder: embedder,
-      plannerProvider: createTestPlannerProvider()
-    });
-
-    expect(session.plannerKnowledgeHints).toEqual([
-      expect.objectContaining({ id: "man:awk:-F" })
-    ]);
-    expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
-    expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
-  });
-
-  it("rejects precomputed vectors built for a different knowledge model", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
-    const datasetPath = path.join(dir, "knowledge.jsonl");
-    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-    await fs.writeFile(
-      datasetPath,
-      `${JSON.stringify({
-        id: "man:awk:-F",
-        kind: "option",
-        command: "awk",
-        option: "-F",
-        text: "awk -F: CSV columns",
-        source: "test"
-      })}\n`,
-      "utf8"
-    );
-    await fs.writeFile(
-      vectorsPath,
-      `${JSON.stringify({
-        type: "metadata",
-        version: 2,
-        itemCount: 1,
-        model: "different-model",
-        dataset: datasetPath,
-        createdAt: "2026-07-14T00:00:00.000Z"
-      })}\n${JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] })}\n`,
-      "utf8"
-    );
-
-    await expect(
-      createSolveSession({
-        problemInput: "CSV の 3列目を合計する",
-        engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
-        runner: { name: "mock" },
-        judge: {
-          judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } })
-        },
-        maxIterations: 1,
-        parallelism: 2,
-        knowledgeMode: "planner",
-        knowledgeModel: "active-model",
-        knowledgeDatasetPath: datasetPath,
-        knowledgeVectorsPath: vectorsPath,
-        knowledgeEmbedder: { embed: vi.fn(async () => [1, 0]) },
-        plannerProvider: createTestPlannerProvider()
-      })
-    ).rejects.toThrow("Knowledge vector file is incompatible with the active model or dataset");
-  });
-
-  it("retrieves planner hints from the packaged cache without recomputing document embeddings", async () => {
-    const vectorFile = await loadKnowledgeVectorFile(DEFAULT_KNOWLEDGE_VECTORS);
-    const embedder = { embed: vi.fn(async () => vectorFile.items[0].vector) };
-
-    const session = await createSolveSession({
-      problemInput: "CSV の 3列目を合計する",
-      engine: { name: "mock", generateCommand: async () => ({ command: "printf '42\\n'" }) },
-      runner: { name: "mock" },
-      judge: {
-        judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } })
-      },
-      maxIterations: 1,
-      parallelism: 2,
-      knowledgeMode: "planner",
-      knowledgeEmbedder: embedder,
-      plannerProvider: createTestPlannerProvider()
-    });
-
-    expect(session.plannerKnowledgeHints.length).toBeGreaterThan(0);
-    expect(embedder.embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
-    expect(embedder.embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
-  });
-
-  it("passes the selected knowledge model while retrieving cached planner hints", async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "shellgeiai-session-"));
-    const datasetPath = path.join(dir, "knowledge.jsonl");
-    const datasetContent = `${JSON.stringify({
-      id: "man:awk:-F",
-      kind: "option",
-      command: "awk",
-      option: "-F",
-      text: "awk -F: CSV columns",
-      source: "test"
-    })}\n`;
-    await fs.writeFile(datasetPath, datasetContent, "utf8");
-    const vectorsPath = path.join(dir, "knowledge.vectors.jsonl");
-    await fs.writeFile(
-      vectorsPath,
-      [
-        JSON.stringify({
-          type: "metadata",
-          version: 2,
-          itemCount: 1,
-          model: "test-ruri-model",
-          dataset: datasetPath,
-          datasetFingerprint: fingerprint(datasetContent),
-          createdAt: "2026-08-02T00:00:00.000Z"
-        }),
-        JSON.stringify({ type: "item", id: "man:awk:-F", vector: [1, 0] }),
-        ""
-      ].join("\n"),
-      "utf8"
-    );
+    { knowledgeMode: "planner", queryCount: 1 },
+    { knowledgeMode: "worker", queryCount: 0 },
+    { knowledgeMode: "all", queryCount: 1 }
+  ])("loads and routes persisted $knowledgeMode knowledge", async ({ knowledgeMode, queryCount }) => {
+    const fixture = await knowledgeFixture();
+    const built = await buildKnowledgeVectors({ ...fixture, embedder: documentEmbedder() });
     const embed = vi.fn(async () => [1, 0]);
-    const createKnowledgeEmbedder = vi.fn(() => ({ embed }));
-
+    const knowledgeEmbedderFactory = vi.fn(() => ({ embed }));
     const session = await createSolveSession({
-      problemInput: "print 42",
-      engine: {
-        name: "mock",
-        generateCommand: async () => ({ command: "printf '42\\n'" })
-      },
-      runner: { name: "mock" },
-      judge: {
-        judge: async () => ({
-          passed: true,
-          reason: "ok",
-          score: { value: 100, breakdown: {} }
-        })
-      },
-      maxIterations: 1,
-      parallelism: 2,
-      knowledgeMode: "planner",
-      knowledgeModel: "test-ruri-model",
-      knowledgeDatasetPath: datasetPath,
-      knowledgeVectorsPath: vectorsPath,
-      knowledgeEmbedderFactory: createKnowledgeEmbedder,
-      plannerProvider: createTestPlannerProvider()
+      ...sessionOptions(), knowledgeMode, knowledgeModel: fixture.model, knowledgeDbPath: fixture.dbPath,
+      knowledgeDatasetPath: fixture.datasetPath, knowledgeEmbedderFactory
     });
+    try {
+      expect(session.plannerKnowledgeHints.length > 0).toBe(queryCount > 0);
+      expect(embed).toHaveBeenCalledTimes(queryCount);
+      expect(knowledgeEmbedderFactory).toHaveBeenCalledWith({ model: fixture.model });
+      expect(session.knowledgeSnapshot).toMatchObject({ dbPath: fixture.dbPath, generationId: built.generationId, dimensions: 2 });
+      expect(session.plan.workerTasks.every(task => !("knowledgeHints" in task))).toBe(true);
+      if (knowledgeMode !== "planner") expect(session.toolRegistry.definitions()).toHaveLength(1);
+    } finally { await session.dispose(); await fs.rm(fixture.dir, { recursive: true, force: true }); }
+  });
 
-    expect(createKnowledgeEmbedder).toHaveBeenCalledWith({
-      model: "test-ruri-model"
-    });
-    expect(session.plannerKnowledgeHints).toEqual([
-      expect.objectContaining({ id: "man:awk:-F" })
-    ]);
-    expect(embed).toHaveBeenCalledWith(expect.stringContaining("検索クエリ:"));
-    expect(embed).not.toHaveBeenCalledWith(expect.stringContaining("検索文書:"));
+  it("does not initialize runtime or provider with knowledge off", async () => {
+    const knowledgeRuntimeFactory = vi.fn();
+    const knowledgeEmbedderFactory = vi.fn();
+    const session = await createSolveSession({ ...sessionOptions(), knowledgeRuntimeFactory, knowledgeEmbedderFactory, knowledgeMode: "off" });
+    expect(knowledgeRuntimeFactory).not.toHaveBeenCalled();
+    expect(knowledgeEmbedderFactory).not.toHaveBeenCalled();
+    await session.dispose();
+  });
+
+  it("validates persisted DB before provider construction", async () => {
+    const fixture = await knowledgeFixture();
+    const knowledgeEmbedderFactory = vi.fn();
+    try {
+      await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", knowledgeDatasetPath: fixture.datasetPath,
+        knowledgeDbPath: fixture.dbPath, knowledgeEmbedderFactory })).rejects.toThrow("knowledge build");
+      expect(knowledgeEmbedderFactory).not.toHaveBeenCalled();
+    } finally { await fs.rm(fixture.dir, { recursive: true, force: true }); }
+  });
+
+  it("does not dispose an injected caller-owned retriever", async () => {
+    const knowledgeRetriever = { retrieveForPlanner: async () => [], dispose: vi.fn() };
+    const session = await createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", knowledgeRetriever });
+    await session.dispose();
+    expect(knowledgeRetriever.dispose).not.toHaveBeenCalled();
+  });
+
+  it.each(["prefetch", "planning"])("disposes runtime if initialization fails in %s", async stage => {
+    const runtime = { retriever: { retrieveForPlanner: async () => {
+      if (stage === "prefetch") throw new Error("prefetch failed");
+      return [];
+    } }, snapshot: {}, dispose: vi.fn(async () => {}) };
+    const plannerProvider = stage === "planning" ? { buildPlan: async () => { throw new Error("planning failed"); } } : createTestPlannerProvider();
+    await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", plannerProvider,
+      knowledgeRuntimeFactory: async () => runtime })).rejects.toThrow(stage + " failed");
+    expect(runtime.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("aborts deadline during query even when the provider ignores its signal", async () => {
+    const fixture = await knowledgeFixture();
+    await buildKnowledgeVectors({ ...fixture, embedder: documentEmbedder() });
+    let signal;
+    try {
+      await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", knowledgeModel: fixture.model,
+        knowledgeDbPath: fixture.dbPath, knowledgeDatasetPath: fixture.datasetPath, timeBudgetMs: 30,
+        knowledgeEmbedder: { embed: async (_text, options) => { signal = options.signal; return new Promise(() => {}); } }
+      })).rejects.toThrow("time budget");
+      expect(signal.aborted).toBe(true);
+    } finally { await fs.rm(fixture.dir, { recursive: true, force: true }); }
+  });
+
+  it("links external abort and disposes its timer after factory failure", async () => {
+    const controller = new AbortController();
+    let received;
+    await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", signal: controller.signal,
+      knowledgeRuntimeFactory: async options => { received = options.signal; controller.abort(new Error("external abort")); throw received.reason; }
+    })).rejects.toThrow("external abort");
+    expect(received.aborted).toBe(true);
+  });
+  it("cleans up if external cancellation occurs during planning", async () => {
+    const controller = new AbortController();
+    const runtime = { retriever: { retrieveForPlanner: async () => [] }, snapshot: {}, dispose: vi.fn(async () => {}) };
+    const base = createTestPlannerProvider();
+    await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", signal: controller.signal,
+      knowledgeRuntimeFactory: async () => runtime, plannerProvider: { buildPlan: async session => {
+        controller.abort(new Error("cancelled during planning"));
+        return base.buildPlan(session);
+      } }
+    })).rejects.toThrow("cancelled during planning");
+    expect(runtime.dispose).toHaveBeenCalledOnce();
+  });
+  it.each(["prefetch", "planning"])("bounds an injected %s that ignores cancellation", async stage => {
+    const runtime = { retriever: { retrieveForPlanner: async () => stage === "prefetch" ? new Promise(() => {}) : [] },
+      snapshot: {}, dispose: vi.fn(async () => {}) };
+    const plannerProvider = stage === "planning" ? { buildPlan: async () => new Promise(() => {}) } : createTestPlannerProvider();
+    await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", timeBudgetMs: 20,
+      knowledgeRuntimeFactory: async () => runtime, plannerProvider })).rejects.toThrow("time budget");
+    expect(runtime.dispose).toHaveBeenCalledOnce();
   });
 });
+
+function sessionOptions() {
+  return {
+    problemInput: "print 42",
+    engine: { name: "mock", capabilities: { toolCalling: true },
+      generateCommand: async () => ({ command: "printf '42\\n'" }),
+      generateTurn: async () => ({ type: "command", command: "printf '42\\n'" }) },
+    runner: { name: "mock" }, judge: { judge: async () => ({ passed: true, reason: "ok" }) },
+    maxIterations: 1, plannerProvider: createTestPlannerProvider()
+  };
+}
