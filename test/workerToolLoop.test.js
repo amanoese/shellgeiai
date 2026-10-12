@@ -19,6 +19,37 @@ function createRegistry(execute = async () => ({ records: [] })) {
 }
 
 describe("generateWorkerCommand", () => {
+  it("passes cancellation to command generation", async () => {
+    const signal = new AbortController().signal;
+    const context = { problem: "print ok", attempts: [] };
+    const engine = { generateCommand: vi.fn(async () => ({ command: "printf ok" })) };
+    await generateWorkerCommand({ engine, context, signal });
+    expect(engine.generateCommand).toHaveBeenCalledWith(context, { signal });
+  });
+
+  it("passes the same cancellation signal to both Tool Calling turns", async () => {
+    const signal = new AbortController().signal;
+    const engine = { generateTurn: vi.fn()
+      .mockResolvedValueOnce({ type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} })
+      .mockResolvedValueOnce({ type: "command", command: "printf ok" }) };
+    await generateWorkerCommand({ engine, context: { problem: "print ok", attempts: [] }, toolRegistry: createRegistry(), signal });
+    expect(engine.generateTurn.mock.calls.map(([input]) => input.signal)).toEqual([signal, signal]);
+  });
+
+  it.each(["before-generation", "before-tool", "before-final"])("stops on cancellation %s", async stage => {
+    const controller = new AbortController();
+    const cancel = () => controller.abort(new Error("worker cancelled"));
+    if (stage === "before-generation") cancel();
+    const execute = vi.fn(async () => { if (stage === "before-final") cancel(); return { records: [] }; });
+    const engine = { generateTurn: vi.fn(async () => {
+      if (stage === "before-tool") cancel();
+      return { type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} };
+    }) };
+    await expect(generateWorkerCommand({ engine, context: {}, toolRegistry: createRegistry(execute), signal: controller.signal })).rejects.toThrow("worker cancelled");
+    expect(engine.generateTurn).toHaveBeenCalledTimes(stage === "before-generation" ? 0 : 1);
+    expect(execute).toHaveBeenCalledTimes(stage === "before-final" ? 1 : 0);
+  });
+
   it("uses the legacy command path when no Tool registry is configured", async () => {
     const engineResult = { command: "printf ok", explanation: "Print ok." };
     const engine = {

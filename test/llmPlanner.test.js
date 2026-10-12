@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { buildLlmPlan } from "../src/providers/planner/llmPlanner.js";
+import * as plannerModule from "../src/providers/planner/llmPlanner.js";
 import { buildPlannerUserPrompt } from "../src/providers/planner/plannerPrompt.js";
+import { resolveLlmConfig } from "../src/providers/llm/config.js";
+import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 describe("buildLlmPlan", () => {
   it("describes the LLM planner JSON contract in the prompt", () => {
@@ -137,5 +140,87 @@ describe("buildLlmPlan", () => {
         { apiKey: "test-key", client: { responses: { parse } } }
       )
     ).rejects.toThrow("The planner model returned no parsed structured output.");
+  });
+});
+
+describe("configured LLM planner", () => {
+  const session = { problem: { problemText: "print 123" }, mode: "parallel", parallelism: 2, maxIterations: 1 };
+  const config = resolveLlmConfig({ apiKey: "test-key", model: "openai/gpt-6.1-sol" }, { env: {} });
+  const parsedPlan = () => createTestPlannerProvider().buildPlan();
+
+  it("shares the resolved provider and lazily caches one client including concurrent calls", async () => {
+    const parse = vi.fn(async () => ({ status: "completed", output_parsed: await parsedPlan() }));
+    const fetchImpl = vi.fn();
+    const clientFactory = vi.fn(async () => ({ responses: { parse } }));
+    const planner = plannerModule.createLlmPlanner({ config, clientFactory, fetchImpl });
+    expect(planner.name).toBe("llm");
+    expect(clientFactory).not.toHaveBeenCalled();
+    await Promise.all([planner.buildPlan(session), planner.buildPlan(session)]);
+    expect(clientFactory).toHaveBeenCalledOnce();
+    expect(clientFactory).toHaveBeenCalledWith({ apiKey: config.apiKey, baseURL: config.baseURL,
+      timeoutMs: config.timeoutMs, maxRetries: config.maxRetries, fetchImpl });
+    expect(parse.mock.calls[0][0]).toMatchObject({ model: config.plannerModel, store: false,
+      include: ["reasoning.encrypted_content"], text: { format: { type: "json_schema", strict: true } } });
+    expect(parse.mock.calls[0][0]).not.toHaveProperty("previous_response_id");
+  });
+
+  it.each([
+    ["https://api.openai.com/v1", "gpt-6.1-sol"],
+    ["https://example.com/v1", "custom-model"]
+  ])("uses %s and its configured planner model", async (baseURL, model) => {
+    const config = resolveLlmConfig({ apiKey: "test-key", baseURL, model, plannerModel: "planner-model" }, { env: {} });
+    const parse = vi.fn(async () => ({ output_parsed: await parsedPlan() }));
+    await plannerModule.createLlmPlanner({ config, client: { responses: { parse } } }).buildPlan(session);
+    expect(parse.mock.calls[0][0]).toMatchObject({ model: "planner-model", store: false });
+    expect(parse.mock.calls[0][0]).not.toHaveProperty("include");
+  });
+
+  it("retains the explicit compatibility model override for the Planner", async () => {
+    const parse = vi.fn(async () => ({ output_parsed: await parsedPlan() }));
+    await buildLlmPlan(session, { config, model: "explicit-planner", client: { responses: { parse } } });
+    expect(parse.mock.calls[0][0]).toMatchObject({ model: "explicit-planner", store: false });
+  });
+
+  it("passes the session abort signal through the SDK request options", async () => {
+    const signal = new AbortController().signal;
+    const parse = vi.fn(async () => ({ output_parsed: await parsedPlan() }));
+    await buildLlmPlan({ ...session, signal }, { config, client: { responses: { parse } } });
+    expect(parse.mock.calls[0][1]).toEqual({ signal });
+  });
+
+  it.each([
+    ["incomplete", { status: "incomplete" }, /non-completed/],
+    ["failed", { status: "failed" }, /non-completed/],
+    ["refusal", { output: [{ type: "message", content: [{ type: "refusal", refusal: "secret refusal" }] }] }, /refused/],
+    ["invalid plan", { output_parsed: { variants: [] } }, /invalid structured output/],
+    ["empty parsed plan", { output_parsed: null }, /no parsed structured output/]
+  ])("rejects %s without falling back or leaking response bodies", async (_label, response, message) => {
+    const parse = vi.fn(async () => response);
+    await expect(buildLlmPlan(session, { config, client: { responses: { parse } } })).rejects.toThrow(message);
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it("sanitizes SDK failures and does not retry schema failures", async () => {
+    const parse = vi.fn(async () => { throw Object.assign(new Error("secret raw provider body"), { status: 400 }); });
+    const promise = buildLlmPlan(session, { config, client: { responses: { parse } } });
+    await expect(promise).rejects.toThrow("HTTP 400");
+    await expect(promise).rejects.not.toThrow("secret");
+    expect(parse).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["malformed JSON", "private invalid JSON body"],
+    ["schema-invalid JSON", JSON.stringify({ variants: [], privateField: "private schema body" })]
+  ])("classifies real SDK %s parsing failures without leaking or falling back", async (_label, text) => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      id: "response-1", status: "completed", output: [{ type: "message", id: "message-1", role: "assistant", status: "completed",
+        content: [{ type: "output_text", text, annotations: [] }] }]
+    }), { headers: { "content-type": "application/json" } }));
+    const error = await plannerModule.createLlmPlanner({ config, fetchImpl }).buildPlan(session).catch(error => error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe("The planner model returned invalid structured output.");
+    expect(error.message).not.toMatch(/private|endpoint|connection/);
+    expect(error.cause).toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });

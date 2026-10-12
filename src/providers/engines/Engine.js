@@ -34,6 +34,7 @@
  * @property {ToolDefinition[]} tools
  * @property {EngineContinuation} [continuation]
  * @property {EngineToolResult[]} [toolResults]
+ * @property {AbortSignal} [signal]
  */
 
 /**
@@ -58,7 +59,8 @@
  * @typedef {Object} Engine
  * @property {string} name
  * @property {EngineCapabilities} [capabilities]
- * @property {(context: import("../../solve/session/types.js").SolveContext) => Promise<import("../../solve/session/types.js").EngineResult>} generateCommand
+ * @property {import("../../solve/session/types.js").LlmConfig} [llmConfig] Internal configuration; never log credentials.
+ * @property {(context: import("../../solve/session/types.js").SolveContext, options?: {signal?: AbortSignal}) => Promise<import("../../solve/session/types.js").EngineResult>} generateCommand
  * @property {(input: GenerateTurnInput) => Promise<EngineTurn>} [generateTurn]
  */
 

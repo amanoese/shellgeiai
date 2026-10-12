@@ -31,7 +31,40 @@ function reportAttemptFinished(session, task, iteration, command, passed, reason
   });
 }
 
+function getRoutineCancellationReason({ error, signal, session, control }) {
+  if (!signal.aborted || (
+    error !== signal.reason && error?.name !== "AbortError" && error?.name !== "APIUserAbortError"
+  )) return "";
+  const deadlineExceeded = session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs;
+  // An external session cancellation is an exception; scheduler/deadline stops preserve candidates.
+  if (session.signal?.aborted && !deadlineExceeded) return "";
+  return getWorkerStopReason(session, control) || "Execution was stopped.";
+}
+
+function throwIfExternalSessionAborted(session) {
+  if (session.signal?.aborted && (
+    session.deadlineAtMs == null || Date.now() < session.deadlineAtMs
+  )) session.signal.throwIfAborted();
+}
+
+function createStoppedGenerationResult({ session, task, workerState, reason, engineResult }) {
+  workerState.phase = "idle";
+  reportWorkerState(session, task, "stopped");
+  return {
+    attempt: undefined,
+    state: "stopped",
+    stopReason: reason,
+    explanation: engineResult?.explanation ?? "",
+    command: engineResult?.command ?? "",
+    passed: false,
+    reason
+  };
+}
+
 export async function runWorkerAttempt({ session, task, control, workerState, iteration, attempts }) {
+  const signal = session.signal
+    ? AbortSignal.any([workerState.abortController.signal, session.signal])
+    : workerState.abortController.signal;
   workerState.phase = "planning";
   reportWorkerState(session, task, "planning");
   const context = {
@@ -47,9 +80,14 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     generated = await generateWorkerCommand({
       engine: session.engine,
       context,
-      toolRegistry: session.toolRegistry
+      toolRegistry: session.toolRegistry,
+      signal
     });
   } catch (error) {
+    const cancellationReason = getRoutineCancellationReason({ error, signal, session, control });
+    if (cancellationReason) {
+      return createStoppedGenerationResult({ session, task, workerState, reason: cancellationReason });
+    }
     if (!(error instanceof WorkerToolLoopError)) {
       throw error;
     }
@@ -107,6 +145,13 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
   }
 
   const remainingBudgetMs = getRemainingBudgetMs(session);
+  if (signal.aborted) {
+    const cancellationReason = getRoutineCancellationReason({ error: signal.reason, signal, session, control });
+    if (cancellationReason) {
+      return createStoppedGenerationResult({ session, task, workerState, reason: cancellationReason, engineResult });
+    }
+    signal.throwIfAborted();
+  }
   if (remainingBudgetMs != null && remainingBudgetMs <= 0) {
     const stopReason = getWorkerStopReason(session, control);
     reportWorkerState(session, task, "stopped");
@@ -133,8 +178,9 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy,
       dockerDevicesReadonly: session.dockerDevicesReadonly,
-      signal: workerState.abortController.signal
+      signal
     });
+    throwIfExternalSessionAborted(session);
 
     if (runResult.aborted) {
       const abortedReason = getWorkerStopReason(session, control) || "Execution was stopped.";
@@ -183,6 +229,7 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
       reason: decision.reason
     };
   } catch (error) {
+    throwIfExternalSessionAborted(session);
     const message = error instanceof Error ? error.message : String(error);
     reportWorkerState(session, task, "stopped");
     const attempt = createUnsafeAttempt({

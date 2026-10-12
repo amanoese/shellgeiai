@@ -1,11 +1,15 @@
 import fs from "node:fs/promises";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { reportSessionPhase } from "../src/solve/session/progress.js";
 import { createSolveSession } from "../src/solve/session/solveSession.js";
 import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 import { buildKnowledgeVectors } from "../src/knowledge/commands.js";
 import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";
+import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
+import { resolveLlmConfig } from "../src/providers/llm/config.js";
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe("SESSION_PHASES", () => {
   it("defines ordered main solve phases", () => {
@@ -45,6 +49,71 @@ describe("progress helpers", () => {
 });
 
 describe("createSolveSession", () => {
+  it("owns resolved default Planner settings for a programmatic mock Worker", async () => {
+    vi.stubEnv("LLM_BASE_URL", "https://openrouter.ai/api/v1");
+    vi.stubEnv("SHELLGEIAI_LLM_API_KEY", "mock-planner-key");
+    vi.stubEnv("SHELLGEIAI_LLM_MODEL", "worker-model");
+    vi.stubEnv("SHELLGEIAI_PLANNER_MODEL", "planner-model");
+    const parse = vi.fn(async () => ({ output_parsed: await createTestPlannerProvider().buildPlan() }));
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    const session = await createSolveSession({ ...options, engine: { ...options.engine, client: { responses: { parse } } } });
+    try {
+      expect(session.llmConfig).toMatchObject({ provider: "openrouter", apiKey: "mock-planner-key", model: "worker-model", plannerModel: "planner-model" });
+      expect(session.plannerProvider.name).toBe("llm");
+      expect(parse.mock.calls[0][0].model).toBe(session.llmConfig.plannerModel);
+    } finally { await session.dispose(); }
+  });
+
+  it("validates Worker capabilities before default Planner credentials", async () => {
+    vi.stubEnv("SHELLGEIAI_LLM_API_KEY", "");
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    await expect(createSolveSession({ ...options, knowledgeMode: "worker", engine: { name: "legacy", generateCommand: vi.fn() } })).rejects.toThrow("does not support Tool Calling");
+  });
+
+  it.each(["explicit", "engine"])("configures the default Planner from %s common settings", async source => {
+    const config = resolveLlmConfig({ apiKey: "test-key", baseURL: "https://api.openai.com/v1", model: "worker-model", plannerModel: "planner-model" }, { env: {} });
+    const parse = vi.fn(async () => ({ output_parsed: await createTestPlannerProvider().buildPlan() }));
+    const clientFactory = vi.fn(async () => ({ responses: { parse } }));
+    const engine = new OpenAIEngine({ config, clientFactory });
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    const session = await createSolveSession({ ...options, engine, ...(source === "explicit" ? { llmConfig: config } : {}) });
+    try {
+      expect(session.llmConfig).toBe(config);
+      expect(parse.mock.calls[0][0]).toMatchObject({ model: "planner-model", store: false });
+      expect(parse.mock.calls[0][1]).toEqual({ signal: session.signal });
+      expect(clientFactory).toHaveBeenCalledWith({ apiKey: "test-key", baseURL: config.baseURL,
+        timeoutMs: config.timeoutMs, maxRetries: config.maxRetries });
+      expect(session.plan.planner.provider).toBe("llm");
+    } finally { await session.dispose(); }
+  });
+
+  it("preserves an injected Planner even with explicit common settings", async () => {
+    const config = resolveLlmConfig({ apiKey: "test-key" }, { env: {} });
+    const options = sessionOptions();
+    const session = await createSolveSession({ ...options, llmConfig: config });
+    try {
+      expect(session.plannerProvider).toBe(options.plannerProvider);
+      expect(session.llmConfig).toBe(config);
+    } finally { await session.dispose(); }
+  });
+
+  it.each(["deadline", "external"])("passes %s cancellation through the default Planner SDK call", async source => {
+    const config = resolveLlmConfig({ apiKey: "test-key", timeoutMs: 30000 }, { env: {} });
+    const external = new AbortController();
+    let receivedSignal;
+    const parse = vi.fn(async (_request, { signal }) => {
+      receivedSignal = signal;
+      if (source === "external") external.abort(new Error("external planner cancellation"));
+      return new Promise(() => {});
+    });
+    const { plannerProvider: _plannerProvider, ...options } = sessionOptions();
+    await expect(createSolveSession({ ...options, engine: new OpenAIEngine({ config, client: { responses: { parse } } }),
+      signal: external.signal, ...(source === "deadline" ? { timeBudgetMs: 20 } : {})
+    })).rejects.toThrow(source === "deadline" ? /time budget/ : /external planner cancellation/);
+    expect(parse).toHaveBeenCalledOnce();
+    expect(receivedSignal.aborted).toBe(true);
+  });
+
   it("normalizes read-only devices for Docker sessions", async () => {
     const session = await createSolveSession({
       problemInput: "inspect device",

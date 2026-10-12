@@ -17,6 +17,8 @@ import { ensureDirectory, resolveRequestedWorkdir } from "../../shared/fs.js";
 import { createExecutionPlan } from "../planning/planner.js";
 import { createToolRegistry } from "../../tools/toolRegistry.js";
 import { reportSessionPhase } from "./progress.js";
+import { createLlmPlanner } from "../../providers/planner/llmPlanner.js";
+import { resolveLlmConfig } from "../../providers/llm/config.js";
 
 export async function createSolveSession(options) {
   const startedAt = new Date().toISOString();
@@ -44,6 +46,7 @@ export async function createSolveSession(options) {
   const commandPolicy = options.commandPolicy ?? (await loadCommandPolicy(options.commandPolicyPath));
   const sandboxPolicy = options.sandboxPolicy ?? (await loadSandboxPolicy(options.sandboxPolicyPath));
   const parallelism = Math.max(2, options.parallelism ?? 4);
+  const llmConfig = options.llmConfig ?? options.engine?.llmConfig;
   const session = {
     sessionId,
     startedAt,
@@ -75,6 +78,7 @@ export async function createSolveSession(options) {
     commandPolicy,
     sandboxPolicy,
     onProgress: options.onProgress,
+    llmConfig,
     plannerProvider: options.plannerProvider
   };
 
@@ -88,6 +92,16 @@ export async function createSolveSession(options) {
     );
   }
 
+  if (session.plannerProvider == null) {
+    session.llmConfig ??= resolveLlmConfig();
+    session.plannerProvider = createLlmPlanner({
+      config: session.llmConfig,
+      client: options.engine?.client,
+      clientFactory: options.engine?.clientFactory,
+      fetchImpl: options.engine?.fetchImpl
+    });
+  }
+
   let ownedRuntime;
   let disposed = false;
   const controller = new AbortController();
@@ -95,7 +109,7 @@ export async function createSolveSession(options) {
   options.signal?.addEventListener("abort", externalAbort, { once: true });
   if (options.signal?.aborted) externalAbort();
   const timer = session.deadlineAtMs == null ? null : setTimeout(
-    () => controller.abort(new Error("Solve time budget exceeded during knowledge retrieval.")),
+    () => controller.abort(new Error("Solve time budget exceeded.")),
     Math.max(0, session.deadlineAtMs - Date.now())
   );
   timer?.unref?.();

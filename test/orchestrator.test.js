@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAbortedAttempt,
   createGenerationFailedAttempt,
@@ -10,6 +10,66 @@ import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/solve/
 import { runWorkerAttempt } from "../src/solve/worker/attemptRunner.js";
 import { createExecutionSummary } from "../src/solve/orchestration/executionSummary.js";
 import { createExecutionControl } from "../src/solve/orchestration/executionControl.js";
+import { runSolveOrchestrator } from "../src/solve/orchestration/orchestrator.js";
+
+afterEach(() => vi.useRealTimers());
+
+function waitForAbort(signal) {
+  return new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    if (signal.aborted) reject(signal.reason);
+  });
+}
+
+describe("orchestrator generation cancellation", () => {
+  it.each(["command", "first-tool-turn", "resume-tool-turn"])("preserves the passing candidate when grace-stop cancels %s", async path => {
+    vi.useFakeTimers();
+    let waiting = false;
+    let passed = false;
+    const generate = async (context, signal, continuation) => {
+      if (context.workerId === "worker-1") return { type: "command", command: "printf ok" };
+      if (path === "resume-tool-turn" && !continuation) return { type: "tool_calls",
+        calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} };
+      waiting = true;
+      return waitForAbort(signal);
+    };
+    const session = {
+      problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
+      engine: { name: "fake", generateCommand: (context, { signal }) => generate(context, signal),
+        generateTurn: ({ context, signal, continuation }) => generate(context, signal, continuation) },
+      ...(path === "command" ? {} : { toolRegistry: { definitions: () => [], execute: async () => ({ ok: true, value: { records: [] }, validatedArguments: { query: "awk" } }) } }),
+      runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
+      judge: { judge: async () => ({ passed: true, reason: "ok" }) },
+      onProgress: event => { if (event.type === "attempt-finished" && event.passed) passed = true; },
+      plan: { parallelism: 2, workerTasks: ["worker-1", "worker-2"].map(workerId => ({ workerId, strategy: "default", maxAttempts: 1 })) }
+    };
+    const outcome = runSolveOrchestrator(session).then(value => ({ value }), error => ({ error }));
+    await vi.waitFor(() => { expect(waiting).toBe(true); expect(passed).toBe(true); });
+    await vi.advanceTimersByTimeAsync(5000);
+    const { value, error } = await outcome;
+    expect(error).toBeUndefined();
+    expect(value.passingCandidateId).toBe("worker-1");
+    expect(value.candidates[0].finalCheck.passed).toBe(true);
+    expect(value.workerSummaries[1]).toMatchObject({ state: "stopped", reason: "Stopped after first passing candidate was produced." });
+    expect(session.runner.run).toHaveBeenCalledOnce();
+  });
+
+  it("returns stopped summaries on the overall deadline during generation", async () => {
+    vi.useFakeTimers();
+    const sessionController = new AbortController();
+    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() + 50,
+      signal: sessionController.signal, engine: { name: "fake", generateCommand: (_context, { signal }) => waitForAbort(signal) },
+      plan: { parallelism: 2, workerTasks: ["worker-1", "worker-2"].map(workerId => ({ workerId, strategy: "default", maxAttempts: 1 })) }
+    };
+    setTimeout(() => sessionController.abort(new Error("Solve time budget exceeded.")), 50);
+    const outcome = runSolveOrchestrator(session).then(value => ({ value }), error => ({ error }));
+    await vi.advanceTimersByTimeAsync(50);
+    const { value, error } = await outcome;
+    expect(error).toBeUndefined();
+    expect(value.workerSummaries).toHaveLength(2);
+    expect(value.workerSummaries.every(worker => worker.state === "stopped" && worker.reason.includes("time budget"))).toBe(true);
+  });
+});
 
 describe("createExecutionSummary", () => {
   it("orders results by task order and counts failed workers", () => {
@@ -291,6 +351,105 @@ describe("worker attempt factory", () => {
 });
 
 describe("runWorkerAttempt", () => {
+  it.each(["aborted-result", "successful-result-race", "runner-rejection"])("propagates external session cancellation during Runner %s", async outcome => {
+    const sessionController = new AbortController();
+    const reason = new Error("external cancellation");
+    const judge = { judge: vi.fn() };
+    const workerState = { abortController: new AbortController() };
+    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+      engine: { generateCommand: async () => ({ command: "printf ok" }) }, judge,
+      runner: { run: async (_command, { signal }) => {
+        sessionController.abort(reason);
+        expect(signal.aborted).toBe(true);
+        if (outcome === "runner-rejection") throw new DOMException("Runner interrupted", "AbortError");
+        return { stdout: "ok", stderr: "", exitCode: 0, aborted: outcome === "aborted-result", durationMs: 1 };
+      } } };
+    await expect(runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState, iteration: 0, attempts: [] })).rejects.toBe(reason);
+    expect(judge.judge).not.toHaveBeenCalled();
+    expect(workerState.phase).toBe("idle");
+  });
+
+  it.each(["worker", "deadline"])("preserves Runner aborted metadata during routine %s cancellation", async source => {
+    const workerController = new AbortController();
+    const sessionController = new AbortController();
+    const control = {};
+    const runResult = { stdout: "partial", stderr: "", exitCode: null, aborted: true, timedOut: false, durationMs: 7,
+      failure: { kind: "aborted", message: "Runner aborted" }, cleanup: { completed: true } };
+    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+      engine: { generateCommand: async () => ({ command: "printf ok" }) },
+      runner: { run: async () => {
+        if (source === "deadline") { session.deadlineAtMs = Date.now() - 1; sessionController.abort(new Error("Solve time budget exceeded.")); }
+        else { control.stopRequested = true; control.stopReason = "control stopped Worker"; workerController.abort(); }
+        return runResult;
+      } } };
+    const result = await runWorkerAttempt({ session, control, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState: { abortController: workerController }, iteration: 0, attempts: [] });
+    expect(result.state).toBe("stopped");
+    expect(result.attempt).toMatchObject({ aborted: true, stdout: "partial", durationMs: 7,
+      runnerFailure: runResult.failure, runnerCleanup: runResult.cleanup });
+    expect(result.stopReason).toBe(source === "deadline" ? "Stopped because the overall time budget was exhausted." : "control stopped Worker");
+  });
+
+  it("preserves existing unrelated Runner failure results", async () => {
+    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+      engine: { generateCommand: async () => ({ command: "printf ok" }) },
+      runner: { run: async () => { throw new Error("Runner unavailable"); } } };
+    const result = await runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: [] });
+    expect(result).toMatchObject({ state: "stopped", stopReason: "Runner unavailable", attempt: { command: "printf ok", passed: false, failureReason: "Runner unavailable" } });
+  });
+
+  it.each(["session", "worker"])("links %s cancellation to command generation", async source => {
+    const sessionController = new AbortController();
+    const workerController = new AbortController();
+    let received;
+    const generateCommand = vi.fn(async (_context, { signal }) => {
+      received = signal;
+      (source === "session" ? sessionController : workerController).abort(new Error("cancel generation"));
+      signal.throwIfAborted();
+      return { command: "printf ok" };
+    });
+    const runnerRun = vi.fn();
+    const outcome = runWorkerAttempt({ session: {
+      problem: { problemText: "print ok" }, workdir: "/tmp", engine: { generateCommand },
+      runner: { run: runnerRun }, signal: sessionController.signal
+    }, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: {},
+      workerState: { abortController: workerController }, iteration: 0, attempts: []
+    });
+    if (source === "session") await expect(outcome).rejects.toThrow("cancel generation");
+    else await expect(outcome).resolves.toMatchObject({ state: "stopped", stopReason: "Execution was stopped." });
+    expect(received.aborted).toBe(true);
+    expect(runnerRun).not.toHaveBeenCalled();
+  });
+
+  it("handles a control stop after generation before entering the Runner", async () => {
+    const workerController = new AbortController();
+    const control = {};
+    const runnerRun = vi.fn();
+    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+      engine: { generateCommand: async () => ({ command: "printf ok" }) }, runner: { run: runnerRun },
+      onProgress: event => { if (event.type === "attempt-started") {
+        control.stopRequested = true; control.stopReason = "stopped before Runner"; workerController.abort();
+      } } };
+    await expect(runWorkerAttempt({ session, control,
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState: { abortController: workerController }, iteration: 0, attempts: []
+    })).resolves.toMatchObject({ state: "stopped", stopReason: "stopped before Runner" });
+    expect(runnerRun).not.toHaveBeenCalled();
+  });
+
+  it("preserves provider exceptions even when a stop was requested concurrently", async () => {
+    const workerController = new AbortController();
+    const providerError = new Error("provider unavailable");
+    await expect(runWorkerAttempt({ session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+      engine: { generateCommand: async () => { workerController.abort(); throw providerError; } } },
+      control: { stopRequested: true, stopReason: "stop requested" },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState: { abortController: workerController }, iteration: 0, attempts: []
+    })).rejects.toBe(providerError);
+  });
+
   it("forwards normalized read-only Docker devices to the runner", async () => {
     const runnerRun = vi.fn(async () => ({
       stdout: "ok\n",

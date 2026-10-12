@@ -3,11 +3,15 @@ import { OpenAIEngine } from "../providers/engines/openaiEngine.js";
 import { SimpleJudge } from "../execution/judge/simpleJudge.js";
 import { DockerRunner } from "../execution/runner/dockerRunner.js";
 import { LocalRunner } from "../execution/runner/localRunner.js";
+import { resolveLlmConfig } from "../providers/llm/config.js";
+import { createLlmPlanner } from "../providers/planner/llmPlanner.js";
 
 const DEFAULT_RUNNER = "docker";
 
 function createEngine(name, options) {
+  if (name && typeof name === "object") return name;
   switch (name) {
+    case "api":
     case "openai":
     case undefined:
       return new OpenAIEngine(options);
@@ -29,10 +33,33 @@ function createRunner(name) {
   }
 }
 
-export function createSolveRuntime(config) {
+export function createSolveRuntime(config = {}) {
+  const options = config.llm ?? config.openai ?? {};
+  const injectedEngine = config.engine && typeof config.engine === "object";
+  if (!injectedEngine && ![undefined, "api", "openai", "mock"].includes(config.engine)) {
+    throw new Error(`Unsupported engine: ${String(config.engine)}`);
+  }
+  const runner = createRunner(config.runner);
+  const needsApiEngine = !injectedEngine && config.engine !== "mock";
+  const needsApiPlanner = config.plannerProvider == null;
+  const llmConfig = config.llmConfig ?? config.engine?.llmConfig ?? (
+    needsApiEngine || needsApiPlanner
+      ? resolveLlmConfig(options.client && options.apiKey === undefined
+          ? { ...options, apiKey: "injected-client" } : options)
+      : undefined
+  );
+  const inheritedEngine = injectedEngine && llmConfig === config.engine.llmConfig ? config.engine : undefined;
   return {
-    engine: createEngine(config.engine, config.openai),
-    runner: createRunner(config.runner),
-    judge: new SimpleJudge()
+    engine: createEngine(config.engine, { ...options, config: llmConfig }),
+    runner,
+    judge: new SimpleJudge(),
+    plannerProvider: config.plannerProvider ?? createLlmPlanner({
+      config: llmConfig,
+      client: options.client !== undefined ? options.client :
+        options.clientFactory !== undefined || options.fetchImpl !== undefined ? undefined : inheritedEngine?.client,
+      clientFactory: options.clientFactory ?? inheritedEngine?.clientFactory,
+      fetchImpl: options.fetchImpl ?? inheritedEngine?.fetchImpl
+    }),
+    llmConfig
   };
 }
