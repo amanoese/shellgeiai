@@ -80,6 +80,32 @@ describe("writeSolveSessionLog", () => {
     expect(JSON.parse(await readFile(logPath, "utf8"))).not.toHaveProperty("llm");
   });
 
+  it.each([false, true])("preserves omitted Runner duration in executed attempt logs for aborted=%s", async aborted => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-run-result-log-"));
+    tempDirs.push(workdir);
+    const result = await solveProblem({
+      problemInput: "print ok", requestedWorkdir: workdir, parallelism: 1, maxIterations: 1,
+      engine: { name: "test", generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) },
+      runner: { name: "test", run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false, ...(aborted ? { aborted: true } : {}) }) },
+      judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+      plannerProvider: createTestPlannerProvider()
+    });
+    const log = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(log.attempts.length).toBeGreaterThan(0);
+    for (const attempt of log.attempts) {
+      expect(attempt).toEqual({
+        attemptId: `${attempt.workerId}-attempt-1`, workerId: attempt.workerId, command: "printf ok",
+        stdout: "ok", stderr: "", exitCode: 0, timedOut: false, aborted,
+        passed: !aborted, explanation: "Print ok", failureReason: aborted ? "Execution was stopped." : "ok",
+        runnerFailure: null, runnerCleanup: null, toolCalls: [],
+        score: aborted
+          ? { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+          : { value: 100, breakdown: {} }
+      });
+      expect(attempt).not.toHaveProperty("durationMs");
+    }
+  });
+
   it("keeps actual solve logs free of Responses reasoning, replay history and Tool bodies", async () => {
     const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-pipeline-"));
     tempDirs.push(workdir);
@@ -167,7 +193,13 @@ describe("writeSolveSessionLog", () => {
     const log = JSON.parse(await readFile(result.logPath, "utf8"));
     expect(log.workerSummaries[0].state).toBe("stopped");
     expect(log.attempts).toHaveLength(stop === "deadline" ? 0 : log.workerSummaries.length);
-    if (stop === "judge failure") expect(log.attempts[0]).toMatchObject({ command: "printf ok", passed: false, failureReason: "Judge unavailable" });
+    if (stop === "judge failure") {
+      for (const attempt of log.attempts) expect(attempt).toEqual({
+        attemptId: `${attempt.workerId}-attempt-1`, workerId: attempt.workerId, command: "printf ok",
+        passed: false, explanation: "Print ok", failureReason: "Judge unavailable", toolCalls: [],
+        score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+      });
+    }
     for (const attempt of log.attempts) {
       expect(attempt).not.toBeNull();
       expect(attempt).not.toHaveProperty("kind");

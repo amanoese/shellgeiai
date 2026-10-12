@@ -420,6 +420,36 @@ describe("worker attempt factory", () => {
 });
 
 describe("runWorkerAttempt", () => {
+  it("preserves Runner results supplied through class accessors", async () => {
+    class AccessorRunResult {
+      get stdout() { return "ok"; }
+      get stderr() { return "warning"; }
+      get exitCode() { return 0; }
+      get timedOut() { return false; }
+      get durationMs() { return 7; }
+      get failure() { return { type: "diagnostic", message: "Runner diagnostic" }; }
+      get cleanup() { return { attempted: true, exitCode: 0, stderr: "" }; }
+    }
+    const result = await runWorkerAttempt({
+      session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+        engine: { generateCommand: async () => ({ command: "printf ok" }) },
+        runner: { run: async () => new AccessorRunResult() },
+        judge: { judge: async input => ({
+          passed: input.stdout === "ok" && input.stderr === "warning" && input.exitCode === 0 && input.timedOut === false,
+          reason: "judged", score: { value: 1 }
+        }) } },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: {},
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
+    });
+    expect(result).toStrictEqual({ kind: "passed", attempt: {
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "ok", stderr: "warning", exitCode: 0, timedOut: false, aborted: false,
+      durationMs: 7, runnerFailure: { type: "diagnostic", message: "Runner diagnostic" },
+      runnerCleanup: { attempted: true, exitCode: 0, stderr: "" },
+      passed: true, explanation: undefined, failureReason: "judged", score: { value: 1 }, toolCalls: []
+    } });
+  });
+
   it.each([true, false])("returns an explicit judged outcome for passed=%s", async passed => {
     const result = await runWorkerAttempt({
       session: { problem: { problemText: "print ok" }, workdir: "/tmp",
@@ -430,7 +460,12 @@ describe("runWorkerAttempt", () => {
       workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
     });
     expect(Object.keys(result).sort()).toEqual(["attempt", "kind"]);
-    expect(result).toMatchObject({ kind: passed ? "passed" : "retry", attempt: { passed, command: "printf ok", explanation: "Print ok", failureReason: "judged" } });
+    expect(result).toStrictEqual({ kind: passed ? "passed" : "retry", attempt: {
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "ok", stderr: "", exitCode: 0, timedOut: false, aborted: false,
+      durationMs: undefined, runnerFailure: null, runnerCleanup: null,
+      passed, explanation: "Print ok", failureReason: "judged", score: { value: 1 }, toolCalls: []
+    } });
   });
 
   it("returns a stopped outcome without an attempt when the deadline expires before running", async () => {
@@ -480,9 +515,14 @@ describe("runWorkerAttempt", () => {
     const result = await runWorkerAttempt({ session, control, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: workerController }, iteration: 0, attempts: [] });
     expect(result.kind).toBe("stopped");
-    expect(result.attempt).toMatchObject({ aborted: true, stdout: "partial", durationMs: 7,
-      runnerFailure: runResult.failure, runnerCleanup: runResult.cleanup });
     expect(result.reason).toBe(source === "deadline" ? "Stopped because the overall time budget was exhausted." : "control stopped Worker");
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "partial", stderr: "", exitCode: null, timedOut: false, aborted: true,
+      durationMs: 7, runnerFailure: runResult.failure, runnerCleanup: runResult.cleanup,
+      passed: false, explanation: undefined, failureReason: result.reason, toolCalls: [],
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+    });
   });
 
   it("preserves a sparse stopped attempt when the Judge throws", async () => {
@@ -495,7 +535,11 @@ describe("runWorkerAttempt", () => {
       workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
     });
     expect(result).toMatchObject({ kind: "stopped", reason: "Judge unavailable", attempt: { passed: false, failureReason: "Judge unavailable" } });
-    expect(result.attempt).not.toHaveProperty("stdout");
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      passed: false, explanation: undefined, failureReason: "Judge unavailable", toolCalls: [],
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+    });
   });
 
   it("preserves existing unrelated Runner failure results", async () => {
@@ -505,6 +549,9 @@ describe("runWorkerAttempt", () => {
     const result = await runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: new AbortController() }, iteration: 0, attempts: [] });
     expect(result).toMatchObject({ kind: "stopped", reason: "Runner unavailable", attempt: { command: "printf ok", passed: false, failureReason: "Runner unavailable" } });
+    expect(Object.keys(result.attempt).sort()).toEqual([
+      "attemptId", "command", "explanation", "failureReason", "passed", "score", "toolCalls", "workerId"
+    ]);
   });
 
   it.each(["session", "worker"])("links %s cancellation to command generation", async source => {
@@ -661,10 +708,15 @@ describe("runWorkerAttempt", () => {
     expect(result.reason).toContain("Blocked");
     expect(result.attempt).not.toHaveProperty("stdout");
     expect(result.attempt).not.toHaveProperty("stderr");
-    expect(result.attempt).toMatchObject({
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1",
+      workerId: "worker-1",
       command: "rm -rf /",
       passed: false,
-      failureReason: expect.stringContaining("Blocked")
+      explanation: "Remove everything.",
+      failureReason: expect.stringContaining("Blocked"),
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } },
+      toolCalls: []
     });
     expect(runnerRun).not.toHaveBeenCalled();
   });
@@ -726,10 +778,14 @@ describe("runWorkerAttempt", () => {
       kind: "retry",
       attempt: { command: "", passed: false, failureReason: "Worker Tool call limit exceeded." }
     });
-    expect(result.attempt).toMatchObject({
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1",
       command: "",
+      stdout: "", stderr: "", exitCode: null, timedOut: false, aborted: false,
+      explanation: "", durationMs: 0, runnerFailure: null, runnerCleanup: null,
       passed: false,
       failureReason: "Worker Tool call limit exceeded.",
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } },
       state: "idle",
       stopReason: "",
       toolCalls: [

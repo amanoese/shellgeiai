@@ -9,6 +9,8 @@ import type {
   WorkerAttemptOutcome,
   EngineResult,
   RunResult,
+  RunnerFailure,
+  RunnerCleanup,
   ProblemSpec,
   JudgeDecision,
   JudgeInput,
@@ -23,6 +25,11 @@ import { isSafeCommand } from "../execution/safety.js";
 import { generateWorkerCommand, WorkerToolLoopError } from "./tools.js";
 
 type FailedAttempt = SolveAttempt & { passed: false };
+type NormalizedRunResult = RunResult & {
+  aborted: boolean;
+  failure: RunnerFailure | null;
+  cleanup: RunnerCleanup | null;
+};
 interface AttemptInput {
   task: WorkerTask;
   iteration: number;
@@ -31,6 +38,7 @@ interface AttemptInput {
   reason: string;
   toolCalls?: ToolCallSummary[];
 }
+type ExecutedAttemptInput = Omit<AttemptInput, "reason"> & { runResult: NormalizedRunResult };
 interface WorkerAttemptInput {
   session: SolveSession;
   task: WorkerTask;
@@ -274,14 +282,14 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     workerState.iteration = iteration + 1;
     workerState.command = engineResult.command;
     reportWorkerState(session, task, "running");
-    const runResult = await session.runner.run(engineResult.command, {
+    const runResult = normalizeRunResult(await session.runner.run(engineResult.command, {
       cwd: session.workdir,
       timeoutMs: remainingBudgetMs,
       limits: session.runnerLimits,
       sandboxPolicy: session.sandboxPolicy,
       dockerDevicesReadonly: session.dockerDevicesReadonly,
       signal
-    });
+    }));
     throwIfExternalSessionAborted(session);
     if (runResult.aborted) {
       const abortedReason = getWorkerStopReason(session, control) || "Execution was stopped.";
@@ -376,7 +384,20 @@ export function createUnsafeAttempt({ task, iteration, command, explanation, rea
   };
 }
 
-export function createAbortedAttempt({ task, iteration, command, runResult, explanation, reason, toolCalls = [] }: AttemptInput & { runResult: RunResult }): FailedAttempt {
+function normalizeRunResult(runResult: RunResult): NormalizedRunResult {
+  return {
+    stdout: runResult.stdout,
+    stderr: runResult.stderr,
+    exitCode: runResult.exitCode,
+    timedOut: runResult.timedOut,
+    durationMs: runResult.durationMs,
+    aborted: runResult.aborted ?? false,
+    failure: runResult.failure ?? null,
+    cleanup: runResult.cleanup ?? null
+  };
+}
+
+function createExecutedAttemptFields({ task, iteration, command, runResult, explanation, toolCalls = [] }: ExecutedAttemptInput) {
   return {
     attemptId: createAttemptId(task, iteration),
     workerId: task.workerId,
@@ -385,36 +406,30 @@ export function createAbortedAttempt({ task, iteration, command, runResult, expl
     stderr: runResult.stderr,
     exitCode: runResult.exitCode,
     timedOut: runResult.timedOut,
-    aborted: runResult.aborted ?? false,
-    passed: false,
+    aborted: runResult.aborted,
     explanation,
-    failureReason: reason,
     durationMs: runResult.durationMs,
-    runnerFailure: runResult.failure ?? null,
-    runnerCleanup: runResult.cleanup ?? null,
-    score: createZeroScore(),
+    runnerFailure: runResult.failure,
+    runnerCleanup: runResult.cleanup,
     toolCalls
   };
 }
 
-export function createJudgedAttempt({ task, iteration, command, runResult, explanation, decision, toolCalls = [] }: Omit<AttemptInput, "reason"> & { runResult: RunResult; decision: JudgeDecision }): SolveAttempt {
+export function createAbortedAttempt({ reason, ...input }: ExecutedAttemptInput & { reason: string }): FailedAttempt {
   return {
-    attemptId: createAttemptId(task, iteration),
-    workerId: task.workerId,
-    command,
-    stdout: runResult.stdout,
-    stderr: runResult.stderr,
-    exitCode: runResult.exitCode,
-    timedOut: runResult.timedOut,
-    aborted: runResult.aborted ?? false,
+    ...createExecutedAttemptFields(input),
+    passed: false,
+    failureReason: reason,
+    score: createZeroScore()
+  };
+}
+
+export function createJudgedAttempt({ decision, ...input }: ExecutedAttemptInput & { decision: JudgeDecision }): SolveAttempt {
+  return {
+    ...createExecutedAttemptFields(input),
     passed: decision.passed,
-    explanation,
     failureReason: decision.reason,
-    durationMs: runResult.durationMs,
-    score: decision.score,
-    runnerFailure: runResult.failure ?? null,
-    runnerCleanup: runResult.cleanup ?? null,
-    toolCalls
+    score: decision.score
   };
 }
 

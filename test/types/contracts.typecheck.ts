@@ -1,9 +1,9 @@
-import type { Engine, EngineTurn, InitializingSolveSession, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
+import type { Engine, EngineTurn, InitializingSolveSession, RunResult, Runner, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
 import { z } from "zod";
 import { createToolRegistry } from "../../src/solve/tools.js";
 import { runSolveOrchestrator } from "../../src/solve/orchestrator.js";
 import { createSolveSession } from "../../src/solve/solve.js";
-import { runWorkerAttempt, executeWorkerTask } from "../../src/solve/worker.js";
+import { createAbortedAttempt, createJudgedAttempt, runWorkerAttempt, executeWorkerTask } from "../../src/solve/worker.js";
 
 
 const success: ToolExecutionResult<number> = { ok: true, value: 3, validatedArguments: {} };
@@ -88,3 +88,21 @@ async function readySessionContracts(options: Parameters<typeof createSolveSessi
   return prompt;
 }
 void readySessionContracts;
+
+// Public Runners may omit metadata; executed attempt factories require normalization.
+const minimalRunResult: RunResult = { stdout: "ok", stderr: "", exitCode: 0, timedOut: false };
+const minimalRunner: Runner = { run: async () => minimalRunResult };
+type ExecutedRunResult = Parameters<typeof createJudgedAttempt>[0]["runResult"];
+const normalizedRunResult: ExecutedRunResult = { ...minimalRunResult, aborted: false, failure: null, cleanup: null };
+declare const withoutAborted: Omit<ExecutedRunResult, "aborted">;
+declare const withoutFailure: Omit<ExecutedRunResult, "failure">;
+declare const withoutCleanup: Omit<ExecutedRunResult, "cleanup">;
+// @ts-expect-error Executed results must carry a definite aborted flag.
+const missingAborted: ExecutedRunResult = withoutAborted;
+// @ts-expect-error Executed results must carry failure metadata or explicit null.
+const missingFailure: ExecutedRunResult = withoutFailure;
+// @ts-expect-error Executed results must carry cleanup metadata or explicit null.
+const missingCleanup: ExecutedRunResult = withoutCleanup;
+// @ts-expect-error Aborted attempts require the same normalized Runner result.
+const unnormalizedAborted: Parameters<typeof createAbortedAttempt>[0]["runResult"] = minimalRunResult;
+void [minimalRunner, normalizedRunResult, missingAborted, missingFailure, missingCleanup, unnormalizedAborted];
