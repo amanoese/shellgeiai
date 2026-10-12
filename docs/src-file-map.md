@@ -8,7 +8,7 @@
 - `src/cli*`: CLI の入口、引数解析、サブコマンド実行。
 - `src/solve/`: solve のアプリケーション本体。session、planner、orchestrator、worker、selector を持つ。
 - `src/execution/`: コマンド実行、runner、judge、safety policy。
-- `src/providers/`: OpenAI や外部 CLI など、AI / planner provider 依存。
+- `src/providers/`: OpenRouter / OpenAI / 互換 gateway の共通 LLM 設定と AI / planner / embedding provider 依存。
 - `src/knowledge/`: dataset、SQLite generation、検索 runtime と reference hints。
 - `src/io/`: 問題文入力、ログ、表示整形。
 - `src/shared/`: 汎用的な fs / exec 補助。
@@ -52,7 +52,7 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### Solve Entry
 
 - `src/solve/solve.js`: solve の薄い入口。session 作成、orchestration、selection、log 書き込みをつなぐ。
-- `src/solve/runtime.js`: CLI option から engine / runner / judge / planner provider を組み立てる。
+- `src/solve/runtime.js`: CLI option から engine / runner / judge / planner provider を組み立て、共通 `llmConfig` を Planner / Worker に渡す。既定 engine は `api`、`openai` は互換 alias。
 
 ### Solve Session
 
@@ -78,6 +78,7 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 - `src/solve/worker/executeWorkerTask.js`: worker ごとの retry loop を制御する。
 - `src/solve/worker/attemptRunner.js`: 1 attempt の command 生成、safety check、runner 実行、judge 判定を行う。
 - `src/solve/worker/attemptFactory.js`: attempt / candidate object を組み立てる。
+- `src/solve/worker/toolLoop.js`: provider-neutral な Tool turn を進め、引数検証、Tool budget、continuation と結果を管理する。
 - `src/solve/worker/stopReason.js`: worker の停止理由や deadline 到達を判定する。
 
 ### Solve Selection / Scoring
@@ -107,11 +108,14 @@ runner は `LocalRunner` または `DockerRunner` です。実行前に `executi
 ### Providers
 
 - `src/providers/engines/Engine.js`: engine interface の JSDoc 型定義。
-- `src/providers/engines/openaiEngine.js`: OpenAI API を使って command を生成する engine。
+- `src/providers/engines/openaiEngine.js`: Responses API を使う URL-neutral な command / Tool Calling engine。`OpenAIEngine` の export / class 名は互換維持。
 - `src/providers/engines/codexCliEngine.js`: Codex CLI を外部 process として呼ぶ engine。
 - `src/providers/engines/cursorCliEngine.js`: Cursor CLI を外部 process として呼ぶ engine。
 - `src/providers/engines/mockEngine.js`: テストや dry run 用の固定 command engine。
-- `src/providers/planner/llmPlanner.js`: LLM planner provider の入口。planner prompt を投げて plan を得る。
+- `src/providers/llm/config.js`: 共通 endpoint / key / Worker model / Planner model / timeout / retry 解決、旧設定の互換性と公開設定 allowlist。
+- `src/providers/llm/client.js`: lazy OpenAI SDK client、送信先と header の制限、HTTP retry / timeout / abort と安全な error 表示。
+- `src/providers/llm/responsesHistory.js`: response output 全体を保持する stateless continuation と function call / output の整合性検証。暗号化 reasoning も再送する。
+- `src/providers/planner/llmPlanner.js`: configured Planner の入口。共有 LLM 設定、Zod Structured Outputs と `responses.parse()` を使い plan を得る。
 - `src/providers/planner/plannerPrompt.js`: planner に渡す prompt を組み立てる。
 - `src/providers/planner/plannerSchema.js`: planner response の schema と validation。
 - `src/providers/embeddings/openRouterEmbedder.js`: OpenRouter embedding API、batch、timeout / abort / retry と response validation。

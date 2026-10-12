@@ -5,7 +5,8 @@ ShellGeiAI は、シェル芸の問題文を入力として受け取り、AI に
 ## 特徴
 
 - シェル芸の問題文から候補コマンドを生成して検証できます
-- `openai` / `mock` の engine を切り替えられます
+- OpenRouter を既定の LLM 接続先として使い、OpenAI や互換 gateway に切り替えられます
+- `api` / `mock` の Worker engine を切り替えられます（`openai` は `api` の互換 alias）
 - 既定では Docker runner で安全性を優先して実行します
 - 危険コマンドやネットワーク系コマンドを実行前にブロックします
 - 実行ログを `logs/` に残し、あとから `logs show` で確認できます
@@ -20,12 +21,12 @@ ShellGeiAI は、シェル芸の問題文を入力として受け取り、AI に
 npm install -g shellgeiai
 ```
 
-`openai` engine を使う場合、`OPENAI_API_KEY` の設定は必須です。
+既定の接続先は OpenRouter の `https://openrouter.ai/api/v1` です。Planner と Worker はどちらも `openai/gpt-6.1-sol` を使います。
 
 現在のシェルだけで有効にする場合:
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
+export OPENROUTER_API_KEY="your-openrouter-api-key"
 ```
 
 永続化する場合は、使っている shell の設定ファイルに追記してください。
@@ -33,18 +34,62 @@ export OPENAI_API_KEY="your-api-key"
 `bash`:
 
 ```bash
-echo 'export OPENAI_API_KEY="your-api-key"' >> ~/.bashrc
+echo 'export OPENROUTER_API_KEY="your-openrouter-api-key"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 `zsh`:
 
 ```bash
-echo 'export OPENAI_API_KEY="your-api-key"' >> ~/.zshrc
+echo 'export OPENROUTER_API_KEY="your-openrouter-api-key"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-必要に応じて `OPENAI_MODEL`、`OPENAI_TIMEOUT_MS`、`OPENAI_MAX_RETRIES`、`OPENAI_BASE_URL` も指定できます。
+### LLM 接続先とモデル
+
+接続先は `LLM_BASE_URL`、または `solve --llm-base-url` で変更できます。OpenAI に直接接続する場合は URL と key を設定してください。model を省略すると Planner / Worker ともに `gpt-6.1-sol` に切り替わります。
+
+```bash
+export LLM_BASE_URL="https://api.openai.com/v1"
+export OPENAI_API_KEY="your-openai-api-key"
+shellgeiai solve "123を表示せよ"
+```
+
+OpenRouter に戻す場合は `LLM_BASE_URL=https://openrouter.ai/api/v1` を設定します。接続先を選ぶのは URL です。`--engine openai` を指定しても OpenAI の URL には切り替わりません。
+
+その他の gateway には明示的な key と model が必要です。provider の key を未知の接続先へ自動転送することはありません。
+
+```bash
+export LLM_BASE_URL="https://gateway.example/v1"
+export SHELLGEIAI_LLM_API_KEY="your-gateway-api-key"
+export SHELLGEIAI_LLM_MODEL="gateway-model-id"
+shellgeiai solve "123を表示せよ"
+```
+
+model ID を明示した場合はそのまま送信します。OpenRouter の `openai/` prefix を付け外しする処理はありません。Planner のみ別 model にする場合は `SHELLGEIAI_PLANNER_MODEL` または `--planner-model` を指定できます。
+
+```bash
+shellgeiai solve "123を表示せよ" \
+  --llm-base-url https://openrouter.ai/api/v1 \
+  --llm-model openai/gpt-6.1-sol \
+  --planner-model openai/gpt-6.1-sol \
+  --llm-timeout 30000 --llm-max-retries 2
+```
+
+各設定は CLI / 明示 option、次の環境変数、適用可能な旧設定、既定値の順に優先します。
+
+- `LLM_BASE_URL`: API の base URL。既定は `https://openrouter.ai/api/v1`
+- `SHELLGEIAI_LLM_API_KEY`: 共通の明示 key。OpenRouter の `OPENROUTER_API_KEY`、OpenAI の `OPENAI_API_KEY` より優先
+- `SHELLGEIAI_LLM_MODEL`: Worker model。既定は OpenRouter で `openai/gpt-6.1-sol`、OpenAI で `gpt-6.1-sol`
+- `SHELLGEIAI_PLANNER_MODEL`: Planner model。省略時は解決済み Worker model を継承
+- `SHELLGEIAI_LLM_TIMEOUT_MS`: SDK request の timeout。既定 30000 ms、正の整数（SDK timer の上限は 2147483647 ms）
+- `SHELLGEIAI_LLM_MAX_RETRIES`: SDK の HTTP retry 回数。既定 2、0～5 の整数
+
+`--llm-max-retries` は初回に追加する retry の回数です。通常の command 生成で非 JSON 応答を受けた場合の再生成にも同じ回数を使いますが、HTTP retry は SDK だけが担当し、Engine 側で HTTP の再試行を重ねません。Worker の実行失敗に対する自己修正 attempt は別の制限です。
+
+互換 API は Responses API、Planner の Structured Outputs、Worker の Function Calling をサポートする必要があります。Chat Completions への fallback はありません。base URL は HTTPS、または loopback の HTTP のみ利用でき、URL 内の userinfo / query / fragment は拒否します。redirect に認証情報を転送しません。
+
+旧 `OPENAI_BASE_URL` は `--llm-base-url` / `LLM_BASE_URL` が未指定のときだけ読み込み、非推奨警告を出します。`OPENAI_MODEL`、`OPENAI_PLANNER_MODEL`、`OPENAI_TIMEOUT_MS`、`OPENAI_MAX_RETRIES` は OpenAI 直接接続時だけ互換設定として読み込みます。既存の `OPENAI_API_KEY` だけで OpenAI を使っていた場合も、今後は `LLM_BASE_URL=https://api.openai.com/v1` を追加してください。
 
 ## 使い方
 
@@ -62,7 +107,12 @@ shellgeiai logs show <run-id>
 
 よく使うオプション:
 
-- `--engine <openai|mock>`: 候補生成に使う engine を選びます
+- `--engine <api|openai|mock>`: Worker engine を選びます。既定は `api`、`openai` は同じ API engine の互換 alias
+- `--llm-base-url <url>`: Planner / Worker 共通の API base URL
+- `--llm-model <model>`: Worker model（Planner の既定にも使用）
+- `--planner-model <model>`: Planner model のみ上書き
+- `--llm-timeout <ms>`: LLM request の timeout
+- `--llm-max-retries <number>`: LLM request の追加 retry 回数（0～5）
 - `--runner <docker|local>`: 実行環境を切り替えます。既定は `docker` です
 - `--workdir <path>`: 実行対象の作業ディレクトリを指定します
 - `--writable-workdir`: workdir への書き込みを許可します
@@ -70,6 +120,8 @@ shellgeiai logs show <run-id>
 - `--time-budget <ms>`: 実行時間の上限を指定します
 - `--command-policy <path>`: カスタム command policy を読み込みます
 - `--sandbox-policy <path>`: カスタム sandbox policy を読み込みます
+
+`--engine mock` は Worker の command 生成だけを固定します。CLI の Planner は引き続き LLM API を使うため、key が必要です。完全に通信を止めるテストではコードから Planner provider も注入してください。
 
 Docker runner に複数のデバイスを読み取り専用で共有する場合は、正式名と短い alias を繰り返し、または混在して指定できます。
 
@@ -95,9 +147,9 @@ Planner へ渡す record は、信頼済みの命令ではなく任意の参考�
 
 Worker への古い無条件の knowledge hint 注入は廃止しました。`worker` / `all` では、各 Worker attempt が `search_knowledge` を最大1回呼び出せ、1回の結果は最大5 records です。retry した次の attempt には新しい1回分の Tool call budget があります。
 
-現在、native Tool Calling に対応する engine は `OpenAIEngine`（`--engine openai`）だけです。Tool Calling 非対応 engine でも `off` / `planner` は利用できますが、`worker` / `all` は Planner 実行前に説明的なエラーで停止します。
+現在、native Tool Calling に対応する engine は API engine（互換 class 名は `OpenAIEngine`、`--engine api` / `--engine openai`）です。OpenRouter / OpenAI / 互換 gateway の共通設定を使います。Tool Calling 非対応 engine でも `off` / `planner` は利用できますが、`worker` / `all` は Planner 実行前に説明的なエラーで停止します。
 
-再現性のため、session log の Planner prompt / raw response metadata には bounded な Planner reference text が含まれる場合があります。一方、Worker Tool result の record 本文や完全な result value、provider call ID、continuation は保存せず、検証済み引数、成否、件数、record ID だけを attempt summary に残します。
+再現性のため、session log の Planner prompt / raw response metadata には bounded な Planner reference text が含まれる場合があります。一方、Worker Tool result の record 本文や完全な result value、provider call ID、continuation、reasoning / encrypted reasoning は保存せず、検証済み引数、成否、件数、record ID だけを attempt summary に残します。LLM 設定のログは `provider`、`baseURL`、`model`、`plannerModel`、`timeoutMs`、`maxRetries` の6項目だけで、API key は含みません。
 
 ```bash
 shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge off
@@ -107,7 +159,7 @@ shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge all
 shellgeiai solve "CSV の 3列目を合計" --parallelism 4 --knowledge on --knowledge-model qwen/qwen3-embedding-8b
 ```
 
-Knowledge embedding は OpenRouter API を使います。回答生成用の `OPENAI_API_KEY` とは別に `OPENROUTER_API_KEY` を設定し、retrieval を使う前に SQLite database を作成してください。`--knowledge off` では embedding API を呼びません。
+Knowledge embedding は回答生成とは独立した OpenRouter API 設定を使います。`LLM_BASE_URL` や回答 model を変更しても、既定の `qwen/qwen3-embedding-8b` と SQLite / sqlite-vec index は変わりません。回答生成を OpenAI に直接接続する場合も、retrieval には `OPENROUTER_API_KEY` が必要です。retrieval を使う前に SQLite database を作成してください。`--knowledge off` では embedding API を呼びません。
 
 ```bash
 export OPENROUTER_API_KEY="your-openrouter-api-key"

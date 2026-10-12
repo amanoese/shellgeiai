@@ -46,6 +46,14 @@ describe("GitHub workflows", () => {
     expect(workflow).not.toContain("printf");
   });
 
+  it("runs the real-SDK provider contract without paid API secrets", () => {
+    const workflow = readWorkflow("ci.yml");
+    expect(workflow).toContain("npx vitest run test/llmProviderContract.test.js");
+    expect(workflow).not.toContain("secrets.OPENAI");
+    expect(workflow).not.toContain("secrets.OPENROUTER");
+    expect(workflow).not.toContain("secrets.SHELLGEIAI_LLM");
+  });
+
   it("uses trusted publishing flow for npm release", () => {
     const workflow = readWorkflow("release.yml");
 

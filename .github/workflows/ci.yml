@@ -30,6 +30,9 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      - name: Verify offline Responses provider contract
+        run: npx vitest run test/llmProviderContract.test.js
+
       - name: Verify CLI help entrypoints
         run: |
           node src/cli.js --help
