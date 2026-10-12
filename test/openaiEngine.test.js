@@ -137,7 +137,8 @@ describe("OpenAIEngine", () => {
       }
     ];
 
-    await expect(engine.generateTurn({ context, tools })).resolves.toEqual({
+    const turn = await engine.generateTurn({ context, tools });
+    expect(turn).toEqual({
       type: "tool_calls",
       calls: [
         {
@@ -146,7 +147,9 @@ describe("OpenAIEngine", () => {
           arguments: { query: "CSV 3列目 合計" }
         }
       ],
-      continuation: { responseId: "resp-1" }
+      continuation: {
+        input: [...create.mock.calls[0][0].input, ...(await create.mock.results[0].value).output]
+      }
     });
   });
 
@@ -413,7 +416,7 @@ describe("OpenAIEngine", () => {
     });
   });
 
-  it("continues from Tool results without resending the initial prompt", async () => {
+  it("continues from Tool results by resending the complete history", async () => {
     const create = vi
       .fn()
       .mockResolvedValueOnce({
@@ -455,11 +458,11 @@ describe("OpenAIEngine", () => {
       }
     ];
 
-    await engine.generateTurn({ context, tools });
+    const firstTurn = await engine.generateTurn({ context, tools });
     const turn = await engine.generateTurn({
       context,
       tools,
-      continuation: { responseId: "resp-1" },
+      continuation: firstTurn.continuation,
       toolResults: [{ callId: "call-1", result: { ok: true, value: { records: [] } } }]
     });
 
@@ -470,8 +473,10 @@ describe("OpenAIEngine", () => {
     });
     expect(create.mock.calls[1][0]).toMatchObject({
       model: "gpt-test",
-      previous_response_id: "resp-1",
+      store: false,
       input: [
+        ...create.mock.calls[0][0].input,
+        ...(await create.mock.results[0].value).output,
         {
           type: "function_call_output",
           call_id: "call-1",
@@ -479,11 +484,16 @@ describe("OpenAIEngine", () => {
         }
       ]
     });
-    expect(create.mock.calls[1][0].input).toHaveLength(1);
+    expect(create.mock.calls[1][0].input).toHaveLength(4);
+    for (const [request] of create.mock.calls) {
+      expect(request).not.toHaveProperty("previous_response_id");
+      expect(request).not.toHaveProperty("responseId");
+    }
   });
 
   it.each([
     ["undefined", () => undefined],
+    ["BigInt", () => 1n],
     [
       "a circular object",
       () => {
@@ -517,7 +527,11 @@ describe("OpenAIEngine", () => {
           workdir: "/tmp/workdir"
         },
         tools: [],
-        continuation: { responseId: "resp-1" },
+        continuation: { input: [
+          { role: "system", content: [{ type: "input_text", text: "Generate a command." }] },
+          { role: "user", content: [{ type: "input_text", text: "print ok" }] },
+          { type: "function_call", call_id: "call-1", name: "search_knowledge", arguments: "{}", status: "completed" }
+        ] },
         toolResults: [{ callId: "call-1", result: makeResult() }]
       })
     ).rejects.toMatchObject({
@@ -549,16 +563,15 @@ describe("OpenAIEngine", () => {
       client: { responses: { create } }
     });
 
-    await expect(
-      engine.generateTurn({
+    const turn = await engine.generateTurn({
         context: {
           problem: "CSV の 3列目を合計する",
           attempts: [],
           workdir: "/tmp/workdir"
         },
         tools: []
-      })
-    ).resolves.toEqual({
+      });
+    expect(turn).toEqual({
       type: "tool_calls",
       calls: [
         { id: "call-1", name: "search_knowledge", arguments: { query: "CSV" } },
@@ -568,7 +581,7 @@ describe("OpenAIEngine", () => {
           arguments: { query: "awk sum column" }
         }
       ],
-      continuation: { responseId: "resp-1" }
+      continuation: { input: [...create.mock.calls[0][0].input, ...(await create.mock.results[0].value).output] }
     });
   });
 
@@ -934,6 +947,157 @@ describe("OpenAIEngine", () => {
     ).rejects.toThrow("The API engine returned non-JSON response.");
 
     expect(create).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("OpenAIEngine stateless history", () => {
+  const context = { problem: "print ok", attempts: [], workdir: "/tmp/workdir" };
+  const call = (id = "call-1") => ({
+    type: "function_call", id: `fc-${id}`, call_id: id, name: "search_knowledge",
+    arguments: '{"query":"printf"}', status: "completed"
+  });
+  const continuation = () => ({ input: [
+    { role: "system", content: [{ type: "input_text", text: "Generate a command." }] },
+    { role: "user", content: [{ type: "input_text", text: "print ok" }] },
+    call()
+  ] });
+
+  it.each(["openai/gpt-6.1-sol", "gpt-6.1-sol"])("requests encrypted reasoning on every %s request", async (model) => {
+    const create = vi.fn(async () => ({ output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ model, client: { responses: { create } } });
+    await engine.generateCommand(context);
+    await engine.generateTurn({ context, tools: [] });
+    await engine.generateTurn({ context, tools: [], continuation: continuation(),
+      toolResults: [{ callId: "call-1", result: "ok" }] });
+    for (const [request] of create.mock.calls) {
+      expect(request).toMatchObject({ store: false, include: ["reasoning.encrypted_content"] });
+      expect(request).not.toHaveProperty("previous_response_id");
+    }
+    expect(create.mock.calls[2][0].input.at(-1).output).toBe('"ok"');
+  });
+
+  it("does not add encrypted reasoning include to unrelated models", async () => {
+    const create = vi.fn(async () => ({ output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ model: "custom-model", client: { responses: { create } } });
+    await engine.generateTurn({ context, tools: [] });
+    expect(create.mock.calls[0][0]).not.toHaveProperty("include");
+  });
+
+  it("replays all output and accumulates further Tool turns without mutation", async () => {
+    const firstOutput = [
+      { type: "reasoning", id: "rs-1", summary: [], encrypted_content: "encrypted-1" },
+      call(),
+      { type: "reasoning", id: "rs-2", summary: [{ type: "summary_text", text: "Search." }],
+        encrypted_content: "encrypted-2" }
+    ];
+    const secondOutput = [{ type: "reasoning", id: "rs-3", encrypted_content: "encrypted-3" }, call("call-2")];
+    const create = vi.fn()
+      .mockResolvedValueOnce({ id: "response-1", status: "completed", output: firstOutput })
+      .mockResolvedValueOnce({ id: "response-2", status: "completed", output: secondOutput })
+      .mockResolvedValueOnce({ status: "completed", output_text: '{"command":"printf ok"}' });
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    const first = await engine.generateTurn({ context, tools: [] });
+    const initialInput = structuredClone(create.mock.calls[0][0].input);
+    expect(first.continuation).toEqual({ input: [...initialInput, ...firstOutput] });
+    expect(first.continuation.input[2]).not.toBe(firstOutput[0]);
+    const before = structuredClone(first.continuation);
+    const toolResults = [{ callId: "call-1", result: { records: [] } }];
+    const second = await engine.generateTurn({ context, tools: [], continuation: first.continuation, toolResults });
+    expect(first.continuation).toEqual(before);
+    expect(toolResults).toEqual([{ callId: "call-1", result: { records: [] } }]);
+    const fullInput = [...before.input,
+      { type: "function_call_output", call_id: "call-1", output: '{"records":[]}' }];
+    expect(create.mock.calls[1][0].input).toEqual(fullInput);
+    expect(second.continuation).toEqual({ input: [...fullInput, ...secondOutput] });
+    firstOutput[0].encrypted_content = "mutated";
+    expect(first.continuation).toEqual(before);
+    await engine.generateTurn({ context, tools: [], continuation: second.continuation,
+      toolResults: [{ callId: "call-2", result: { ok: true } }] });
+    expect(create.mock.calls[2][0].input).toEqual([...fullInput, ...secondOutput,
+      { type: "function_call_output", call_id: "call-2", output: '{"ok":true}' }]);
+    for (const [request] of create.mock.calls) {
+      expect(request.store).toBe(false);
+      expect(request).not.toHaveProperty("previous_response_id");
+      expect(request).not.toHaveProperty("responseId");
+    }
+  });
+
+  it("keeps concurrent worker histories isolated on one Engine", async () => {
+    const requests = [];
+    const create = vi.fn(async (request) => {
+      requests.push(structuredClone(request));
+      const worker = request.input[1].content[0].text.includes("worker-A") ? "A" : "B";
+      await Promise.resolve();
+      return request.input.some((item) => item.type === "function_call_output")
+        ? { output_text: JSON.stringify({ command: `printf ${worker}` }) }
+        : { id: `response-${worker}`, output: [call(`call-${worker}`)] };
+    });
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    const contexts = ["A", "B"].map((worker) => ({ ...context, workerId: `worker-${worker}` }));
+    const first = await Promise.all(contexts.map((context) => engine.generateTurn({ context, tools: [] })));
+    const turns = await Promise.all(first.map((turn, index) => engine.generateTurn({
+      context: contexts[index], tools: [], continuation: turn.continuation,
+      toolResults: [{ callId: `call-${index === 0 ? "A" : "B"}`, result: index }]
+    })));
+    expect(turns.map((turn) => turn.command)).toEqual(["printf A", "printf B"]);
+    for (const request of requests.slice(2)) {
+      const ids = request.input.filter((item) => item.call_id).map((item) => item.call_id);
+      expect(new Set(ids).size).toBe(1);
+    }
+    expect(first[0].continuation.input).not.toBe(first[1].continuation.input);
+  });
+
+  it.each([{}, { responseId: "response-1" }, { input: {} }, { input: [] },
+    { input: [null] }, { input: [{ type: "function_call", call_id: "call-1" }] },
+    { input: [{ type: "function_call_output", call_id: "call-1", output: "{}" }] }
+  ])("rejects malformed or forged continuation %j before sending", async (badContinuation) => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [], continuation: badContinuation,
+      toolResults: [{ callId: "call-1", result: {} }] })).rejects.toThrow(/continuation|Tool call/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([null, {}, [], [{ callId: "wrong", result: {} }],
+    [{ callId: "", result: {} }], [{ result: {} }],
+    [{ callId: "call-1", result: {} }, { callId: "call-1", result: {} }]
+  ].map((toolResults) => ({ toolResults })))("rejects mismatched or malformed Tool results $toolResults before sending", async ({ toolResults }) => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [], continuation: continuation(), toolResults }))
+      .rejects.toThrow("The API engine received invalid Tool results.");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects Tool results on an initial turn", async () => {
+    const create = vi.fn();
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [], toolResults: [{ callId: "call-1", result: {} }] }))
+      .rejects.toThrow("The API engine received invalid Tool results.");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, null, "invalid"])("rejects non-array provider output %j", async (output) => {
+    const create = vi.fn(async () => ({ output, output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [] }))
+      .rejects.toThrow("The API engine returned invalid response output.");
+    await expect(engine.generateCommand(context))
+      .rejects.toThrow("The API engine returned invalid response output.");
+  });
+
+  it("rejects duplicate provider call IDs", async () => {
+    const create = vi.fn(async () => ({ id: "response-1", output: [call(), call()] }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [] }))
+      .rejects.toThrow("The API engine returned duplicate Tool call IDs.");
+  });
+
+  it.each(["incomplete", "failed"])("rejects %s Tool-enabled responses even when they contain command text", async (status) => {
+    const create = vi.fn(async () => ({ status, output_text: '{"command":"printf ok"}' }));
+    const engine = new OpenAIEngine({ client: { responses: { create } } });
+    await expect(engine.generateTurn({ context, tools: [] }))
+      .rejects.toThrow("The API engine returned a non-completed response.");
   });
 });
 

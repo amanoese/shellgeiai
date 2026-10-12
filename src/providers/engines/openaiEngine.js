@@ -1,5 +1,10 @@
 import { resolveLlmConfig } from "../llm/config.js";
 import { createLlmClient, requestLlmResponse } from "../llm/client.js";
+import {
+  createResponsesContinuation,
+  parseResponsesToolCalls,
+  resumeResponsesInput
+} from "../llm/responsesHistory.js";
 
 function buildSystemPrompt() {
   return [
@@ -109,40 +114,20 @@ function parseEngineResponse(raw) {
   };
 }
 
-function parseToolCallArguments(raw) {
-  let parsed;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("The API engine returned invalid Tool call arguments.");
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("The API engine returned invalid Tool call arguments.");
-  }
-
-  return parsed;
-}
-
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function serializeToolResult(result) {
-  let serialized;
+function reasoningOptions(model) {
+  return ["openai/gpt-6.1-sol", "gpt-6.1-sol"].includes(model)
+    ? { include: ["reasoning.encrypted_content"] }
+    : {};
+}
 
-  try {
-    serialized = JSON.stringify(result);
-  } catch {
-    throw new Error("The API engine could not serialize a Tool result.");
+function assertResponseOutput(response) {
+  if (response?.output !== undefined && !Array.isArray(response.output)) {
+    throw new Error("The API engine returned invalid response output.");
   }
-
-  if (typeof serialized !== "string") {
-    throw new Error("The API engine could not serialize a Tool result.");
-  }
-
-  return serialized;
 }
 
 function isObjectSchema(schema) {
@@ -295,6 +280,7 @@ export class OpenAIEngine {
         const response = await requestLlmResponse(client, {
           model: this.model,
           store: false,
+          ...reasoningOptions(this.model),
           input: [
             {
               role: "system",
@@ -310,6 +296,7 @@ export class OpenAIEngine {
         if (response?.status != null && response.status !== "completed") {
           throw new Error("The API engine returned a non-completed response.");
         }
+        assertResponseOutput(response);
 
         return parseEngineResponse(extractResponseText(response));
       } catch (error) {
@@ -325,6 +312,9 @@ export class OpenAIEngine {
   }
 
   async generateTurn({ context, tools, continuation, toolResults = [], signal }) {
+    if (!Array.isArray(toolResults) || (continuation === undefined && toolResults.length > 0)) {
+      throw new Error("The API engine received invalid Tool results.");
+    }
     const openaiTools = tools.map(({ name, description, parameters }) => {
       assertOpenAIStrictSchema(parameters);
       return {
@@ -335,15 +325,10 @@ export class OpenAIEngine {
         strict: true
       };
     });
-    const request = continuation
+    const request = continuation !== undefined
       ? {
           model: this.model,
-          previous_response_id: continuation.responseId,
-          input: toolResults.map(({ callId, result }) => ({
-            type: "function_call_output",
-            call_id: callId,
-            output: serializeToolResult(result)
-          })),
+          input: resumeResponsesInput(continuation, toolResults),
           tools: openaiTools
         }
       : {
@@ -362,33 +347,22 @@ export class OpenAIEngine {
         };
     const client = await this.#getClient();
     request.store = false;
+    Object.assign(request, reasoningOptions(this.model));
     const response = await requestLlmResponse(client, request, { signal });
 
     if (response?.status != null && response.status !== "completed") {
       throw new Error("The API engine returned a non-completed response.");
     }
+    assertResponseOutput(response);
 
-    const functionCalls = (response.output ?? []).filter(
+    const functionCalls = (response?.output ?? []).filter(
       (item) => item?.type === "function_call"
     );
 
-    if (
-      functionCalls.some((call) => call.status != null && call.status !== "completed")
-    ) {
-      throw new Error("The API engine returned a non-completed Tool call.");
-    }
+    const calls = parseResponsesToolCalls(response?.output ?? []);
 
     if (functionCalls.length > 0 && !isNonEmptyString(response.id)) {
       throw new Error("The API engine returned Tool calls without a response ID.");
-    }
-
-    for (const call of functionCalls) {
-      if (!isNonEmptyString(call.call_id)) {
-        throw new Error("The API engine returned a Tool call without a call ID.");
-      }
-      if (!isNonEmptyString(call.name)) {
-        throw new Error("The API engine returned a Tool call without a name.");
-      }
     }
 
     const commandText = extractOptionalResponseText(response);
@@ -397,17 +371,11 @@ export class OpenAIEngine {
       throw new Error("The API engine returned both a command and Tool calls.");
     }
 
-    const calls = functionCalls.map((item) => ({
-      id: item.call_id,
-      name: item.name,
-      arguments: parseToolCallArguments(item.arguments)
-    }));
-
     if (calls.length > 0) {
       return {
         type: "tool_calls",
         calls,
-        continuation: { responseId: response.id }
+        continuation: createResponsesContinuation(request.input, response.output)
       };
     }
 
