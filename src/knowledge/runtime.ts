@@ -122,15 +122,19 @@ export const searchKnowledgeInputSchema = z.object({ query: z.string().trim().mi
 export type SearchKnowledgeInput = z.infer<typeof searchKnowledgeInputSchema>;
 
 export function createSearchKnowledgeTool({ retriever }: { retriever: KnowledgeRetriever | undefined }) {
+    type SearchKnowledgeOutput = { records: ReturnType<typeof formatKnowledgeRecords> };
     return {
         name: "search_knowledge",
         description: "Search the persisted local shell command knowledge database using an external query embedding API. The database operation is read-only.",
         inputSchema: searchKnowledgeInputSchema,
-        async execute({ query }: SearchKnowledgeInput) {
+        async execute({ query }: SearchKnowledgeInput): Promise<SearchKnowledgeOutput> {
             const records = await retriever!.search!({ query });
             return {
                 records: formatKnowledgeRecords(records, { limit: 5 })
             };
+        },
+        summarize({ records }: SearchKnowledgeOutput) {
+            return { resultCount: records.length, recordIds: records.flatMap(record => record.id ? [record.id] : []) };
         }
-    } satisfies ToolRegistration<SearchKnowledgeInput>;
+    } satisfies ToolRegistration<SearchKnowledgeInput, SearchKnowledgeOutput>;
 }

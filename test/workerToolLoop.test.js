@@ -33,6 +33,123 @@ function createSearchingEngine() {
 }
 
 describe("generateWorkerCommand", () => {
+  it.each([
+    ["NaN unchanged", NaN, false, 1],
+    ["negative zero replaced with positive zero", -0, true, 0]
+  ])("checks exact output identity before invoking typed summaries: %s", async (_label, value, replace, summaryCalls) => {
+    const registry = createToolRegistry();
+    const summarize = vi.fn(() => ({ resultCount: 1, recordIds: ["typed:number"] }));
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute: () => value, summarize });
+    const originalExecute = registry.execute;
+    registry.execute = async function(call) {
+      const result = await originalExecute.call(this, call);
+      if (replace) result.value = 0;
+      return result;
+    };
+    const engine = createSearchingEngine();
+    const result = await generateWorkerCommand({ engine, context: {}, toolRegistry: registry });
+    expect(summarize).toHaveBeenCalledTimes(summaryCalls);
+    expect(result.toolCalls[0]).toEqual({ name: "search_knowledge", arguments: { query: "awk" }, status: "completed", resultCount: summaryCalls, recordIds: summaryCalls ? ["typed:number"] : [] });
+    expect(engine.generateTurn.mock.calls[1][0].toolResults[0].result.ok).toBe(true);
+  });
+
+  it.each(["resultCount", "recordIds"])("falls back safely when a typed summary %s getter throws", async field => {
+    const registry = createToolRegistry();
+    const summarize = vi.fn(() => ({
+      resultCount: 1,
+      recordIds: ["typed:awk"],
+      get [field]() { throw new Error("private summary getter"); }
+    }));
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute: () => ({ records: [{ id: "legacy:awk" }] }), summarize });
+    const engine = createSearchingEngine();
+    const result = await generateWorkerCommand({ engine, context: {}, toolRegistry: registry });
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.toolCalls[0]).toEqual({ name: "search_knowledge", arguments: { query: "awk" }, status: "completed", resultCount: 1, recordIds: ["legacy:awk"] });
+    expect(engine.generateTurn.mock.calls[1][0].toolResults[0].result).toEqual({ ok: true, value: { records: [{ id: "legacy:awk" }] } });
+    expect(JSON.stringify(result)).not.toContain("private summary getter");
+  });
+
+  it("does not run a typed summarizer when a cancelled Tool settles later", async () => {
+    const controller = new AbortController();
+    const pending = Promise.withResolvers();
+    const execute = vi.fn(() => pending.promise);
+    const summarize = vi.fn(() => ({ resultCount: 1, recordIds: ["late"] }));
+    const registry = createToolRegistry();
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute, summarize });
+    const engine = createSearchingEngine();
+    const worker = generateWorkerCommand({ engine, context: {}, toolRegistry: registry, signal: controller.signal });
+    const rejected = expect(worker).rejects.toThrow("cancelled");
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    controller.abort(new Error("cancelled"));
+    await rejected;
+    pending.resolve({ records: [{ id: "late" }] });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(summarize).not.toHaveBeenCalled();
+    expect(engine.generateTurn).toHaveBeenCalledOnce();
+  });
+
+  it("uses the typed summary instead of probing records and projects only public fields", async () => {
+    const registry = createToolRegistry();
+    const execute = vi.fn(async () => ({ ids: ["typed:awk"], records: [{ id: "legacy:awk" }] }));
+    const summarize = vi.fn(value => ({
+      resultCount: value.ids.length,
+      recordIds: value.ids,
+      name: "spoofed", arguments: { secret: "credential" }, status: "error", records: value.records
+    }));
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute, summarize });
+    const engine = createSearchingEngine();
+    const result = await generateWorkerCommand({ engine, context: {}, toolRegistry: registry });
+    expect(result.toolCalls).toEqual([{ name: "search_knowledge", arguments: { query: "awk" }, status: "completed", resultCount: 1, recordIds: ["typed:awk"] }]);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(engine.generateTurn.mock.calls[1][0].toolResults[0].result).toEqual({ ok: true, value: { ids: ["typed:awk"], records: [{ id: "legacy:awk" }] } });
+  });
+
+  it("falls back to the legacy summary after a summarizer throws without failing execution", async () => {
+    const registry = createToolRegistry();
+    const summarize = vi.fn(() => { throw new Error("credential must not leak"); });
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute: () => ({ records: [{ id: "legacy:awk" }] }), summarize });
+    const engine = createSearchingEngine();
+    const result = await generateWorkerCommand({ engine, context: {}, toolRegistry: registry });
+    expect(summarize).toHaveBeenCalledOnce();
+    expect(result.toolCalls[0]).toEqual({ name: "search_knowledge", arguments: { query: "awk" }, status: "completed", resultCount: 1, recordIds: ["legacy:awk"] });
+    expect(engine.generateTurn.mock.calls[1][0].toolResults[0].result).toEqual({ ok: true, value: { records: [{ id: "legacy:awk" }] } });
+    expect(JSON.stringify(result)).not.toContain("credential");
+  });
+
+  it.each(["mutate-records", "replace-value", "replace-result", "mark-error"])("honors execute hooks and receiver before summarizing: %s", async mode => {
+    const registry = createToolRegistry();
+    const summarize = vi.fn(value => ({ resultCount: value.records.length, recordIds: value.records.map(record => `typed:${record.id}`) }));
+    registry.register({ name: "search_knowledge", description: "Search", inputSchema: z.object({ query: z.string() }), execute: () => ({ records: [{ id: "original" }] }), summarize });
+    const originalExecute = registry.execute;
+    const injected = { ...registry, marker: "receiver", execute: vi.fn(async function(call) {
+      expect(this.marker).toBe("receiver");
+      const result = await originalExecute.call(this, call);
+      if (mode === "mutate-records") result.value.records.push({ id: "hooked" });
+      if (mode === "replace-value") result.value = { records: [{ id: "replacement" }] };
+      if (mode === "replace-result") return { ...result, value: { records: [{ id: "replacement" }] }, summary: { secret: "credential" } };
+      if (mode === "mark-error") { result.ok = false; result.error = { code: "tool_execution_failed", message: "Hook failed." }; }
+      return result;
+    }) };
+    const engine = createSearchingEngine();
+    const result = await generateWorkerCommand({ engine, context: {}, toolRegistry: injected });
+    expect(injected.execute).toHaveBeenCalledOnce();
+    expect(result.toolCalls[0]).toEqual({ name: "search_knowledge", arguments: { query: "awk" }, status: mode === "mark-error" ? "error" : "completed", resultCount: mode === "mutate-records" ? 2 : mode === "mark-error" ? 0 : 1, recordIds: mode === "mutate-records" ? ["typed:original", "typed:hooked"] : mode === "mark-error" ? [] : ["replacement"] });
+    expect(summarize).toHaveBeenCalledTimes(mode === "mutate-records" ? 1 : 0);
+    const publicResult = engine.generateTurn.mock.calls[1][0].toolResults[0].result;
+    expect(Object.keys(publicResult).sort()).toEqual(mode === "mark-error" ? ["error", "ok"] : ["ok", "value"]);
+  });
+
+  it("executes an injected legacy registry with its receiver and safely extracts legacy records", async () => {
+    const registry = { definitions: () => [], marker: "legacy", execute: vi.fn(async function() {
+      expect(this.marker).toBe("legacy");
+      return { ok: true, value: { records: [{ id: "legacy:awk" }, null, { id: 3 }, { id: "" }] }, validatedArguments: { query: "awk" } };
+    }) };
+    const result = await generateWorkerCommand({ engine: createSearchingEngine(), context: {}, toolRegistry: registry });
+    expect(registry.execute).toHaveBeenCalledOnce();
+    expect(result.toolCalls[0]).toEqual({ name: "search_knowledge", arguments: { query: "awk" }, status: "completed", resultCount: 4, recordIds: ["legacy:awk"] });
+  });
+
   it.each(["resolve", "reject"])("cancels a pending Tool wait before its late %s without resuming the model", async settlement => {
     const controller = new AbortController();
     const reason = new Error("worker cancelled during Tool wait");

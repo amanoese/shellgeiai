@@ -3,8 +3,8 @@ import type {
   EngineResult,
   SolveContext,
   ToolCallSummary,
-  EngineToolCall,
   ToolDefinition,
+  ToolExecutionCall,
   ToolExecutionResult,
   ToolRegistry,
   ToolRegistration
@@ -26,6 +26,9 @@ interface RegisteredTool {
   definition(): ToolDefinition;
   execute(argumentsValue: unknown): Promise<ToolExecutionResult>;
 }
+type ToolResultSummary = Pick<ToolCallSummary, "resultCount" | "recordIds">;
+// Keep typed output closures private while preserving the public execute result shape.
+const registeredSummaries = new WeakMap<ToolExecutionResult, () => ToolResultSummary | undefined>();
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -39,16 +42,36 @@ export class WorkerToolLoopError extends Error {
   }
 }
 
-function createToolCallSummary(call: EngineToolCall, toolResult: ToolExecutionResult): ToolCallSummary {
+function summarizeLegacyToolResult(toolResult: ToolExecutionResult): ToolResultSummary {
   const records: unknown[] = toolResult.ok && isRecord(toolResult.value) && Array.isArray(toolResult.value.records)
     ? toolResult.value.records
     : [];
   return {
-    name: call.name,
-    arguments: toolResult.validatedArguments ?? {},
-    status: toolResult.ok ? "completed" : "error",
     resultCount: records.length,
     recordIds: records.flatMap(record => isRecord(record) && typeof record.id === "string" && record.id ? [record.id] : [])
+  };
+}
+
+async function executeWorkerTool(registry: ToolRegistry, call: ToolExecutionCall, signal?: AbortSignal): Promise<{ result: ToolExecutionResult; summary: ToolCallSummary }> {
+  // Invoke injected overrides with their receiver before reading summary metadata.
+  const result = await awaitWithSignal(() => registry.execute(call), signal);
+  let metadata: ToolResultSummary | undefined;
+  try {
+    const summary = registeredSummaries.get(result)?.();
+    metadata = summary ? { resultCount: summary.resultCount, recordIds: summary.recordIds } : undefined;
+  } catch {
+    // Summary failures must not change a successful Tool result or expose exceptions.
+  }
+  const { resultCount, recordIds } = metadata ?? summarizeLegacyToolResult(result);
+  return {
+    result,
+    summary: {
+      name: call.name,
+      arguments: result.validatedArguments ?? {},
+      status: result.ok ? "completed" : "error",
+      resultCount,
+      recordIds
+    }
   };
 }
 
@@ -78,13 +101,14 @@ export async function generateWorkerCommand({ engine, context, toolRegistry, sig
   }
   const call = firstTurn.calls[0];
   // Cancel this worker's wait; shared Knowledge embeddings remain session-owned.
-  const toolResult = await awaitWithSignal(() => toolRegistry.execute({
+  const { result: toolResult, summary } = await executeWorkerTool(toolRegistry, {
     name: call.name,
     arguments: call.arguments
-  }), signal);
-  const summary = createToolCallSummary(call, toolResult);
+  }, signal);
   signal?.throwIfAborted();
-  const { validatedArguments: _validatedArguments, ...publicToolResult } = toolResult;
+  const publicToolResult = toolResult.ok
+    ? { ok: true as const, value: toolResult.value }
+    : { ok: false as const, error: toolResult.error };
   const finalTurn = await engine.generateTurn({
     context,
     tools,
@@ -126,7 +150,7 @@ function invalidArgumentsResult(name: string): ToolExecutionResult {
   };
 }
 
-function validateTool<T extends Record<string, unknown>>(tool: ToolRegistration<T>) {
+function validateTool<Input extends Record<string, unknown>, Output>(tool: ToolRegistration<Input, Output>) {
   if (typeof tool?.name !== "string" || tool.name.trim().length === 0) {
     throw new TypeError("Tool name must be a non-empty string.");
   }
@@ -144,17 +168,18 @@ function validateTool<T extends Record<string, unknown>>(tool: ToolRegistration<
 export function createToolRegistry(): ToolRegistry {
   const tools = new Map<string, RegisteredTool>();
   return {
-    register<T extends Record<string, unknown>>(tool: ToolRegistration<T>): void {
+    register<Input extends Record<string, unknown>, Output>(tool: ToolRegistration<Input, Output>): void {
       validateTool(tool);
       if (tools.has(tool.name)) {
         throw new Error(`Tool already registered: ${tool.name}`);
       }
-      // Capture the schema and its matching executor together before erasing input types.
+      // Capture schema, executor, output and summarizer together before type erasure.
       const snapshot = Object.freeze({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        execute: tool.execute
+        execute: tool.execute,
+        summarize: tool.summarize
       });
       const { name, description, inputSchema } = snapshot;
       tools.set(name, {
@@ -172,7 +197,13 @@ export function createToolRegistry(): ToolRegistry {
           if (!parsed.success) return invalidArgumentsResult(name);
           try {
             const value = await snapshot.execute(parsed.data);
-            return { ok: true, value, validatedArguments: parsed.data };
+            const result: ToolExecutionResult = { ok: true, value, validatedArguments: parsed.data };
+            if (snapshot.summarize) {
+              registeredSummaries.set(result, () => result.ok && Object.is(result.value, value)
+                ? snapshot.summarize?.(value)
+                : undefined);
+            }
+            return result;
           } catch {
             return {
               ok: false,

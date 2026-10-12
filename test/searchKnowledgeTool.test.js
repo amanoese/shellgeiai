@@ -18,6 +18,14 @@ function createTool(records = []) {
 }
 
 describe("createSearchKnowledgeTool", () => {
+  it("counts formatted records with missing IDs without logging empty IDs", async () => {
+    const { tool } = createTool([{ text: "Record without an ID." }]);
+    const result = await tool.execute({ query: "awk" });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].id).toBe("");
+    expect(tool.summarize(result)).toEqual({ resultCount: 1, recordIds: [] });
+  });
+
   it("defines the read-only search_knowledge tool", () => {
     const { tool } = createTool();
 
@@ -87,5 +95,6 @@ describe("createSearchKnowledgeTool", () => {
       "record-3",
       "record-4"
     ]);
+    expect(tool.summarize(result)).toEqual({ resultCount: 5, recordIds: result.records.map(record => record.id) });
   });
 });

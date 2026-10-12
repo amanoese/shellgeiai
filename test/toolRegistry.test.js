@@ -156,6 +156,16 @@ describe("createToolRegistry", () => {
     });
   });
 
+  it("keeps execute results unchanged and does not evaluate worker summaries", async () => {
+    const registry = createToolRegistry();
+    let summaryCalls = 0;
+    registry.register(echoTool({ summarize() { summaryCalls++; throw new Error("private summary error"); } }));
+    await expect(registry.execute({ name: "echo_value", arguments: { value: "ok" } })).resolves.toEqual({
+      ok: true, value: { value: "ok" }, validatedArguments: { value: "ok" }
+    });
+    expect(summaryCalls).toBe(0);
+  });
+
   it("completely sanitizes execution failures", async () => {
     const registry = createToolRegistry();
     registry.register(

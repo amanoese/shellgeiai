@@ -62,6 +62,25 @@ function exhaustiveToolResult(result: ToolExecutionResult<number>): string {
   }
 }
 const registry = createToolRegistry();
+registry.register({
+  name: "typed-summary", description: "Infer execution output before summarizing",
+  inputSchema: z.object({ query: z.string() }),
+  execute: async input => ({ ids: [input.query] }),
+  summarize(value) {
+    const ids: string[] = value.ids;
+    // @ts-expect-error Summarizers cannot access fields absent from execution output.
+    value.records;
+    return { resultCount: ids.length, recordIds: ids };
+  }
+});
+async function unknownRegistryOutput() {
+  const result = await registry.execute({ name: "typed-summary", arguments: { query: "awk" } });
+  if (result.ok) {
+    // @ts-expect-error Heterogeneous registry execution deliberately returns unknown output.
+    result.value.ids;
+  }
+}
+void unknownRegistryOutput;
 registry.register({ name: "inferred", description: "Inferred schema output", inputSchema: z.object({ count: z.number() }), execute(input) { const count: number = input.count; return count; } });
 registry.register({ name: "wrong-input", description: "Mismatched schema output", inputSchema: z.object({ count: z.number() }),
   // @ts-expect-error Executor cannot treat the schema's numeric output as text.

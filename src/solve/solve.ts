@@ -216,7 +216,7 @@ export async function createSolveSession(options: SolveProblemOptions): Promise<
         }
         if (usesWorkerKnowledge(session.knowledgeMode)) {
             session.toolRegistry = createToolRegistry();
-            session.toolRegistry.register<{ query: string }>(createSearchKnowledgeTool({ retriever: session.knowledgeRetriever }));
+            session.toolRegistry.register(createSearchKnowledgeTool({ retriever: session.knowledgeRetriever }));
         }
         if (usesPlannerKnowledge(session.knowledgeMode)) {
             const retriever = session.knowledgeRetriever;

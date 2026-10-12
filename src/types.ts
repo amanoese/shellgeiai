@@ -299,18 +299,19 @@ export interface LlmClientOptions {
 }
 export type LlmClientFactory = (options: LlmClientOptions) => LlmClient | PromiseLike<LlmClient>;
 
-export interface ToolRegistration<T extends Record<string, unknown> = Record<string, unknown>> {
+export interface ToolRegistration<Input extends Record<string, unknown> = Record<string, unknown>, Output = unknown> {
   name: string;
   description: string;
-  inputSchema: z.ZodType<T>;
-  execute(input: T): unknown | Promise<unknown>;
+  inputSchema: z.ZodType<Input>;
+  execute(input: Input): Output | Promise<Output>;
+  summarize?(value: Output): Pick<ToolCallSummary, "resultCount" | "recordIds">;
 }
 export type ToolExecutionResult<T = unknown> = { validatedArguments: Record<string, unknown> } & (
   | { ok: true; value: T }
   | { ok: false; error: { code: "unknown_tool" | "invalid_arguments" | "tool_execution_failed"; message: string } }
 );
 export interface ToolRegistry {
-  register<T extends Record<string, unknown>>(tool: ToolRegistration<T>): void;
+  register<Input extends Record<string, unknown>, Output = unknown>(tool: ToolRegistration<Input, Output>): void;
   definitions(): ToolDefinition[];
   execute(call: ToolExecutionCall): Promise<ToolExecutionResult>;
 }

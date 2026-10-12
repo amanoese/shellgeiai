@@ -19,6 +19,11 @@ store.search({ vector });
 const tool = createSearchKnowledgeTool({ retriever: { search: async () => [record] } });
 const registration: ToolRegistration<SearchKnowledgeInput> = tool;
 const sameSchema: typeof searchKnowledgeInputSchema = tool.inputSchema;
+const summary = tool.summarize({ records: [] });
+const summaryCount: number = summary.resultCount;
+const summaryIds: string[] = summary.recordIds;
+// @ts-expect-error Knowledge summaries require the formatted search output.
+tool.summarize({ records: [{ id: 3 }] });
 // @ts-expect-error Search schema and execute input must agree.
 const invalidSchema: ToolRegistration<SearchKnowledgeInput> = { ...tool, inputSchema: z.object({ query: z.number() }) };
 // @ts-expect-error Parsed search inputs require string queries.
@@ -36,4 +41,4 @@ async function knowledgeBoundaryContracts() {
   const incompleteSnapshot: KnowledgeSnapshot = { provider: "openrouter", model: "m", inputProfile: "p", dbPath: "x", dimensions: 2, generationId: 1 };
   return [id, snapshot, score, incompleteSnapshot];
 }
-void [vector, invalidVector, mode, alias, text, registration, sameSchema, invalidSchema, knowledgeBoundaryContracts];
+void [vector, invalidVector, mode, alias, text, registration, sameSchema, summaryCount, summaryIds, invalidSchema, knowledgeBoundaryContracts];
