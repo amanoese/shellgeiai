@@ -3,10 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { solveProblem } from "../src/solve/solve.js";
-import { SimpleJudge } from "../src/execution/judge/simpleJudge.js";
-import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
-import { createDefaultRunnerLimits } from "../src/execution/runner/limits.js";
+import { solveProblem } from "../dist/solve/solve.js";
+import { SimpleJudge } from "../dist/execution/judge.js";
+import { DockerRunner } from "../dist/execution/dockerRunner.js";
+import { createDefaultRunnerLimits } from "../dist/execution/safety.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const IMAGE_CANDIDATES = [
@@ -25,6 +25,24 @@ function imageExists(image) {
     encoding: "utf8"
   });
   return result.status === 0;
+}
+
+function expectContainerCleanup(result) {
+  expect(result.cleanup).toMatchObject({ attempted: true, exitCode: 0 });
+  const missingContainerMessage = `Error response from daemon: No such container: ${result.containerName}`;
+  // --rm may finish before rm -f; both outcomes must leave this container absent.
+  expect(["", missingContainerMessage]).toContain(result.cleanup.stderr.trim());
+
+  const inspected = spawnSync("docker", ["container", "inspect", result.containerName], {
+    encoding: "utf8"
+  });
+  expect(inspected.error).toBeUndefined();
+  expect(inspected.status).toBe(1);
+  expect(inspected.stdout.trim()).toBe("[]");
+  expect([
+    missingContainerMessage,
+    `Error: No such container: ${result.containerName}`
+  ]).toContain(inspected.stderr.trim());
 }
 
 function resolveDockerImage() {
@@ -151,11 +169,7 @@ describeDocker("Docker integration", () => {
     expect(result.timedOut).toBe(true);
     expect(result.aborted).toBe(false);
     expect(result.exitCode).not.toBe(0);
-    expect(result.cleanup).toEqual({
-      attempted: true,
-      exitCode: 0,
-      stderr: ""
-    });
+    expectContainerCleanup(result);
   }, 20_000);
 
   it("reports aborts from a real container run", async () => {
@@ -184,11 +198,7 @@ describeDocker("Docker integration", () => {
     expect(result.aborted).toBe(true);
     expect(result.timedOut).toBe(false);
     expect(result.exitCode).not.toBe(0);
-    expect(result.cleanup).toEqual({
-      attempted: true,
-      exitCode: 0,
-      stderr: ""
-    });
+    expectContainerCleanup(result);
   }, 20_000);
 
   it("solves through DockerRunner and writes a docker-backed solve log", async () => {

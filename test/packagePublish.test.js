@@ -31,7 +31,7 @@ describe("npm publish metadata", () => {
 
   it("limits publish files to runtime assets and package docs", () => {
     expect(packageJson.files).toEqual([
-      "src",
+      "dist",
       "scripts",
       "wasm",
       "policies",
@@ -48,6 +48,8 @@ describe("npm publish metadata", () => {
       "README.md",
       "LICENSE"
     ]);
+    expect(packageJson.bin.shellgeiai).toBe("dist/cli.js");
+    expect(packageJson.scripts.prepack).toBe("npm run build");
     expect(existsSync(path.join(repoRoot, "LICENSE"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "scripts/build-man-knowledge.js"))).toBe(true);
     expect(existsSync(path.join(repoRoot, "data/knowledge/shellgei-man-profile.json"))).toBe(true);
@@ -64,102 +66,122 @@ describe("npm publish metadata", () => {
     expect(ignoredPaths).toContain("data/knowledge/man.vectors.json");
   });
 
-  it("exposes execution modules from the grouped src hierarchy", async () => {
+  it("publishes consolidated shared, type, event and shell analysis modules", async () => {
+    const modules = ["../dist/types.js", "../dist/shared.js", "../dist/solve/events.js", "../dist/shell/analyzer.js"];
+    const exports = await Promise.all(modules.map((modulePath) => import(modulePath)));
+    expect(Object.keys(exports[0])).toEqual([]);
+    for (const oldPath of [
+      "dist/solve/session/types.js", "dist/providers/engines/Engine.js",
+      "dist/execution/runner/Runner.js", "dist/execution/judge/Judge.js",
+      "dist/shared/fs.js", "dist/shared/exec.js", "dist/solve/session/progress.js",
+      "dist/solve/session/sessionPhases.js", "dist/solve/scoring/commandAnalyzer.js",
+      "dist/solve/scoring/treeSitterLoader.js"
+    ]) expect(existsSync(path.join(repoRoot, oldPath))).toBe(false);
+  });
+
+  it("exposes execution modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../src/execution/runner/localRunner.js",
-      "../src/execution/runner/dockerRunner.js",
-      "../src/execution/runner/limits.js",
-      "../src/execution/safety/checker.js",
-      "../src/execution/safety/policyLoader.js",
-      "../src/execution/judge/simpleJudge.js"
+      "../dist/execution/localRunner.js",
+      "../dist/execution/dockerRunner.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/safety.js",
+      "../dist/execution/judge.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 
-  it("exposes provider modules from the grouped src hierarchy", async () => {
+  it("exposes provider modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../src/providers/engines/Engine.js",
-      "../src/providers/engines/openaiEngine.js",
-      "../src/providers/engines/mockEngine.js",
-      "../src/providers/engines/codexCliEngine.js",
-      "../src/providers/engines/cursorCliEngine.js",
-      "../src/providers/planner/llmPlanner.js",
-      "../src/providers/planner/plannerPrompt.js",
-      "../src/providers/planner/plannerSchema.js",
-      "../src/providers/llm/config.js",
-      "../src/providers/llm/client.js",
-      "../src/providers/llm/responsesHistory.js"
+      "../dist/providers/apiEngine.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/engines.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 
-  it("exposes io and shared modules from the grouped src hierarchy", async () => {
+  it("exposes io and shared modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../src/io/problem/parseProblem.js",
-      "../src/io/logs/writer.js",
-      "../src/io/logs/catalog.js",
-      "../src/io/formatter/formatResult.js",
-      "../src/io/formatter/logs.js",
-      "../src/io/formatter/progressReporter.js",
-      "../src/shared/fs.js",
-      "../src/shared/exec.js"
+      "../dist/solve/solve.js",
+      "../dist/io/logs.js",
+      "../dist/io/logs.js",
+      "../dist/cli/commands.js",
+      "../dist/cli/commands.js",
+      "../dist/io/progress.js",
+      "../dist/shared.js"
     ];
 
  await Promise.all(modules.map((modulePath) => import(modulePath)));
  });
 
-  it("exposes solve entry and session modules from the grouped src hierarchy", async () => {
+  it("exposes solve entry and session modules from the grouped dist hierarchy", async () => {
   const modules = [
-    "../src/solve/solve.js",
-    "../src/solve/runtime.js",
-    "../src/solve/session/solveSession.js",
- "../src/solve/session/sessionPhases.js",
- "../src/solve/session/progress.js",
- "../src/solve/session/types.js"
+    "../dist/solve/solve.js",
+    "../dist/solve/runtime.js",
+    "../dist/solve/solve.js",
+ "../dist/solve/events.js",
+ "../dist/types.js"
  ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
   });
 
-  it("exposes solve flow modules from the grouped src hierarchy", async () => {
+  it("exposes solve flow modules from the grouped dist hierarchy", async () => {
     const modules = [
-      "../src/solve/orchestration/orchestrator.js",
-      "../src/solve/orchestration/executionControl.js",
-      "../src/solve/orchestration/executionSummary.js",
-      "../src/solve/worker/executeWorkerTask.js",
-      "../src/solve/worker/attemptRunner.js",
-      "../src/solve/worker/attemptFactory.js",
-      "../src/solve/worker/stopReason.js",
-      "../src/solve/worker/taskExecutor.js",
-      "../src/solve/worker/taskQueue.js",
-      "../src/solve/planning/planner.js",
-      "../src/solve/selection/selector.js",
-      "../src/solve/scoring/shellgeiScorer.js"
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/worker.js",
+      "../dist/solve/tools.js",
+      "../dist/solve/orchestrator.js",
+      "../dist/solve/solve.js",
+      "../dist/solve/selection.js",
+      "../dist/solve/selection.js"
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
+    for (const oldPath of [
+      "dist/solve/worker/executeWorkerTask.js", "dist/solve/worker/attemptRunner.js",
+      "dist/solve/worker/attemptFactory.js", "dist/solve/worker/stopReason.js",
+      "dist/solve/worker/taskExecutor.js", "dist/solve/worker/toolLoop.js",
+      "dist/tools/toolRegistry.js",
+      "dist/solve/session/solveSession.js", "dist/io/problem/parseProblem.js",
+      "dist/solve/planning/planner.js", "dist/solve/orchestration/orchestrator.js",
+      "dist/solve/orchestration/executionControl.js", "dist/solve/orchestration/executionSummary.js",
+      "dist/solve/worker/taskQueue.js", "dist/solve/selection/selector.js",
+      "dist/solve/scoring/shellgeiScorer.js"
+    ]) expect(existsSync(path.join(repoRoot, oldPath))).toBe(false);
   });
 
   it("includes LLM, Planner and Worker knowledge runtime modules in the packed files", async () => {
     const modulePaths = [
-      "../src/knowledge/mode.js",
-      "../src/knowledge/hints.js",
-      "../src/knowledge/knowledgePaths.js",
-      "../src/knowledge/knowledgeRuntime.js",
-      "../src/knowledge/embeddingInputs.js",
-      "../src/knowledge/sqliteStore.js",
-      "../src/knowledge/sqliteSchema.js",
-      "../src/providers/embeddings/openRouterEmbedder.js",
-      "../src/tools/toolRegistry.js",
-      "../src/knowledge/searchKnowledgeTool.js",
-      "../src/solve/worker/toolLoop.js",
-      "../src/providers/llm/config.js",
-      "../src/providers/llm/client.js",
-      "../src/providers/llm/responsesHistory.js",
-      "../src/providers/planner/llmPlanner.js",
-      "../src/providers/engines/openaiEngine.js"
+      "../dist/types.js",
+      "../dist/shared.js",
+      "../dist/solve/events.js",
+      "../dist/shell/analyzer.js",
+      "../dist/knowledge/config.js",
+      "../dist/knowledge/runtime.js",
+      "../dist/knowledge/store.js",
+      "../dist/knowledge/dataset.js",
+      "../dist/knowledge/commands.js",
+      "../dist/knowledge/man.js",
+      "../dist/knowledge/manProfile.js",
+      "../dist/providers/embedder.js",
+      "../dist/solve/tools.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/llm.js",
+      "../dist/providers/planner.js",
+      "../dist/providers/apiEngine.js"
     ];
     const packedModulePaths = modulePaths.map((modulePath) => modulePath.replace(/^\.\.\//, ""));
 
@@ -184,7 +206,8 @@ describe("npm publish metadata", () => {
       }
       const stdout = execFileSync(
         "npm",
-        ["pack", "--dry-run", "--json", "--pack-destination", packDir],
+        // npm test already built dist; prepack would delete modules used by parallel tests.
+        ["pack", "--dry-run", "--ignore-scripts", "--json", "--pack-destination", packDir],
         {
           cwd: repoRoot,
           encoding: "utf8",
@@ -195,6 +218,28 @@ describe("npm publish metadata", () => {
       expect(manifest).toHaveLength(1);
       const packedPaths = manifest[0].files.map((file) => file.path);
 
+      expect(packedPaths).toContain("dist/cli.js");
+      const sourcePaths = [];
+      async function collectSources(directory) {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          const filename = path.join(directory, entry.name);
+          if (entry.isDirectory()) await collectSources(filename);
+          else sourcePaths.push(path.relative(path.join(repoRoot, "src"), filename));
+        }
+      }
+      await collectSources(path.join(repoRoot, "src"));
+      expect(sourcePaths).toHaveLength(31);
+      expect(sourcePaths.every((filename) => filename.endsWith(".ts"))).toBe(true);
+      expect(new Set(sourcePaths.map((filename) => path.dirname(filename)).filter((directory) => directory !== ".")).size).toBe(7);
+      for (const sourcePath of sourcePaths) {
+        const modulePath = `dist/${sourcePath.replace(/\.ts$/, "")}`;
+        for (const extension of [".js", ".d.ts", ".js.map"]) expect(packedPaths).toContain(modulePath + extension);
+      }
+      for (const asset of ["wasm/tree-sitter-bash.wasm", "data/knowledge/shellgei-man-profile.json", "policies/default-command-policy.json", "policies/default-sandbox-policy.json"]) {
+        expect(packedPaths).toContain(asset);
+      }
+      expect(packedPaths).not.toContain("vitest.config.ts");
+      expect(packedPaths.some((filePath) => filePath.startsWith("src/"))).toBe(false);
       for (const modulePath of packedModulePaths) {
         expect(packedPaths).toContain(modulePath);
       }
@@ -205,7 +250,7 @@ describe("npm publish metadata", () => {
       expect(packedPaths).not.toContain("data/knowledge/shellgei-basic.vectors.jsonl");
       for (const artifact of generatedArtifacts) expect(packedPaths).not.toContain(path.relative(repoRoot, artifact));
       for (const legacy of ["ruriEmbedder.js", "vectorFile.js", "vectorSearch.js"]) {
-        expect(packedPaths).not.toContain(`src/knowledge/${legacy}`);
+        expect(packedPaths).not.toContain(`dist/knowledge/${legacy}`);
       }
       expect((await readdir(packDir)).filter((name) => name.endsWith(".tgz"))).toEqual([]);
     } finally {

@@ -4,7 +4,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { afterEach, describe, expect, it } from "vitest";
-import { openKnowledgeStore } from "../src/knowledge/sqliteStore.js";
+import { openKnowledgeStore } from "../dist/knowledge/store.js";
 
 const directories = [];
 const stores = [];

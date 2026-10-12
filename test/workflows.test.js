@@ -22,9 +22,13 @@ describe("GitHub workflows", () => {
   it("tests the native SQLite dependency on all supported Node release lines", () => {
     const workflow = readWorkflow("ci.yml");
     expect(workflow).toContain("node-version: [22, 24, 26]");
-    expect(workflow).toContain("node src/cli.js knowledge --help");
+    expect(workflow).toContain("node dist/cli.js knowledge --help");
     expect(workflow).toContain('cd "$(mktemp -d)"');
     expect(workflow).toContain("shellgeiai knowledge build --help");
+    expect(workflow).toContain('PACKAGE_TGZ="$(npm pack --foreground-scripts=false)"');
+    expect(workflow).toContain('npm install -g --prefix "$INSTALL_PREFIX" "./${PACKAGE_TGZ}"');
+    expect(workflow).toContain('skipLibCheck: false');
+    expect(workflow).toContain('run: npm run typecheck');
     expect(workflow).toContain("shellgei-basic.jsonl");
     expect(workflow).not.toContain("OPENROUTER_API_KEY");
   });

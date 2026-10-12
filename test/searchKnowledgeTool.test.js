@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import {
   MAX_KNOWLEDGE_RESULT_FIELD_CHARS
-} from "../src/knowledge/hints.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+} from "../dist/knowledge/config.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 
 function createTool(records = []) {
   const retriever = {
@@ -18,6 +18,24 @@ function createTool(records = []) {
 }
 
 describe("createSearchKnowledgeTool", () => {
+  it("does not read a search getter until execution", async () => {
+    const readSearch = vi.fn(() => { throw new Error("unavailable"); });
+    const retriever = Object.defineProperty({}, "search", { get: readSearch });
+    const registry = createToolRegistry();
+    registry.register(createSearchKnowledgeTool({ retriever }));
+    expect(readSearch).not.toHaveBeenCalled();
+    const result = await registry.execute({ name: "search_knowledge", arguments: { query: "awk" } });
+    expect(result).toMatchObject({ ok: false, error: { code: "tool_execution_failed" } });
+    expect(readSearch).toHaveBeenCalledOnce();
+  });
+  it("counts formatted records with missing IDs without logging empty IDs", async () => {
+    const { tool } = createTool([{ text: "Record without an ID." }]);
+    const result = await tool.execute({ query: "awk" });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].id).toBe("");
+    expect(tool.summarize(result)).toEqual({ resultCount: 1, recordIds: [] });
+  });
+
   it("defines the read-only search_knowledge tool", () => {
     const { tool } = createTool();
 
@@ -87,5 +105,6 @@ describe("createSearchKnowledgeTool", () => {
       "record-3",
       "record-4"
     ]);
+    expect(tool.summarize(result)).toEqual({ resultCount: 5, recordIds: result.records.map(record => record.id) });
   });
 });

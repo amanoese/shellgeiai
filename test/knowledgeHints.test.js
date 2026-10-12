@@ -3,7 +3,7 @@ import {
   MAX_KNOWLEDGE_RESULT_FIELD_CHARS,
   MAX_KNOWLEDGE_RESULT_TEXT_CHARS,
   formatKnowledgeRecords
-} from "../src/knowledge/hints.js";
+} from "../dist/knowledge/config.js";
 
 describe("knowledge hint formatting", () => {
   it("selects only prompt-safe knowledge fields", () => {

@@ -4,18 +4,27 @@ import {
   createGenerationFailedAttempt,
   createWorkerCandidate,
   createWorkerSummary
-} from "../src/solve/worker/attemptFactory.js";
-import { getRemainingBudgetMs, getWorkerStopReason } from "../src/solve/worker/stopReason.js";
-import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../src/solve/worker/taskQueue.js";
-import { runWorkerAttempt } from "../src/solve/worker/attemptRunner.js";
-import { createExecutionSummary } from "../src/solve/orchestration/executionSummary.js";
-import { createExecutionControl } from "../src/solve/orchestration/executionControl.js";
-import { runSolveOrchestrator } from "../src/solve/orchestration/orchestrator.js";
-import { createKnowledgeRetriever } from "../src/knowledge/retriever.js";
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+} from "../dist/solve/worker.js";
+import { getRemainingBudgetMs, getWorkerStopReason } from "../dist/solve/worker.js";
+import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../dist/solve/orchestrator.js";
+import { executeWorkerTask, runWorkerAttempt } from "../dist/solve/worker.js";
+import { createExecutionSummary } from "../dist/solve/orchestrator.js";
+import { createExecutionControl } from "../dist/solve/orchestrator.js";
+import { runSolveOrchestrator } from "../dist/solve/orchestrator.js";
+import { createKnowledgeRetriever } from "../dist/knowledge/runtime.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 
-afterEach(() => vi.useRealTimers());
+const testControls = [];
+function testExecutionControl(session = {}, workers = new Map()) {
+  const control = createExecutionControl(session, workers);
+  testControls.push(control);
+  return control;
+}
+afterEach(() => {
+  for (const control of testControls.splice(0)) control.dispose();
+  vi.useRealTimers();
+});
 
 function waitForAbort(signal) {
   return new Promise((_resolve, reject) => {
@@ -42,7 +51,7 @@ describe("orchestrator generation cancellation", () => {
         ? { type: "command", command: "printf ok" }
         : { type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} })
     };
-    const session = {
+    const session = { generation: "tools", knowledgeMode: "worker",
       problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
       signal: sessionController.signal, engine, toolRegistry,
       runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
@@ -82,11 +91,11 @@ describe("orchestrator generation cancellation", () => {
       waiting = true;
       return waitForAbort(signal);
     };
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
       engine: { name: "fake", generateCommand: (context, { signal }) => generate(context, signal),
         generateTurn: ({ context, signal, continuation }) => generate(context, signal, continuation) },
-      ...(path === "command" ? {} : { toolRegistry: { definitions: () => [], execute: async () => ({ ok: true, value: { records: [] }, validatedArguments: { query: "awk" } }) } }),
+      ...(path === "command" ? {} : { generation: "tools", knowledgeMode: "worker", toolRegistry: { definitions: () => [], execute: async () => ({ ok: true, value: { records: [] }, validatedArguments: { query: "awk" } }) } }),
       runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
       judge: { judge: async () => ({ passed: true, reason: "ok" }) },
       onProgress: event => { if (event.type === "attempt-finished" && event.passed) passed = true; },
@@ -106,7 +115,7 @@ describe("orchestrator generation cancellation", () => {
   it("returns stopped summaries on the overall deadline during generation", async () => {
     vi.useFakeTimers();
     const sessionController = new AbortController();
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() + 50,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() + 50,
       signal: sessionController.signal, engine: { name: "fake", generateCommand: (_context, { signal }) => waitForAbort(signal) },
       plan: { parallelism: 2, workerTasks: ["worker-1", "worker-2"].map(workerId => ({ workerId, strategy: "default", maxAttempts: 1 })) }
     };
@@ -158,6 +167,125 @@ describe("createExecutionSummary", () => {
 });
 
 describe("createExecutionControl", () => {
+  function activeWorkers() {
+    return new Map(["keep", "stop"].map(workerId => [workerId, { workerId, abortController: new AbortController() }]));
+  }
+
+  it("aborts the current worker map when the public map is replaced", () => {
+    const originalWorkers = activeWorkers();
+    const replacementWorkers = activeWorkers();
+    const control = testExecutionControl({}, originalWorkers);
+    control.workers = replacementWorkers;
+    control.requestStop({ reason: "stop replacement workers" });
+    expect([...originalWorkers.values()].every(worker => !worker.abortController.signal.aborted)).toBe(true);
+    expect([...replacementWorkers.values()].every(worker => worker.abortController.signal.aborted)).toBe(true);
+  });
+
+  it("records the first passing candidate without stopping execution", () => {
+    const control = createExecutionControl({}, new Map());
+    control.recordPassingCandidate("keep");
+    control.recordPassingCandidate("second");
+    expect(control.passingCandidateId).toBe("keep");
+    expect(control.stopRequested).toBe(false);
+    expect(control.stopReason).toBe("");
+    expect(control.getStopReason()).toBe("");
+    control.dispose();
+  });
+
+  it("continues for five seconds after a passing candidate and retains the first grace request", async () => {
+    vi.useFakeTimers();
+    const workers = activeWorkers();
+    const control = createExecutionControl({}, workers);
+    control.scheduleGraceStop({ reason: "first pass", passingCandidateId: "keep", exceptWorkerId: "keep" }, 5000);
+    control.scheduleGraceStop({ reason: "second pass", passingCandidateId: "stop" }, 0);
+    expect(control.stopReason).toBe("first pass");
+    expect(control.passingCandidateId).toBe("keep");
+    expect(control.getStopReason()).toBe("");
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(control.stopRequested).toBe(false);
+    expect(control.getStopReason()).toBe("");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(control.stopRequested).toBe(true);
+    expect(control.getStopReason()).toBe("first pass");
+    expect(workers.get("keep").abortController.signal.aborted).toBe(false);
+    expect(workers.get("stop").abortController.signal.aborted).toBe(true);
+    expect(control.graceStopTimer).toBeNull();
+    control.dispose();
+  });
+
+  it("observes the deadline synchronously without aborting until its timer runs", async () => {
+    vi.useFakeTimers();
+    const workers = activeWorkers();
+    const control = createExecutionControl({ deadlineAtMs: Date.now() + 50 }, workers);
+    control.scheduleGraceStop({ reason: "first pass", passingCandidateId: "keep", exceptWorkerId: "keep" }, 5000);
+    vi.setSystemTime(Date.now() + 50);
+    expect(control.getStopReason()).toBe("Stopped because the overall time budget was exhausted.");
+    expect(control.stopRequested).toBe(false);
+    expect(control.passingCandidateId).toBe("keep");
+    expect([...workers.values()].every(worker => !worker.abortController.signal.aborted)).toBe(true);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(control.stopRequested).toBe(true);
+    expect([...workers.values()].every(worker => worker.abortController.signal.aborted)).toBe(true);
+    expect(control.graceStopTimer).toBeNull();
+    control.dispose();
+  });
+
+  it("preserves an observed deadline when grace is scheduled afterward", async () => {
+    vi.useFakeTimers();
+    const workers = activeWorkers();
+    const control = createExecutionControl({ deadlineAtMs: Date.now() + 50 }, workers);
+    vi.setSystemTime(Date.now() + 50);
+    const reason = control.getStopReason();
+    control.scheduleGraceStop({ reason: "first pass", passingCandidateId: "keep", exceptWorkerId: "keep" }, 0);
+    expect(control.stopReason).toBe(reason);
+    expect(control.passingCandidateId).toBe("keep");
+    expect(control.stopRequested).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(control.stopReason).toBe("first pass");
+    expect(workers.get("keep").abortController.signal.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(control.stopReason).toBe(reason);
+    expect(workers.get("keep").abortController.signal.aborted).toBe(true);
+    control.dispose();
+  });
+
+  it("records a candidate even for an ignored stop and lets a forced stop replace the reason", () => {
+    const workers = activeWorkers();
+    const control = createExecutionControl({}, workers);
+    control.requestStop({ reason: "initial", exceptWorkerId: "keep" });
+    control.requestStop({ reason: "ignored", passingCandidateId: "keep" });
+    expect(control.stopReason).toBe("initial");
+    expect(control.passingCandidateId).toBe("keep");
+    expect(workers.get("keep").abortController.signal.aborted).toBe(false);
+    control.requestStop({ reason: "forced", passingCandidateId: "stop", force: true, exceptWorkerId: "keep" });
+    expect(control.stopReason).toBe("forced");
+    expect(control.passingCandidateId).toBe("keep");
+    expect(workers.get("keep").abortController.signal.aborted).toBe(false);
+    control.dispose();
+  });
+
+  it.each([undefined, "keep"])("keeps empty saved reasons and supplies the fallback with candidate %s", candidate => {
+    const control = createExecutionControl({}, new Map());
+    control.requestStop({ reason: "", passingCandidateId: candidate });
+    expect(control.stopReason).toBe("");
+    expect(control.getStopReason()).toBe(candidate ? `Stopped because ${candidate} already produced a passing candidate.` : "Execution was stopped.");
+    expect(createExecutionSummary({ results: [], taskOrder: new Map(), control }).stopReason).toBeNull();
+    control.dispose();
+  });
+
+  it("disposes deadline and grace timers without requesting a stop", async () => {
+    vi.useFakeTimers();
+    const workers = activeWorkers();
+    const control = createExecutionControl({ deadlineAtMs: Date.now() + 50 }, workers);
+    control.scheduleGraceStop({ reason: "first pass" }, 5000);
+    control.dispose();
+    expect(control.deadlineTimer).toBeNull();
+    expect(control.graceStopTimer).toBeNull();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(control.stopRequested).toBe(false);
+    expect([...workers.values()].every(worker => !worker.abortController.signal.aborted)).toBe(true);
+  });
+
   it("requestStop aborts workers except the passing candidate worker", () => {
     const workers = new Map([
       ["keep", { workerId: "keep", abortController: new AbortController() }],
@@ -179,19 +307,40 @@ describe("createExecutionControl", () => {
   });
 });
 
-describe("worker task executor imports", () => {
-  it("keeps the compatibility export identical to the direct worker executor export", async () => {
-    const direct = await import("../src/solve/worker/executeWorkerTask.js");
-    const compat = await import("../src/solve/worker/taskExecutor.js");
+describe("executeWorkerTask", () => {
+  it("retries with the previous attempt data and preserves the passing candidate", async () => {
+    const task = { workerId: "worker-1", strategy: "default", maxAttempts: 2 };
+    const generateCommand = vi.fn(async context => ({ command: context.attempts.length ? "printf ok" : "printf wrong", explanation: context.attempts.length ? "Corrected" : "First try" }));
+    const control = testExecutionControl();
+    const result = await executeWorkerTask({ generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "best-score-wins",
+      engine: { name: "test", generateCommand },
+      runner: { run: async command => ({ stdout: command === "printf ok" ? "ok" : "wrong", stderr: "", exitCode: 0, timedOut: false }) },
+      judge: { judge: async ({ stdout }) => ({ passed: stdout === "ok", reason: stdout === "ok" ? "passed" : "wrong output" }) }
+    }, task, control, { abortController: new AbortController() });
+    expect(result.attempts.map(attempt => attempt.passed)).toEqual([false, true]);
+    expect(generateCommand.mock.calls[1][0].attempts[0]).toMatchObject({ command: "printf wrong", explanation: "First try", failureReason: "wrong output" });
+    expect(result.candidate).toMatchObject({ command: "printf ok", output: "ok", explanation: "Corrected", finalCheck: { passed: true, iterations: 2 } });
+    expect(result.workerSummary).toMatchObject({ state: "idle", attemptCount: 2, passed: true });
+    expect(control.passingCandidateId).toBe(task.workerId);
+  });
 
-    expect(compat.executeWorkerTask).toBe(direct.executeWorkerTask);
+  it("keeps the generated explanation when deadline stopping produces no attempt", async () => {
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", engine: { name: "test", generateCommand: async () => {
+      session.deadlineAtMs = Date.now() - 1;
+      return { command: "printf ok", explanation: "Generated before the deadline" };
+    } } };
+    const result = await executeWorkerTask(session, { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, testExecutionControl(session), { abortController: new AbortController() });
+    expect(result.attempts).toEqual([]);
+    expect(result.candidate.explanation).toBe("Generated before the deadline");
+    expect(result.workerSummary).toMatchObject({ state: "stopped", attemptCount: 0, passed: false });
   });
 });
 
 describe("getWorkerStopReason", () => {
   it("returns time-budget reason and records it when deadline expired", () => {
-    const control = {};
-    const reason = getWorkerStopReason({ deadlineAtMs: Date.now() - 1 }, control);
+    const session = { deadlineAtMs: Date.now() - 1 };
+    const control = testExecutionControl(session);
+    const reason = getWorkerStopReason(session, control);
 
     expect(reason).toBe("Stopped because the overall time budget was exhausted.");
     expect(control.stopReason).toBe("Stopped because the overall time budget was exhausted.");
@@ -400,12 +549,73 @@ describe("worker attempt factory", () => {
 });
 
 describe("runWorkerAttempt", () => {
+  it("preserves Runner results supplied through class accessors", async () => {
+    class AccessorRunResult {
+      get stdout() { return "ok"; }
+      get stderr() { return "warning"; }
+      get exitCode() { return 0; }
+      get timedOut() { return false; }
+      get durationMs() { return 7; }
+      get failure() { return { type: "diagnostic", message: "Runner diagnostic" }; }
+      get cleanup() { return { attempted: true, exitCode: 0, stderr: "" }; }
+    }
+    const result = await runWorkerAttempt({
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
+        engine: { generateCommand: async () => ({ command: "printf ok" }) },
+        runner: { run: async () => new AccessorRunResult() },
+        judge: { judge: async input => ({
+          passed: input.stdout === "ok" && input.stderr === "warning" && input.exitCode === 0 && input.timedOut === false,
+          reason: "judged", score: { value: 1 }
+        }) } },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: testExecutionControl(),
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
+    });
+    expect(result).toStrictEqual({ kind: "passed", attempt: {
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "ok", stderr: "warning", exitCode: 0, timedOut: false, aborted: false,
+      durationMs: 7, runnerFailure: { type: "diagnostic", message: "Runner diagnostic" },
+      runnerCleanup: { attempted: true, exitCode: 0, stderr: "" },
+      passed: true, explanation: undefined, failureReason: "judged", score: { value: 1 }, toolCalls: []
+    } });
+  });
+
+  it.each([true, false])("returns an explicit judged outcome for passed=%s", async passed => {
+    const result = await runWorkerAttempt({
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
+        engine: { generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) },
+        runner: { run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false }) },
+        judge: { judge: async () => ({ passed, reason: "judged", score: { value: 1 } }) } },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: testExecutionControl(),
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
+    });
+    expect(Object.keys(result).sort()).toEqual(["attempt", "kind"]);
+    expect(result).toStrictEqual({ kind: passed ? "passed" : "retry", attempt: {
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "ok", stderr: "", exitCode: 0, timedOut: false, aborted: false,
+      durationMs: undefined, runnerFailure: null, runnerCleanup: null,
+      passed, explanation: "Print ok", failureReason: "judged", score: { value: 1 }, toolCalls: []
+    } });
+  });
+
+  it("returns a stopped outcome without an attempt when the deadline expires before running", async () => {
+    const runnerRun = vi.fn();
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() - 1,
+      engine: { generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) }, runner: { run: runnerRun } };
+    const result = await runWorkerAttempt({
+      session,
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: testExecutionControl(session),
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
+    });
+    expect(result).toEqual({ kind: "stopped", attempt: null, reason: "Stopped because the overall time budget was exhausted.", explanation: "Print ok" });
+    expect(runnerRun).not.toHaveBeenCalled();
+  });
+
   it.each(["aborted-result", "successful-result-race", "runner-rejection"])("propagates external session cancellation during Runner %s", async outcome => {
     const sessionController = new AbortController();
     const reason = new Error("external cancellation");
     const judge = { judge: vi.fn() };
     const workerState = { abortController: new AbortController() };
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
       engine: { generateCommand: async () => ({ command: "printf ok" }) }, judge,
       runner: { run: async (_command, { signal }) => {
         sessionController.abort(reason);
@@ -413,7 +623,7 @@ describe("runWorkerAttempt", () => {
         if (outcome === "runner-rejection") throw new DOMException("Runner interrupted", "AbortError");
         return { stdout: "ok", stderr: "", exitCode: 0, aborted: outcome === "aborted-result", durationMs: 1 };
       } } };
-    await expect(runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+    await expect(runWorkerAttempt({ session, control: testExecutionControl(), task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState, iteration: 0, attempts: [] })).rejects.toBe(reason);
     expect(judge.judge).not.toHaveBeenCalled();
     expect(workerState.phase).toBe("idle");
@@ -422,31 +632,56 @@ describe("runWorkerAttempt", () => {
   it.each(["worker", "deadline"])("preserves Runner aborted metadata during routine %s cancellation", async source => {
     const workerController = new AbortController();
     const sessionController = new AbortController();
-    const control = {};
     const runResult = { stdout: "partial", stderr: "", exitCode: null, aborted: true, timedOut: false, durationMs: 7,
       failure: { kind: "aborted", message: "Runner aborted" }, cleanup: { completed: true } };
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
       engine: { generateCommand: async () => ({ command: "printf ok" }) },
       runner: { run: async () => {
         if (source === "deadline") { session.deadlineAtMs = Date.now() - 1; sessionController.abort(new Error("Solve time budget exceeded.")); }
-        else { control.stopRequested = true; control.stopReason = "control stopped Worker"; workerController.abort(); }
+        else { control.requestStop({ reason: "control stopped Worker" }); workerController.abort(); }
         return runResult;
       } } };
+    const control = testExecutionControl(session);
     const result = await runWorkerAttempt({ session, control, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: workerController }, iteration: 0, attempts: [] });
-    expect(result.state).toBe("stopped");
-    expect(result.attempt).toMatchObject({ aborted: true, stdout: "partial", durationMs: 7,
-      runnerFailure: runResult.failure, runnerCleanup: runResult.cleanup });
-    expect(result.stopReason).toBe(source === "deadline" ? "Stopped because the overall time budget was exhausted." : "control stopped Worker");
+    expect(result.kind).toBe("stopped");
+    expect(result.reason).toBe(source === "deadline" ? "Stopped because the overall time budget was exhausted." : "control stopped Worker");
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      stdout: "partial", stderr: "", exitCode: null, timedOut: false, aborted: true,
+      durationMs: 7, runnerFailure: runResult.failure, runnerCleanup: runResult.cleanup,
+      passed: false, explanation: undefined, failureReason: result.reason, toolCalls: [],
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+    });
+  });
+
+  it("preserves a sparse stopped attempt when the Judge throws", async () => {
+    const result = await runWorkerAttempt({
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
+        engine: { generateCommand: async () => ({ command: "printf ok" }) },
+        runner: { run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false }) },
+        judge: { judge: async () => { throw new Error("Judge unavailable"); } } },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: testExecutionControl(),
+      workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
+    });
+    expect(result).toMatchObject({ kind: "stopped", reason: "Judge unavailable", attempt: { passed: false, failureReason: "Judge unavailable" } });
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1", command: "printf ok",
+      passed: false, explanation: undefined, failureReason: "Judge unavailable", toolCalls: [],
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+    });
   });
 
   it("preserves existing unrelated Runner failure results", async () => {
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => ({ command: "printf ok" }) },
       runner: { run: async () => { throw new Error("Runner unavailable"); } } };
-    const result = await runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+    const result = await runWorkerAttempt({ session, control: testExecutionControl(), task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: new AbortController() }, iteration: 0, attempts: [] });
-    expect(result).toMatchObject({ state: "stopped", stopReason: "Runner unavailable", attempt: { command: "printf ok", passed: false, failureReason: "Runner unavailable" } });
+    expect(result).toMatchObject({ kind: "stopped", reason: "Runner unavailable", attempt: { command: "printf ok", passed: false, failureReason: "Runner unavailable" } });
+    expect(Object.keys(result.attempt).sort()).toEqual([
+      "attemptId", "command", "explanation", "failureReason", "passed", "score", "toolCalls", "workerId"
+    ]);
   });
 
   it.each(["session", "worker"])("links %s cancellation to command generation", async source => {
@@ -460,40 +695,52 @@ describe("runWorkerAttempt", () => {
       return { command: "printf ok" };
     });
     const runnerRun = vi.fn();
-    const outcome = runWorkerAttempt({ session: {
+    const outcome = runWorkerAttempt({ session: { generation: "command", knowledgeMode: "off",
       problem: { problemText: "print ok" }, workdir: "/tmp", engine: { generateCommand },
       runner: { run: runnerRun }, signal: sessionController.signal
-    }, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: {},
+    }, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: testExecutionControl(),
       workerState: { abortController: workerController }, iteration: 0, attempts: []
     });
     if (source === "session") await expect(outcome).rejects.toThrow("cancel generation");
-    else await expect(outcome).resolves.toMatchObject({ state: "stopped", stopReason: "Execution was stopped." });
+    else await expect(outcome).resolves.toMatchObject({ kind: "stopped", reason: "Execution was stopped.", attempt: null });
     expect(received.aborted).toBe(true);
     expect(runnerRun).not.toHaveBeenCalled();
   });
 
   it("handles a control stop after generation before entering the Runner", async () => {
     const workerController = new AbortController();
-    const control = {};
     const runnerRun = vi.fn();
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => ({ command: "printf ok" }) }, runner: { run: runnerRun },
       onProgress: event => { if (event.type === "attempt-started") {
-        control.stopRequested = true; control.stopReason = "stopped before Runner"; workerController.abort();
+        control.requestStop({ reason: "stopped before Runner" }); workerController.abort();
       } } };
+    const control = testExecutionControl(session);
     await expect(runWorkerAttempt({ session, control,
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: workerController }, iteration: 0, attempts: []
-    })).resolves.toMatchObject({ state: "stopped", stopReason: "stopped before Runner" });
+    })).resolves.toMatchObject({ kind: "stopped", reason: "stopped before Runner", attempt: null });
     expect(runnerRun).not.toHaveBeenCalled();
+  });
+
+  it("recognizes cancellation error names at the unknown provider boundary", async () => {
+    const workerController = new AbortController();
+    const result = await runWorkerAttempt({
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
+        engine: { generateCommand: async () => { workerController.abort(); throw { name: "AbortError" }; } } },
+      control: { getStopReason: () => "scheduler stop" },
+      task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
+      workerState: { abortController: workerController }, iteration: 0, attempts: []
+    });
+    expect(result).toEqual({ kind: "stopped", reason: "scheduler stop", attempt: null, explanation: "" });
   });
 
   it("preserves provider exceptions even when a stop was requested concurrently", async () => {
     const workerController = new AbortController();
     const providerError = new Error("provider unavailable");
-    await expect(runWorkerAttempt({ session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+    await expect(runWorkerAttempt({ session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => { workerController.abort(); throw providerError; } } },
-      control: { stopRequested: true, stopReason: "stop requested" },
+      control: { getStopReason: () => "stop requested" },
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
       workerState: { abortController: workerController }, iteration: 0, attempts: []
     })).rejects.toBe(providerError);
@@ -508,7 +755,7 @@ describe("runWorkerAttempt", () => {
       aborted: false,
       durationMs: 1
     }));
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "Print ok", expectedOutput: "ok" },
       workdir: "/tmp",
       commandPolicy: undefined,
@@ -535,7 +782,7 @@ describe("runWorkerAttempt", () => {
     await runWorkerAttempt({
       session,
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
-      control: {},
+      control: testExecutionControl(),
       workerState: { abortController: new AbortController() },
       iteration: 0,
       attempts: []
@@ -556,7 +803,7 @@ describe("runWorkerAttempt", () => {
       maxAttempts: 1
     };
     const runnerRun = vi.fn();
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: {
         problemText: "List files",
         expectedOutput: ""
@@ -581,16 +828,25 @@ describe("runWorkerAttempt", () => {
     const result = await runWorkerAttempt({
       session,
       task,
-      control: {},
+      control: testExecutionControl(),
       workerState,
       iteration: 0,
       attempts: []
     });
 
-    expect(result.attempt).toMatchObject({
+    expect(result.kind).toBe("stopped");
+    expect(result.reason).toContain("Blocked");
+    expect(result.attempt).not.toHaveProperty("stdout");
+    expect(result.attempt).not.toHaveProperty("stderr");
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1",
+      workerId: "worker-1",
       command: "rm -rf /",
       passed: false,
-      failureReason: expect.stringContaining("Blocked")
+      explanation: "Remove everything.",
+      failureReason: expect.stringContaining("Blocked"),
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } },
+      toolCalls: []
     });
     expect(runnerRun).not.toHaveBeenCalled();
   });
@@ -629,7 +885,7 @@ describe("runWorkerAttempt", () => {
         })
     };
     const runnerRun = vi.fn();
-    const session = {
+    const session = { generation: "tools", knowledgeMode: "worker",
       problem: { problemText: "List files", expectedOutput: "" },
       workdir: "/tmp",
       commandPolicy: undefined,
@@ -642,23 +898,24 @@ describe("runWorkerAttempt", () => {
     const result = await runWorkerAttempt({
       session,
       task,
-      control: {},
+      control: testExecutionControl(),
       workerState: { abortController: new AbortController() },
       iteration: 0,
       attempts: []
     });
 
     expect(result).toMatchObject({
-      state: "idle",
-      stopReason: "",
-      command: "",
-      passed: false,
-      reason: "Worker Tool call limit exceeded."
+      kind: "retry",
+      attempt: { command: "", passed: false, failureReason: "Worker Tool call limit exceeded." }
     });
-    expect(result.attempt).toMatchObject({
+    expect(result.attempt).toStrictEqual({
+      attemptId: "worker-1-attempt-1", workerId: "worker-1",
       command: "",
+      stdout: "", stderr: "", exitCode: null, timedOut: false, aborted: false,
+      explanation: "", durationMs: 0, runnerFailure: null, runnerCleanup: null,
       passed: false,
       failureReason: "Worker Tool call limit exceeded.",
+      score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } },
       state: "idle",
       stopReason: "",
       toolCalls: [
@@ -676,7 +933,7 @@ describe("runWorkerAttempt", () => {
 
   it("preserves unrelated Engine generation exceptions", async () => {
     const providerError = new Error("provider unavailable");
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "List files", expectedOutput: "" },
       workdir: "/tmp",
       engine: { generateCommand: vi.fn(async () => { throw providerError; }) }
@@ -686,7 +943,7 @@ describe("runWorkerAttempt", () => {
       runWorkerAttempt({
         session,
         task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
-        control: {},
+        control: testExecutionControl(),
         workerState: { abortController: new AbortController() },
         iteration: 0,
         attempts: []

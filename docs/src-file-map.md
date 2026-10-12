@@ -1,151 +1,79 @@
-# src File Map
+# 現在の source map
 
-このドキュメントは、現行 `src/` 配下のファイルが何を担当しているかを短く整理したものです。
-詳細な将来像は `docs/ideal-architecture.md` を参照してください。
+`src/` は31個の strict TypeScript ファイル、7ディレクトリです。root の3ファイルと以下の配置が実装の一覧です。責務をファイル内でも分離し、session / worker / policy ごとの深いディレクトリを増やしません。
 
-## 全体構成
+```text
+src/
+  cli.ts                       CLI 起動
+  types.ts                     レイヤ間契約（runtime export は空）
+  shared.ts                    fs / 子プロセス / default parallelism
+  cli/
+    program.ts                 Commander command / option / argument
+    commands.ts                solve / logs dispatch、結果整形
+  solve/
+    solve.ts                   問題正規化、session、plan 正規化、solve 入口
+    runtime.ts                 Engine / Runner / Judge / Planner 構築
+    orchestrator.ts            queue、並列実行、停止制御、集約
+    worker.ts                  retry、attempt、安全性検査、実行、判定
+    tools.ts                   Tool registry、引数検証、bounded Tool loop
+    selection.ts               selector、shellgei scoring
+    events.ts                  phase、progress callback
+  execution/
+    localRunner.ts             host command 実行
+    dockerRunner.ts            Docker isolation、limits、cleanup
+    safety.ts                  default policy、JSON policy validation、AST 検査
+    judge.ts                   stdout / exit code / expected output 判定
+  providers/
+    engines.ts                 mock / Codex CLI / Cursor CLI Engine
+    apiEngine.ts               Responses command / Tool Calling adapter
+    llm.ts                     LLM config、SDK client、Responses history
+    planner.ts                 Planner prompt / Zod schema / provider
+    embedder.ts                OpenRouter embedding / validation / retry
+  knowledge/
+    config.ts                  mode、model、paths、embedding input profile
+    dataset.ts                 JSONL normalization / fingerprint / byte cap
+    store.ts                   SQLite schema / native store / generation / search
+    runtime.ts                 lifecycle / shared query cache / hints / search Tool
+    commands.ts                prepare / build / search
+    man.ts                     installed man から決定的な dataset 抽出
+    manProfile.ts              command list と profile
+  io/
+    logs.ts                    session log / catalog / log 表示
+    progress.ts                bar / plain / JSONL progress
+  shell/
+    analyzer.ts                Bash AST と共有 tree-sitter WASM parser
+```
 
-- `src/cli*`: CLI の入口、引数解析、サブコマンド実行。
-- `src/solve/`: solve のアプリケーション本体。session、planner、orchestrator、worker、selector を持つ。
-- `src/execution/`: コマンド実行、runner、judge、safety policy。
-- `src/providers/`: OpenRouter / OpenAI / 互換 gateway の共通 LLM 設定と AI / planner / embedding provider 依存。
-- `src/knowledge/`: dataset、SQLite generation、検索 runtime と reference hints。
-- `src/io/`: 問題文入力、ログ、表示整形。
-- `src/shared/`: 汎用的な fs / exec 補助。
+## 最初に読む5ファイル
 
-## 主要フロー
+1. `src/cli/program.ts`: CLI が受け取る入力と option
+2. `src/cli/commands.ts`: command から domain 処理への引き渡しと表示
+3. `src/solve/solve.ts`: 問題文、session 初期化、Planner と最終結果
+4. `src/solve/orchestrator.ts`: worker 並列実行、停止と候補集約
+5. `src/solve/worker.ts`: 1 worker の retry と1 attempt の実行
 
-### solve
+型で処理を追う場合は `src/types.ts`、API 通信は `src/providers/llm.ts`、隔離は `src/execution/dockerRunner.ts` を追加で読みます。`src/cli.ts` は起動のみです。
 
-`src/cli.js` -> `src/cli/index.js` -> `src/cli/commands/solve.js` -> `src/solve/solve.js`
+## 型と schema の所有
 
-`solve.js` は `createSolveSession()` で session を初期化し、`runSolveOrchestrator()` で worker を動かし、`selectSolveOutcome()` と `writeSolveSessionLog()` で最終結果をまとめます。
+`src/types.ts` は Engine / Runner / Judge、session / plan / attempt / candidate、progress、Tool、knowledge、公開ログで共有する契約を持ちます。型専用 import / export で接続し、NodeNext の相対 import は source でも `.js` suffix にします。`dist/types.js` の runtime export は空です。
 
-### logs
+Planner の Zod schema は `src/providers/planner.ts`、search Tool の Zod schema は `src/knowledge/runtime.ts`、policy の schema / default は `src/execution/safety.ts`、SQLite schema は `src/knowledge/store.ts` が所有します。Planner の variant / result 型と search Tool の入力型は schema から導出し、schema と別に同じ形を手書きしません。`ToolRegistration<Input, Output>` は schema の出力、executor 引数と戻り値、summary の入力を結び付けます。search Tool の records 型は `formatKnowledgeRecords` の戻り値から導出します。公開 `ToolRegistry.execute` の結果形式を保ち、Worker 内で型付き summary を完成させます。注入された旧 registry の結果は互換境界で読み取り、provider には `ok` と `value` または `error` だけを渡します。
 
-`src/cli/commands/logs*.js` が `src/io/logs/catalog.js` と `src/io/formatter/logs.js` を使い、保存済みログの一覧、検索、表示、削除を行います。
+`WorkerAttemptOutcome` は `passed / retry / stopped`、`ToolExecutionResult` は `ok: true / false` を判別子にした union です。成功時は必要な値を必須にし、停止時は `attempt: null` か保存可能な sparse attempt を明示します。Tool Calling capability を持つ Engine は `generateTurn` を必須にします。これらの内部 outcome の `kind` / `attempt: null` は保存ログに追加せず、attempt 本体のみを既存 schema へ渡します。
 
-### command execution
+`ReadySolveSession` は plan を必須にし、`WorkerGeneration` で command（knowledge off / planner）と tools（worker / all）を区別します。初期化時に生成方式と Tool Calling capability を検証し、tools 側には Engine と registry の両方を必須にします。Worker は選択済みの方式で分岐します。`generateWorkerCommand` は従来の注入形式を受ける互換入口として検証を残します。
 
-runner は `LocalRunner` または `DockerRunner` です。実行前に `execution/safety` の command policy を通し、実行後に `SimpleJudge` が結果を判定します。
+Runner の戻り値は `src/solve/worker.ts` 内の `NormalizedRunResult` へ一度だけ正規化し、未指定の `aborted` を false、`failure` / `cleanup` を null に揃えます。実行後の attempt は共通フィールドから構築します。`durationMs` の未指定値や、安全性検査で実行しなかった sparse attempt は従来どおり扱います。
 
-## ファイル別役割
+`ExecutionStopState` は `running / grace / deadline-observed / stopped` を区別し、`ExecutionControl` が停止理由と最初の合格候補を管理します。`stopRequested / stopReason / passingCandidateId` は読み取り専用です。期限超過の同期観測と timer による Worker 停止を分け、5秒の grace と期限による停止理由の優先を維持します。内部 state の `kind` はログへ追加しません。
 
-### Root
+外部入力は `unknown` で受け、利用する境界で検証します。内部の型契約で不整合を防いでも、JavaScript からの注入、CLI / LLM / Policy 入力、数値と安全性の実行時検証は必要です。search adapter も実際の呼び出し時に method を確認し、receiver を保ちます。LLM 設定、knowledge snapshot、Worker Tool summary は明示 allowlist のみ保存します。Planner prompt / raw metadata は再現性のため保持する既存契約です。Worker の reasoning / continuation / provider call ID / Tool record 本文はログへ出しません。
 
-- `src/cli.js`: npm bin から呼ばれる CLI entry point。`runCli()` に `process.argv` を渡す。
+SQLite と Bash parser の公開 helper は必要な操作だけを構造型で表現します。native library の内部型は実装内に保ち、配布 `.d.ts` が開発用 SQLite 型や WASM ambient 型を要求しないようにします。
 
-### CLI
+## Source と配布 runtime
 
-- `src/cli/index.js`: Commander program を作成し、`parseAsync()` で CLI を実行する。
-- `src/cli/program.js`: Commander の command / option / action 定義を持ち、各 command handler に直接 dispatch する。
+`npm run build` が同じ相対配置で `dist/` に `.js` / `.d.ts` / `.js.map` を生成します。test の runtime import と subprocess は `dist/`、型契約の検査は `src/**/*.ts` を対象にします。旧 deep import の移行先と watch 手順は [development.md](development.md) に記載しています。
 
-### CLI Commands
-
-- `src/cli/commands/solve.js`: solve 用 runtime を作り、`solveProblem()` を実行して結果を表示する。
-- `src/cli/commands/knowledge.js`: prepare / build / search の database オプションを渡して表示し、man generator へ委譲する。
-- `src/cli/commands/logsShow.js`: 指定ログを読み、詳細表示する。
-- `src/cli/commands/logsList.js`: logs directory のログ一覧を表示する。
-- `src/cli/commands/logsSearch.js`: 保存済みログを条件検索して表示する。
-- `src/cli/commands/logsPrune.js`: 保存済みログを削除する。
-
-### Solve Entry
-
-- `src/solve/solve.js`: solve の薄い入口。session 作成、orchestration、selection、log 書き込みをつなぐ。
-- `src/solve/runtime.js`: CLI option から engine / runner / judge / planner provider を組み立て、共通 `llmConfig` を Planner / Worker に渡す。既定 engine は `api`、`openai` は互換 alias。
-
-### Solve Session
-
-- `src/solve/session/solveSession.js`: solve session を初期化する。problem、workdir、policies、runner limits、plan をまとめる。
-- `src/solve/session/progress.js`: session phase の progress callback を呼び出す。
-- `src/solve/session/sessionPhases.js`: progress phase 名を定義する。
-- `src/solve/session/types.js`: solve session / attempt / candidate などの JSDoc 型定義。
-
-### Solve Planning
-
-- `src/solve/planning/planner.js`: planner provider の結果を現行の execution plan / worker task 形式へ正規化する。
-
-### Solve Orchestration
-
-- `src/solve/orchestration/orchestrator.js`: worker task を並列実行し、attempt / candidate / summary を集約する。
-- `src/solve/orchestration/executionControl.js`: deadline、abort、早期停止など orchestration の停止制御を扱う。
-- `src/solve/orchestration/executionSummary.js`: worker 実行結果から summary を作る。
-
-### Solve Worker
-
-- `src/solve/worker/taskQueue.js`: worker task を並列実行用 queue として管理する。
-- `src/solve/worker/taskExecutor.js`: worker task の実行単位を起動する。
-- `src/solve/worker/executeWorkerTask.js`: worker ごとの retry loop を制御する。
-- `src/solve/worker/attemptRunner.js`: 1 attempt の command 生成、safety check、runner 実行、judge 判定を行う。
-- `src/solve/worker/attemptFactory.js`: attempt / candidate object を組み立てる。
-- `src/solve/worker/toolLoop.js`: provider-neutral な Tool turn を進め、引数検証、Tool budget、continuation と結果を管理する。
-- `src/solve/worker/stopReason.js`: worker の停止理由や deadline 到達を判定する。
-
-### Solve Selection / Scoring
-
-- `src/solve/selection/selector.js`: 複数 candidate から最終候補を選ぶ。
-- `src/solve/scoring/shellgeiScorer.js`: shell 芸らしさや実用性の score を candidate に付与する。
-
-### Execution Runner
-
-- `src/execution/runner/Runner.js`: runner interface の JSDoc 型定義。
-- `src/execution/runner/localRunner.js`: host 上で command を実行する runner。
-- `src/execution/runner/dockerRunner.js`: Docker container 内で command を実行する runner。
-- `src/execution/runner/limits.js`: runner limits の default 値を作る。
-
-### Execution Safety
-
-- `src/execution/safety/checker.js`: command が command policy に照らして安全か判定する。
-- `src/execution/safety/commandPolicy.js`: default command policy を定義する。
-- `src/execution/safety/sandboxPolicy.js`: default sandbox policy を定義する。
-- `src/execution/safety/policyLoader.js`: policy JSON を読み込み、schema validation して default と統合する。
-
-### Execution Judge
-
-- `src/execution/judge/Judge.js`: judge interface の JSDoc 型定義。
-- `src/execution/judge/simpleJudge.js`: stdout / stderr / exitCode / expectedOutput を使う最小 judge。
-
-### Providers
-
-- `src/providers/engines/Engine.js`: engine interface の JSDoc 型定義。
-- `src/providers/engines/openaiEngine.js`: Responses API を使う URL-neutral な command / Tool Calling engine。`OpenAIEngine` の export / class 名は互換維持。
-- `src/providers/engines/codexCliEngine.js`: Codex CLI を外部 process として呼ぶ engine。
-- `src/providers/engines/cursorCliEngine.js`: Cursor CLI を外部 process として呼ぶ engine。
-- `src/providers/engines/mockEngine.js`: テストや dry run 用の固定 command engine。
-- `src/providers/llm/config.js`: 共通 endpoint / key / Worker model / Planner model / timeout / retry 解決、旧設定の互換性と公開設定 allowlist。
-- `src/providers/llm/client.js`: lazy OpenAI SDK client、送信先と header の制限、HTTP retry / timeout / abort と安全な error 表示。
-- `src/providers/llm/responsesHistory.js`: response output 全体を保持する stateless continuation と function call / output の整合性検証。暗号化 reasoning も再送する。
-- `src/providers/planner/llmPlanner.js`: configured Planner の入口。共有 LLM 設定、Zod Structured Outputs と `responses.parse()` を使い plan を得る。
-- `src/providers/planner/plannerPrompt.js`: planner に渡す prompt を組み立てる。
-- `src/providers/planner/plannerSchema.js`: planner response の schema と validation。
-- `src/providers/embeddings/openRouterEmbedder.js`: OpenRouter embedding API、batch、timeout / abort / retry と response validation。
-
-### Knowledge
-
-- `src/knowledge/modelConfig.js`: Qwen embedding の既定 model と環境変数名。
-- `src/knowledge/knowledgePaths.js`: package-relative seed dataset と user cache database path の解決。
-- `src/knowledge/embeddingInputs.js`: version 付き query instruction と document text の整形。
-- `src/knowledge/dataset.js`: JSONL の正規化、重複 ID / byte cap 検証と SHA-256 fingerprint。
-- `src/knowledge/commands.js`: prepare / build / search の入口。batch と staged generation 公開を管理。
-- `src/knowledge/sqliteSchema.js`: SQLite schema version と dimension / identity / metadata validation。
-- `src/knowledge/sqliteStore.js`: native SQLite / sqlite-vec 接続、generation、float32 cosine 検索、互換性検証。
-- `src/knowledge/knowledgeRuntime.js`: session で共有する readonly database と OpenRouter query embedder の lifecycle。
-- `src/knowledge/retriever.js`: query embedding の共有 cache、ランキングと command ごとの件数制御。
-- `src/knowledge/mode.js`: off / planner / worker / all の正規化と capability 要件。
-- `src/knowledge/hints.js`: Planner に渡す bounded reference hints の整形。
-- `src/knowledge/searchKnowledgeTool.js`: Worker の read-only Tool 検索と record 上限。
-- `src/tools/toolRegistry.js`: provider-neutral Tool schema、引数検証と実行。
-
-### IO
-
-- `src/io/problem/parseProblem.js`: CLI から受け取った問題文を problem object に正規化する。
-- `src/io/logs/writer.js`: solve session log を JSON として保存する。
-- `src/io/logs/catalog.js`: logs directory の読み取り、検索、削除、参照解決を行う。
-- `src/io/formatter/formatResult.js`: solve の最終結果を CLI 表示用に整形する。
-- `src/io/formatter/logs.js`: log 表示や log 一覧を CLI 表示用に整形する。
-- `src/io/formatter/progressReporter.js`: progress event を bar / jsonl などの表示へ変換する。
-
-### Shared
-
-- `src/shared/exec.js`: child process 実行の薄い helper。
-- `src/shared/fs.js`: directory 作成、workdir 解決、JSON 読み書きなどの fs helper。
+理想的な責務分離と将来像は [ideal-architecture.md](ideal-architecture.md) を参照してください。将来の責務図は現在のファイル配置を置き換えるディレクトリ案ではありません。

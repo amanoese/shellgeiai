@@ -2,12 +2,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { writeSolveSessionLog } from "../src/io/logs/writer.js";
-import { createSearchKnowledgeTool } from "../src/knowledge/searchKnowledgeTool.js";
-import { generateWorkerCommand } from "../src/solve/worker/toolLoop.js";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { solveProblem } from "../src/solve/solve.js";
+import { writeSolveSessionLog } from "../dist/io/logs.js";
+import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
+import { generateWorkerCommand } from "../dist/solve/tools.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
+import { OpenAIEngine } from "../dist/providers/apiEngine.js";
+import { solveProblem } from "../dist/solve/solve.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 const tempDirs = [];
@@ -80,6 +80,32 @@ describe("writeSolveSessionLog", () => {
     expect(JSON.parse(await readFile(logPath, "utf8"))).not.toHaveProperty("llm");
   });
 
+  it.each([false, true])("preserves omitted Runner duration in executed attempt logs for aborted=%s", async aborted => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-run-result-log-"));
+    tempDirs.push(workdir);
+    const result = await solveProblem({
+      problemInput: "print ok", requestedWorkdir: workdir, parallelism: 1, maxIterations: 1,
+      engine: { name: "test", generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) },
+      runner: { name: "test", run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false, ...(aborted ? { aborted: true } : {}) }) },
+      judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
+      plannerProvider: createTestPlannerProvider()
+    });
+    const log = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(log.attempts.length).toBeGreaterThan(0);
+    for (const attempt of log.attempts) {
+      expect(attempt).toEqual({
+        attemptId: `${attempt.workerId}-attempt-1`, workerId: attempt.workerId, command: "printf ok",
+        stdout: "ok", stderr: "", exitCode: 0, timedOut: false, aborted,
+        passed: !aborted, explanation: "Print ok", failureReason: aborted ? "Execution was stopped." : "ok",
+        runnerFailure: null, runnerCleanup: null, toolCalls: [],
+        score: aborted
+          ? { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+          : { value: 100, breakdown: {} }
+      });
+      expect(attempt).not.toHaveProperty("durationMs");
+    }
+  });
+
   it("keeps actual solve logs free of Responses reasoning, replay history and Tool bodies", async () => {
     const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-pipeline-"));
     tempDirs.push(workdir);
@@ -127,6 +153,11 @@ describe("writeSolveSessionLog", () => {
     }
     expect(content).not.toContain('"continuation"');
     expect(content).not.toContain('"toolResults"');
+    for (const attempt of JSON.parse(content).attempts) {
+      expect(attempt).not.toBeNull();
+      expect(attempt).not.toHaveProperty("kind");
+      expect(attempt).not.toHaveProperty("attempt");
+    }
   });
 
   it("logs a reproducible knowledge snapshot and excludes injected credential fields", async () => {
@@ -143,6 +174,37 @@ describe("writeSolveSessionLog", () => {
     expect(JSON.parse(content).knowledge).toEqual({ mode: "planner", ...snapshot });
     expect(content).not.toContain("DO NOT LOG THIS");
     expect(content).not.toContain("SECRET");
+  });
+  it.each(["deadline", "judge failure"])("persists %s stopped workers without internal outcome wrappers", async (stop) => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-stopped-log-"));
+    tempDirs.push(workdir);
+    const result = await solveProblem({
+      problemInput: "print ok", requestedWorkdir: workdir, parallelism: 1, maxIterations: 1,
+      timeBudgetMs: stop === "deadline" ? 100 : undefined,
+      engine: { name: "test", generateCommand: (_context, { signal } = {}) => stop === "deadline"
+        ? new Promise((_resolve, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }) : Promise.resolve({ command: "printf ok", explanation: "Print ok" }) },
+      runner: { name: "test", run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 }) },
+      judge: { judge: async () => { throw new Error("Judge unavailable"); } },
+      plannerProvider: createTestPlannerProvider()
+    });
+    const log = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(log.workerSummaries[0].state).toBe("stopped");
+    expect(log.attempts).toHaveLength(stop === "deadline" ? 0 : log.workerSummaries.length);
+    if (stop === "judge failure") {
+      for (const attempt of log.attempts) expect(attempt).toEqual({
+        attemptId: `${attempt.workerId}-attempt-1`, workerId: attempt.workerId, command: "printf ok",
+        passed: false, explanation: "Print ok", failureReason: "Judge unavailable", toolCalls: [],
+        score: { value: 0, breakdown: { correctness: 0, stdoutQuality: 0, stderrQuality: 0, expectedOutput: 0 } }
+      });
+    }
+    for (const attempt of log.attempts) {
+      expect(attempt).not.toBeNull();
+      expect(attempt).not.toHaveProperty("kind");
+      expect(attempt).not.toHaveProperty("attempt");
+    }
   });
   it("uses a unique filename when timestamp would otherwise collide", async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));

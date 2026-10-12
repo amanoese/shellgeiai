@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveLlmConfig } from "../src/providers/llm/config.js";
-import { createSolveRuntime } from "../src/solve/runtime.js";
+import { resolveLlmConfig } from "../dist/providers/llm.js";
+import { createSolveRuntime } from "../dist/solve/runtime.js";
 
 const plan = { variants: [{
   variantId: "direct", label: "printf-first", approach: "Print the value directly.",

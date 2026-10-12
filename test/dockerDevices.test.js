@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizeReadonlyDockerDevices } from "../src/execution/runner/dockerDevices.js";
+import { normalizeReadonlyDockerDevices } from "../dist/execution/dockerRunner.js";
 
 const blockDevice = {
   isBlockDevice: () => true,

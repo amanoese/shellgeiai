@@ -6,39 +6,21 @@
 
 ## 現状の実装位置
 
-現在の `src/` は、複数 worker の並列探索を保ちながら理想構成へ移行する途中段階です。主要な責務境界は次の 6 つへ整理済みです。
+現在の `src/` は strict TypeScript の31ファイルと7ディレクトリです。現在のファイル配置は [src-file-map.md](src-file-map.md) に記載しています。
 
 ```text
 src/
-  cli/
-  solve/
-  execution/
-  providers/
-  io/
-  shared/
+  cli.ts / types.ts / shared.ts
+  cli/         command 定義・dispatch
+  solve/       session・plan・worker・停止・選択・Tool
+  execution/   Runner・Judge・policy
+  providers/   Engine・LLM・Planner・embedding
+  knowledge/   dataset・SQLite・retrieval・man
+  io/          logs・progress
+  shell/       Bash AST
 ```
 
-主な現行ファイルは次のとおりです。
-
-- `src/cli.js`: CLI エントリポイント
-- `src/cli/`: コマンド定義、オプション定義、引数解析
-- `src/solve/solve.js`: solve の薄い入口
-- `src/solve/session/solveSession.js`: problem parse、policy 読み込み、runner 構築、実行計画作成
-- `src/solve/orchestration/orchestrator.js`: worker 実行のオーケストレーション
-- `src/solve/worker/`: worker retry loop と attempt 実行
-- `src/solve/planning/planner.js`: planner provider の結果を worker task へ正規化
-- `src/solve/selection/selector.js`: 候補選択
-- `src/solve/scoring/shellgeiScorer.js`: shellgei score
-- `src/execution/runner/`: `DockerRunner` / `LocalRunner` と実行制限
-- `src/execution/safety/`: command policy / sandbox policy
-- `src/execution/judge/`: attempt 判定
-- `src/providers/engines/`: API / CLI / mock engine（CLI の既定は API）
-- `src/providers/llm/`: 共通設定、SDK client、stateless Responses 履歴
-- `src/providers/planner/`: LLM planner
-- `src/io/problem/`: 問題文の正規化
-- `src/io/logs/`: session log の保存と検索用 catalog
-- `src/io/formatter/`: 結果、ログ、進捗表示
-- `src/shared/`: 小さな共通補助
+session と plan 正規化は `solve/solve.ts`、queue / 停止 / 集約は `solve/orchestrator.ts`、retry / attempt は `solve/worker.ts` に集約しています。この文書の Planner / Agent / Runner / Judge / Selector / Logs は責務境界であり、ディレクトリを増やす配置案ではありません。
 
 ## 目標
 
@@ -107,7 +89,7 @@ Planner prefetch (planner/all)
 
 Engine adapter は provider 固有の Tool schema、Tool call、continuation を共通 turn 形式へ翻訳するだけです。Tool の選択、実行、回数制限は `src/solve/` の orchestration が所有します。現在 native Tool Calling に対応するのは API engine（互換 class 名 `OpenAIEngine`）で、OpenRouter / OpenAI / 互換 gateway の共通 LLM 設定を使います。`worker` / `all` を指定した非対応 Engine は Planner 実行前に fail fast します。`off` / `planner` は Tool Calling capability を要求しません。
 
-`src/providers/embeddings/openRouterEmbedder.js` が OpenRouter の remote embedding API を扱い、`src/knowledge/` が dataset fingerprint、embedding input profile、SQLite generation と検索を管理します。この経路は回答生成の `LLM_BASE_URL` / model とは独立し、回答が OpenAI 直接接続でも embedding 用の `OPENROUTER_API_KEY` が必要です。既定 model は `qwen/qwen3-embedding-8b`、4096次元 float32 と sqlite-vec の cosine 検索を利用します。`knowledge prepare` は native 接続と1回の API request を確認し、`knowledge build` は batch embedding を staged generation に保存、完了時だけ active generation を切り替えます。失敗時は以前の completed generation を維持し、利用者の旧 man dataset / vector file を自動変更・削除しません。
+`src/providers/embedder.ts` が OpenRouter の remote embedding API を扱い、`src/knowledge/` が dataset fingerprint、embedding input profile、SQLite generation と検索を管理します。この経路は回答生成の `LLM_BASE_URL` / model とは独立し、回答が OpenAI 直接接続でも embedding 用の `OPENROUTER_API_KEY` が必要です。既定 model は `qwen/qwen3-embedding-8b`、4096次元 float32 と sqlite-vec の cosine 検索を利用します。`knowledge prepare` は native 接続と1回の API request を確認し、`knowledge build` は batch embedding を staged generation に保存、完了時だけ active generation を切り替えます。失敗時は以前の completed generation を維持し、利用者の旧 man dataset / vector file を自動変更・削除しません。
 
 solve / search は dataset 内容・絶対パス・provider・model・input profile が一致する ready database を要求し、実行時 document embedding fallback はありません。Planner と Worker は session に1つの runtime と query cache を共有し、検索時の query だけを remote API に送ります。`off` は native database と embedding provider を初期化しません。`--knowledge-model` / `SHELLGEIAI_KNOWLEDGE_MODEL` で model、`--knowledge-db`（solve）/ `--db`（knowledge）/ `SHELLGEIAI_KNOWLEDGE_DB` で database を指定できます。省略 dataset は package 所在地、cache path は user cache 内の identity hash から解決します。旧 Ruri と JSON/JSONL vector cache は読み込みません。
 
@@ -138,13 +120,13 @@ provider の失敗は、利用者が原因と次の対応を理解できる形�
 
 ### `src/io/`
 
-- 問題文を共通フォーマットへ正規化する
+- 正規化済み問題文と結果を利用者へ表示する
 - 結果、進捗、ログ表示を整える
 - session log と catalog を保存、検索、削除できる形にする
 
 ログはあとから再現、解析、比較できる構造を優先します。
 
-### `src/shared/`
+### `src/shared.ts`
 
 - ファイル操作やプロセス実行など、小さな共通補助だけを置く
 - 特定ドメインの判断を入れない
@@ -165,10 +147,10 @@ shellgeiai solve "CSVの3列目の合計を出してください" --selector bes
 実行時の流れは次のとおりです。
 
 1. `src/cli/` がサブコマンドとオプションを解析する
-2. `src/io/problem/` が問題文、期待出力、入力ファイル、補助条件を正規化する
-3. `src/solve/session/solveSession.js` が run id、作業ディレクトリ、policy、runner limits、deadline、planner 入力を準備する
+2. `src/solve/solve.ts` が問題文、期待出力、入力ファイル、補助条件を正規化する
+3. `src/solve/solve.ts` が run id、作業ディレクトリ、policy、runner limits、deadline、planner 入力を準備する
 4. planner が探索方針を作り、worker ごとの task へ正規化する
-5. `src/solve/orchestration/orchestrator.js` が worker task を並列に進める
+5. `src/solve/orchestrator.ts` が worker task を並列に進める
 6. worker が候補 command を生成し、runner で実行し、judge result をもとに数回だけ自己修正する
 7. selector が成功候補、score、失敗理由、実行時間を見て最終候補を選ぶ
 8. formatter が結果を表示し、logs が session log と catalog を保存する
@@ -239,9 +221,9 @@ Planner prompt と raw response metadata は再現性のため既存 schema の�
 
 ## 今後の移行方針
 
-現状の 6 境界は維持しながら、次を段階的に強化します。
+現状のファイル単位の責務境界は維持しながら、次を段階的に強化します。
 
-1. `src/solve/session/solveSession.js` の初期化責務をさらに読みやすく分ける
+1. `src/solve/solve.ts` の初期化責務をさらに読みやすく分ける
 2. planner が返す worker task の戦略品質を高める
 3. judge と selector を複数候補前提で強化する
 4. Docker runner の制限値、workdir、artifact 扱いを明確にする

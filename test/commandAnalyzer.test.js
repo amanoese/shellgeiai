@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeShellCommand } from "../src/solve/scoring/commandAnalyzer.js";
+import { analyzeShellCommand } from "../dist/shell/analyzer.js";
 
 describe("analyzeShellCommand", () => {
   it("extracts pipeline commands and language one-liners from Bash AST", async () => {

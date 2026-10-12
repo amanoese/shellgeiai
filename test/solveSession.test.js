@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { reportSessionPhase } from "../src/solve/session/progress.js";
-import { createSolveSession } from "../src/solve/session/solveSession.js";
-import { SESSION_PHASES } from "../src/solve/session/sessionPhases.js";
+import { reportSessionPhase } from "../dist/solve/events.js";
+import { createSolveSession } from "../dist/solve/solve.js";
+import { SESSION_PHASES } from "../dist/solve/events.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
-import { buildKnowledgeVectors } from "../src/knowledge/commands.js";
+import { buildKnowledgeVectors } from "../dist/knowledge/commands.js";
 import { documentEmbedder, knowledgeFixture } from "./support/knowledgeFixture.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { resolveLlmConfig } from "../src/providers/llm/config.js";
+import { OpenAIEngine } from "../dist/providers/apiEngine.js";
+import { resolveLlmConfig } from "../dist/providers/llm.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -49,6 +49,56 @@ describe("progress helpers", () => {
 });
 
 describe("createSolveSession", () => {
+  it.each([
+    ["off", "off", "command"], ["planner", "planner", "command"],
+    ["worker", "worker", "tools"], ["all", "all", "tools"], ["on", "all", "tools"]
+  ])("decides generation once for %s knowledge", async (requested, normalized, generation) => {
+    const knowledgeRetriever = { retrieveForPlanner: async () => [], search: async () => [] };
+    const session = await createSolveSession({ ...sessionOptions(), knowledgeMode: requested, knowledgeRetriever });
+    try {
+      expect(session.generation).toBe(generation);
+      expect(session.knowledgeMode).toBe(normalized);
+      expect(session.plan.knowledgeMode).toBe(normalized);
+      expect(session.toolRegistry === undefined).toBe(generation === "command");
+      expect(session.knowledgeRetriever).toBe(knowledgeRetriever);
+    } finally { await session.dispose(); }
+  });
+
+  it("defers a missing search method until Tool execution", async () => {
+    const knowledgeRetriever = {};
+    const session = await createSolveSession({ ...sessionOptions(), knowledgeMode: "worker", knowledgeRetriever });
+    try {
+      expect(session.knowledgeRetriever).toBe(knowledgeRetriever);
+      const result = await session.toolRegistry.execute({ name: "search_knowledge", arguments: { query: "awk" } });
+      expect(result).toEqual({ ok: false, error: { code: "tool_execution_failed", message: "Tool search_knowledge failed." }, validatedArguments: { query: "awk" } });
+    } finally { await session.dispose(); }
+  });
+
+  it("rejects a missing planner retrieval method before planning", async () => {
+    const plannerProvider = createTestPlannerProvider();
+    const buildPlan = vi.spyOn(plannerProvider, "buildPlan");
+    await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", knowledgeRetriever: {}, plannerProvider }))
+      .rejects.toThrow("session.knowledgeRetriever.retrieveForPlanner is not a function");
+    expect(buildPlan).not.toHaveBeenCalled();
+  });
+
+  it("retains prototype getter retrievers and their method receiver", async () => {
+    class Retriever {
+      #records = [{ id: "private:awk", text: "private record" }];
+      get retrieveForPlanner() { return async function () { return this.#records; }; }
+      get search() { return async function () { return this.#records; }; }
+    }
+    const knowledgeRetriever = new Retriever();
+    const session = await createSolveSession({ ...sessionOptions(), knowledgeMode: "all", knowledgeRetriever });
+    try {
+      expect(session.knowledgeRetriever).toBe(knowledgeRetriever);
+      expect(session.plannerKnowledgeHints).toEqual([{ id: "private:awk", text: "private record" }]);
+      const result = await session.toolRegistry.execute({ name: "search_knowledge", arguments: { query: "awk" } });
+      expect(result.ok).toBe(true);
+      expect(result.value.records[0]).toMatchObject({ id: "private:awk", text: "private record" });
+    } finally { await session.dispose(); }
+  });
+
   it("owns resolved default Planner settings for a programmatic mock Worker", async () => {
     vi.stubEnv("LLM_BASE_URL", "https://openrouter.ai/api/v1");
     vi.stubEnv("SHELLGEIAI_LLM_API_KEY", "mock-planner-key");
@@ -207,9 +257,9 @@ describe("createSolveSession", () => {
       capabilities: { toolCalling: true },
       engineName: "incomplete-tool-engine"
     }
-  ])(
-    "rejects worker knowledge when Tool Calling capability is $label before retrieval and planning",
-    async ({ capabilities, engineName }) => {
+  ].flatMap(engine => ["worker", "all", "on"].map(knowledgeMode => ({ ...engine, knowledgeMode }))))(
+    "rejects $knowledgeMode knowledge when Tool Calling capability is $label before retrieval and planning",
+    async ({ capabilities, engineName, knowledgeMode }) => {
       const retrieveForPlanner = vi.fn(async () => []);
       const plannerProvider = createTestPlannerProvider();
       const buildPlan = vi.spyOn(plannerProvider, "buildPlan");
@@ -225,12 +275,12 @@ describe("createSolveSession", () => {
           runner: { name: "mock" },
           judge: { judge: async () => ({ passed: true, reason: "ok", score: { value: 100, breakdown: {} } }) },
           maxIterations: 1,
-          knowledgeMode: "all",
+          knowledgeMode,
           knowledgeRetriever: { retrieveForPlanner, search: vi.fn() },
           plannerProvider
         })
       ).rejects.toThrow(
-        `Engine "${engineName ?? "unknown"}" does not support Tool Calling required by --knowledge all. Use a Tool Calling capable engine, or select --knowledge planner/off.`
+        `Engine "${engineName ?? "unknown"}" does not support Tool Calling required by --knowledge ${knowledgeMode === "on" ? "all" : knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`
       );
       expect(retrieveForPlanner).not.toHaveBeenCalled();
       expect(buildPlan).not.toHaveBeenCalled();
@@ -374,6 +424,20 @@ describe("createSolveSession", () => {
     const plannerProvider = stage === "planning" ? { buildPlan: async () => { throw new Error("planning failed"); } } : createTestPlannerProvider();
     await expect(createSolveSession({ ...sessionOptions(), knowledgeMode: "planner", plannerProvider,
       knowledgeRuntimeFactory: async () => runtime })).rejects.toThrow(stage + " failed");
+    expect(runtime.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("retains initialization and cleanup errors in an AggregateError", async () => {
+    const initializationError = new Error("planning failed");
+    const cleanupError = new Error("cleanup failed");
+    const runtime = { retriever: { retrieveForPlanner: async () => [] }, snapshot: {},
+      dispose: vi.fn(async () => { throw cleanupError; }) };
+    const error = await createSolveSession({ ...sessionOptions(), knowledgeMode: "planner",
+      knowledgeRuntimeFactory: async () => runtime,
+      plannerProvider: { buildPlan: async () => { throw initializationError; } }
+    }).catch(error => error);
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.errors).toEqual([initializationError, cleanupError]);
     expect(runtime.dispose).toHaveBeenCalledOnce();
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createToolRegistry } from "../src/tools/toolRegistry.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 
 function echoTool(overrides = {}) {
   return {
@@ -146,6 +146,24 @@ describe("createToolRegistry", () => {
       value: { echoed: "ok" },
       validatedArguments: { value: "ok" }
     });
+  });
+
+  it("preserves the registered tool receiver while erasing heterogeneous input types", async () => {
+    const registry = createToolRegistry();
+    registry.register(echoTool({ execute({ value }) { return { value, name: this.name }; } }));
+    await expect(registry.execute({ name: "echo_value", arguments: { value: "ok" } })).resolves.toEqual({
+      ok: true, value: { value: "ok", name: "echo_value" }, validatedArguments: { value: "ok" }
+    });
+  });
+
+  it("keeps execute results unchanged and does not evaluate worker summaries", async () => {
+    const registry = createToolRegistry();
+    let summaryCalls = 0;
+    registry.register(echoTool({ summarize() { summaryCalls++; throw new Error("private summary error"); } }));
+    await expect(registry.execute({ name: "echo_value", arguments: { value: "ok" } })).resolves.toEqual({
+      ok: true, value: { value: "ok" }, validatedArguments: { value: "ok" }
+    });
+    expect(summaryCalls).toBe(0);
   });
 
   it("completely sanitizes execution failures", async () => {

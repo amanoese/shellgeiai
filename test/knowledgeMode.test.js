@@ -4,7 +4,7 @@ import {
   normalizeKnowledgeMode,
   usesPlannerKnowledge,
   usesWorkerKnowledge
-} from "../src/knowledge/mode.js";
+} from "../dist/knowledge/config.js";
 
 describe("knowledge modes", () => {
   it.each([

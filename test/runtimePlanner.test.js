@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createExecutionPlan } from "../src/solve/planning/planner.js";
-import { createSolveRuntime } from "../src/solve/runtime.js";
-import { OpenAIEngine } from "../src/providers/engines/openaiEngine.js";
-import { DockerRunner } from "../src/execution/runner/dockerRunner.js";
+import { createExecutionPlan } from "../dist/solve/solve.js";
+import { createSolveRuntime } from "../dist/solve/runtime.js";
+import { OpenAIEngine } from "../dist/providers/apiEngine.js";
+import { DockerRunner } from "../dist/execution/dockerRunner.js";
 import { createTestPlannerProvider } from "./support/testPlannerProvider.js";
 
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
@@ -20,6 +20,21 @@ describe("createExecutionPlan", () => {
         maxIterations: 2
       })
     ).rejects.toThrow("apiKey / SHELLGEIAI_LLM_API_KEY");
+  });
+
+  it("preserves unknown metadata returned by an injected Planner", async () => {
+    const raw = await createTestPlannerProvider().buildPlan();
+    const metadata = { promptVersion: 17, prompt: ["injected", "prompt"], rawResponse: { opaque: true } };
+    const plan = await createExecutionPlan({ parallelism: 2, maxIterations: 1,
+      plannerProvider: { name: "injected", buildPlan: async () => ({ plan: raw, ...metadata }) } });
+    expect(plan.planner.promptVersion).toBe(metadata.promptVersion);
+    expect(plan.planner.prompt).toBe(metadata.prompt);
+    expect(plan.planner.rawResponse).toBe(metadata.rawResponse);
+  });
+
+  it.each([null, {}, { variants: [] }, { plan: { variants: [] } }])("rejects invalid injected planner output %j", async rawPlan => {
+    await expect(createExecutionPlan({ parallelism: 2, maxIterations: 1,
+      plannerProvider: { buildPlan: async () => rawPlan } })).rejects.toThrow();
   });
 
   it("returns worker tasks from LLM planner variants", async () => {

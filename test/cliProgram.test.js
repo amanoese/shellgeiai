@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createCliProgram } from "../src/cli/program.js";
+import { createCliProgram } from "../dist/cli/program.js";
 
 function findCommand(program, name) {
   return program.commands.find((command) => command.name() === name);

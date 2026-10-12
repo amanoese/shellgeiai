@@ -4,16 +4,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { normalizeKnowledgeRecord } from "../src/knowledge/dataset.js";
+import { normalizeKnowledgeRecord } from "../dist/knowledge/dataset.js";
 import {
   dedupeManKnowledgeRecords,
   extractKnowledgeRecordsFromManPage,
   parseManIndex
-} from "../src/knowledge/manKnowledge.js";
+} from "../dist/knowledge/man.js";
 import {
   loadManKnowledgeProfile,
   SUPPORTED_MAN_PROFILES
-} from "../src/knowledge/manProfile.js";
+} from "../dist/knowledge/manProfile.js";
 
 const execFileAsync = promisify(execFile);
 

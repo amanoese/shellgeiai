@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectSolveOutcome } from "../src/solve/selection/selector.js";
+import { selectSolveOutcome } from "../dist/solve/selection.js";
 
 describe("selectSolveOutcome", () => {
   it("selects the first passing candidate in first-pass mode", () => {
