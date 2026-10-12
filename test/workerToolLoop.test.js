@@ -3,11 +3,11 @@ import { z } from "zod";
 
 import { createKnowledgeRetriever } from "../dist/knowledge/retriever.js";
 import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool.js";
-import { createToolRegistry } from "../dist/tools/toolRegistry.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 import {
   WorkerToolLoopError,
   generateWorkerCommand
-} from "../dist/solve/worker/toolLoop.js";
+} from "../dist/solve/tools.js";
 
 function createRegistry(execute = async () => ({ records: [] })) {
   const registry = createToolRegistry();

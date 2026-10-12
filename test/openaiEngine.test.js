@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { OpenAIEngine, __testUtils } from "../dist/providers/engines/openaiEngine.js";
-import { createToolRegistry } from "../dist/tools/toolRegistry.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 
 beforeEach(() => {
   for (const name of ["LLM_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENROUTER_API_KEY",

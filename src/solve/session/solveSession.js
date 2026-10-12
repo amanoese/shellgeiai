@@ -15,7 +15,7 @@ import { normalizeReadonlyDockerDevices } from "../../execution/runner/dockerDev
 import { loadCommandPolicy, loadSandboxPolicy } from "../../execution/safety/policyLoader.js";
 import { ensureDirectory, resolveRequestedWorkdir } from "../../shared.js";
 import { createExecutionPlan } from "../planning/planner.js";
-import { createToolRegistry } from "../../tools/toolRegistry.js";
+import { createToolRegistry } from "../tools.js";
 import { reportSessionPhase } from "../events.js";
 import { createLlmPlanner } from "../../providers/planner/llmPlanner.js";
 import { resolveLlmConfig } from "../../providers/llm/config.js";

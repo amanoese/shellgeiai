@@ -1,4 +1,4 @@
-import { executeWorkerTask } from "../worker/executeWorkerTask.js";
+import { executeWorkerTask } from "../worker.js";
 import { calculateWorkerConcurrency, createWorkerTaskQueue } from "../worker/taskQueue.js";
 import { createExecutionControl } from "./executionControl.js";
 import { createExecutionSummary } from "./executionSummary.js";

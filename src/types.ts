@@ -18,7 +18,7 @@ export interface EngineToolCall {
 
 export interface ToolExecutionCall {
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: unknown;
 }
 
 export interface ToolCallSummary {

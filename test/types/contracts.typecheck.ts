@@ -1,5 +1,8 @@
 import type { Engine, EngineTurn, InitializingSolveSession, SolveAttempt, SolveSession, ToolExecutionResult, ToolRegistration, WorkerAttemptOutcome } from "../../src/types.js";
 import { z } from "zod";
+import { createToolRegistry } from "../../src/solve/tools.js";
+import { runWorkerAttempt } from "../../src/solve/worker.js";
+
 
 const success: ToolExecutionResult<number> = { ok: true, value: 3, validatedArguments: {} };
 const failure: ToolExecutionResult = { ok: false, error: { code: "invalid_arguments", message: "Invalid input" }, validatedArguments: {} };
@@ -41,3 +44,31 @@ const unplanned: SolveSession = initializing;
 declare const ready: SolveSession;
 const plannedTasks = ready.plan.workerTasks;
 void [unplanned, plannedTasks];
+
+function exhaustiveEngineTurn(turn: EngineTurn): string {
+  switch (turn.type) {
+    case "command": return turn.command;
+    case "tool_calls": return turn.calls.map(call => call.name).join(",");
+    default: { const unreachable: never = turn; return unreachable; }
+  }
+}
+function exhaustiveToolResult(result: ToolExecutionResult<number>): string {
+  switch (result.ok) {
+    case true: { const value: number = result.value; return String(value); }
+    case false: return result.error.code;
+    default: { const unreachable: never = result; return unreachable; }
+  }
+}
+const registry = createToolRegistry();
+registry.register({ name: "inferred", description: "Inferred schema output", inputSchema: z.object({ count: z.number() }), execute(input) { const count: number = input.count; return count; } });
+registry.register({ name: "wrong-input", description: "Mismatched schema output", inputSchema: z.object({ count: z.number() }),
+  // @ts-expect-error Executor cannot treat the schema's numeric output as text.
+  execute: (input: { count: string }) => input.count
+});
+async function attemptReturnContract(input: Parameters<typeof runWorkerAttempt>[0]) {
+  const outcome: WorkerAttemptOutcome<SolveAttempt> = await runWorkerAttempt(input);
+  // @ts-expect-error Outcome wrappers do not duplicate command from the attempt.
+  outcome.command;
+  return outcome;
+}
+void [exhaustiveEngineTurn, exhaustiveToolResult, registry, attemptReturnContract];

@@ -4,7 +4,7 @@ import { createSearchKnowledgeTool } from "../dist/knowledge/searchKnowledgeTool
 import {
   MAX_KNOWLEDGE_RESULT_FIELD_CHARS
 } from "../dist/knowledge/hints.js";
-import { createToolRegistry } from "../dist/tools/toolRegistry.js";
+import { createToolRegistry } from "../dist/solve/tools.js";
 
 function createTool(records = []) {
   const retriever = {

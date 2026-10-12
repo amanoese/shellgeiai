@@ -140,11 +140,8 @@ describe("npm publish metadata", () => {
       "../dist/solve/orchestration/orchestrator.js",
       "../dist/solve/orchestration/executionControl.js",
       "../dist/solve/orchestration/executionSummary.js",
-      "../dist/solve/worker/executeWorkerTask.js",
-      "../dist/solve/worker/attemptRunner.js",
-      "../dist/solve/worker/attemptFactory.js",
-      "../dist/solve/worker/stopReason.js",
-      "../dist/solve/worker/taskExecutor.js",
+      "../dist/solve/worker.js",
+      "../dist/solve/tools.js",
       "../dist/solve/worker/taskQueue.js",
       "../dist/solve/planning/planner.js",
       "../dist/solve/selection/selector.js",
@@ -152,6 +149,12 @@ describe("npm publish metadata", () => {
     ];
 
     await Promise.all(modules.map((modulePath) => import(modulePath)));
+    for (const oldPath of [
+      "dist/solve/worker/executeWorkerTask.js", "dist/solve/worker/attemptRunner.js",
+      "dist/solve/worker/attemptFactory.js", "dist/solve/worker/stopReason.js",
+      "dist/solve/worker/taskExecutor.js", "dist/solve/worker/toolLoop.js",
+      "dist/tools/toolRegistry.js"
+    ]) expect(existsSync(path.join(repoRoot, oldPath))).toBe(false);
   });
 
   it("includes LLM, Planner and Worker knowledge runtime modules in the packed files", async () => {
@@ -168,9 +171,8 @@ describe("npm publish metadata", () => {
       "../dist/knowledge/sqliteStore.js",
       "../dist/knowledge/sqliteSchema.js",
       "../dist/providers/embeddings/openRouterEmbedder.js",
-      "../dist/tools/toolRegistry.js",
+      "../dist/solve/tools.js",
       "../dist/knowledge/searchKnowledgeTool.js",
-      "../dist/solve/worker/toolLoop.js",
       "../dist/providers/llm/config.js",
       "../dist/providers/llm/client.js",
       "../dist/providers/llm/responsesHistory.js",
