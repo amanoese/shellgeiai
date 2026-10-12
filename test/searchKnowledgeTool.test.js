@@ -18,6 +18,16 @@ function createTool(records = []) {
 }
 
 describe("createSearchKnowledgeTool", () => {
+  it("does not read a search getter until execution", async () => {
+    const readSearch = vi.fn(() => { throw new Error("unavailable"); });
+    const retriever = Object.defineProperty({}, "search", { get: readSearch });
+    const registry = createToolRegistry();
+    registry.register(createSearchKnowledgeTool({ retriever }));
+    expect(readSearch).not.toHaveBeenCalled();
+    const result = await registry.execute({ name: "search_knowledge", arguments: { query: "awk" } });
+    expect(result).toMatchObject({ ok: false, error: { code: "tool_execution_failed" } });
+    expect(readSearch).toHaveBeenCalledOnce();
+  });
   it("counts formatted records with missing IDs without logging empty IDs", async () => {
     const { tool } = createTool([{ text: "Record without an ID." }]);
     const result = await tool.execute({ query: "awk" });

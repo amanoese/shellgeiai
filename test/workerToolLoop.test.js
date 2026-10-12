@@ -6,7 +6,8 @@ import { createSearchKnowledgeTool } from "../dist/knowledge/runtime.js";
 import { createToolRegistry } from "../dist/solve/tools.js";
 import {
   WorkerToolLoopError,
-  generateWorkerCommand
+  generateWorkerCommand,
+  generateSessionWorkerCommand
 } from "../dist/solve/tools.js";
 
 function createRegistry(execute = async () => ({ records: [] })) {
@@ -33,6 +34,75 @@ function createSearchingEngine() {
 }
 
 describe("generateWorkerCommand", () => {
+  it("checks an already aborted signal before reading Engine Tool getters", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("already cancelled"));
+    const getTurn = vi.fn(() => { throw new Error("must not read Tool method"); });
+    const engine = Object.defineProperty({}, "generateTurn", { get: getTurn });
+    await expect(generateWorkerCommand({ engine, context: {}, toolRegistry: createRegistry(), signal: controller.signal }))
+      .rejects.toThrow("already cancelled");
+    expect(getTurn).not.toHaveBeenCalled();
+  });
+
+  it.each(["legacy", "session"])("uses a replacement Tool method with the original receiver in %s generation", async entry => {
+    const finalTurn = vi.fn(async function (input) {
+      expect(this).toBe(engine);
+      expect(input.continuation).toEqual({ responseId: "replace" });
+      return { type: "command", command: "printf replacement" };
+    });
+    const engine = {
+      async generateTurn() {
+        expect(this).toBe(engine);
+        return { type: "tool_calls", calls: [{ id: "replace-call", name: "search_knowledge", arguments: { query: "awk" } }], continuation: { responseId: "replace" } };
+      }
+    };
+    const toolRegistry = createRegistry(async () => { engine.generateTurn = finalTurn; return { records: [] }; });
+    const result = entry === "legacy"
+      ? await generateWorkerCommand({ engine, context: {}, toolRegistry })
+      : await generateSessionWorkerCommand({ generation: "tools", knowledgeMode: "worker", engine, toolRegistry }, {});
+    expect(result.engineResult.command).toBe("printf replacement");
+    expect(finalTurn).toHaveBeenCalledOnce();
+  });
+
+  it.each(["legacy", "session"])("preserves the Engine receiver and absent signal in %s Tool generation", async entry => {
+    class Engine {
+      #turn = 0;
+      inputs = [];
+      async generateTurn(input) {
+        this.inputs.push(input);
+        if (this.#turn++ === 0) return { type: "tool_calls", calls: [{ id: "receiver-call", name: "search_knowledge", arguments: { query: "awk" } }], continuation: { responseId: "receiver" } };
+        return { type: "command", command: "printf ok" };
+      }
+    }
+    const engine = new Engine();
+    const context = { problem: "print ok", attempts: [], workdir: "/tmp" };
+    const toolRegistry = createRegistry();
+    const result = entry === "legacy"
+      ? await generateWorkerCommand({ engine, context, toolRegistry })
+      : await generateSessionWorkerCommand({ generation: "tools", knowledgeMode: "worker", engine, toolRegistry }, context);
+    expect(result.engineResult).toEqual({ type: "command", command: "printf ok" });
+    expect(engine.inputs).toEqual([
+      { context, tools: toolRegistry.definitions() },
+      { context, tools: toolRegistry.definitions(), continuation: { responseId: "receiver" }, toolResults: [{ callId: "receiver-call", result: { ok: true, value: { records: [] } } }] }
+    ]);
+  });
+
+  it.each([false, true])("uses the selected command path with signal=%s without probing Tool turns", async withSignal => {
+    class Engine {
+      #command = "printf ok";
+      capabilities = { toolCalling: true };
+      inputs = [];
+      get generateTurn() { throw new Error("command generation must not probe Tool turns"); }
+      async generateCommand(...args) { this.inputs.push(args); return { command: this.#command }; }
+    }
+    const engine = new Engine();
+    const context = { problem: "print ok", attempts: [], workdir: "/tmp" };
+    const signal = withSignal ? new AbortController().signal : undefined;
+    const result = await generateSessionWorkerCommand({ generation: "command", knowledgeMode: "planner", engine }, context, signal);
+    expect(result).toEqual({ engineResult: { command: "printf ok" }, toolCalls: [] });
+    expect(engine.inputs).toEqual([withSignal ? [context, { signal }] : [context]]);
+  });
+
   it.each([
     ["NaN unchanged", NaN, false, 1],
     ["negative zero replaced with positive zero", -0, true, 0]

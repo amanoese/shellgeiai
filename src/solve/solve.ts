@@ -1,4 +1,4 @@
-import type { SolveProblemOptions, SolveSession, InitializingSolveSession, ExecutionSummary, ExecutionPlan, ProblemSpec, PlanVariant, WorkerTask, KnowledgeRuntime } from "../types.js";
+import type { SolveProblemOptions, SolveSession, InitializingSolveSession, ExecutionSummary, ExecutionPlan, ProblemSpec, PlanVariant, WorkerTask, KnowledgeRuntime, Engine, KnowledgeMode, ToolCallingEngine, WorkerGeneration } from "../types.js";
 function readPlannerProperty(value: unknown, key: string): unknown { return value == null ? undefined : Reflect.get(Object(value), key); }
 function isRecord(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
 import { writeSolveSessionLog } from "../io/logs.js";
@@ -104,6 +104,20 @@ async function finalizeSolve(session: SolveSession, execution: ExecutionSummary)
     };
 }
 
+function supportsToolCalling(engine: Engine): engine is ToolCallingEngine {
+    return engine?.capabilities?.toolCalling === true && typeof engine?.generateTurn === "function";
+}
+
+function initializeWorkerGeneration(engine: Engine, knowledgeMode: KnowledgeMode): WorkerGeneration {
+    if (knowledgeMode === "off" || knowledgeMode === "planner") {
+        return { generation: "command", knowledgeMode, engine };
+    }
+    if (!supportsToolCalling(engine)) {
+        throw new Error(`Engine "${engine?.name ?? "unknown"}" does not support Tool Calling required by --knowledge ${knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`);
+    }
+    return { generation: "tools", knowledgeMode, engine, toolRegistry: createToolRegistry() };
+}
+
 export async function createSolveSession(options: SolveProblemOptions): Promise<SolveSession> {
     const startedAt = new Date().toISOString();
     const sessionId = startedAt.replace(/[:.]/g, "-");
@@ -160,11 +174,7 @@ export async function createSolveSession(options: SolveProblemOptions): Promise<
         llmConfig,
         plannerProvider: options.plannerProvider
     };
-    if (usesWorkerKnowledge(sessionConfig.knowledgeMode) &&
-        (sessionConfig.engine?.capabilities?.toolCalling !== true ||
-            typeof sessionConfig.engine?.generateTurn !== "function")) {
-        throw new Error(`Engine "${sessionConfig.engine?.name ?? "unknown"}" does not support Tool Calling required by --knowledge ${sessionConfig.knowledgeMode}. Use a Tool Calling capable engine, or select --knowledge planner/off.`);
-    }
+    const generation = initializeWorkerGeneration(sessionConfig.engine, sessionConfig.knowledgeMode);
     if (sessionConfig.plannerProvider == null) {
         sessionConfig.llmConfig ??= resolveLlmConfig();
         sessionConfig.plannerProvider = createLlmPlanner({
@@ -185,6 +195,7 @@ export async function createSolveSession(options: SolveProblemOptions): Promise<
     timer?.unref?.();
     const session: InitializingSolveSession = {
         ...sessionConfig,
+        ...generation,
         signal: controller.signal,
         plannerKnowledgeHints: [],
         async dispose() {
@@ -214,9 +225,8 @@ export async function createSolveSession(options: SolveProblemOptions): Promise<
             session.knowledgeRetriever = ownedRuntime.retriever;
             session.knowledgeSnapshot = ownedRuntime.snapshot;
         }
-        if (usesWorkerKnowledge(session.knowledgeMode)) {
-            session.toolRegistry = createToolRegistry();
-            session.toolRegistry.register(createSearchKnowledgeTool({ retriever: session.knowledgeRetriever }));
+        if (generation.generation === "tools") {
+            generation.toolRegistry.register(createSearchKnowledgeTool({ retriever: session.knowledgeRetriever }));
         }
         if (usesPlannerKnowledge(session.knowledgeMode)) {
             const retriever = session.knowledgeRetriever;
@@ -233,7 +243,8 @@ export async function createSolveSession(options: SolveProblemOptions): Promise<
         reportSessionPhase(session, "planning", "Building execution plan.");
         const plan = { ...(await awaitWithSignal(() => createExecutionPlan(session), controller.signal)), knowledgeMode: session.knowledgeMode };
         controller.signal.throwIfAborted();
-        return { ...session, plan };
+        const { engine: _engine, knowledgeMode: _knowledgeMode, toolRegistry: _toolRegistry, ...common } = session;
+        return { ...common, ...generation, plan };
     }
     catch (error) {
         try {

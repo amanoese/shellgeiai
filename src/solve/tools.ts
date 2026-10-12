@@ -7,7 +7,9 @@ import type {
   ToolExecutionCall,
   ToolExecutionResult,
   ToolRegistry,
-  ToolRegistration
+  ToolRegistration,
+  ToolCallingEngine,
+  WorkerGeneration
 } from "../types.js";
 import { awaitWithSignal } from "../shared.js";
 import { z } from "zod";
@@ -75,19 +77,22 @@ async function executeWorkerTool(registry: ToolRegistry, call: ToolExecutionCall
   };
 }
 
-export async function generateWorkerCommand({ engine, context, toolRegistry, signal }: GenerateWorkerCommandInput): Promise<GeneratedWorkerCommand> {
+async function generateCommand({ engine, context, signal }: Omit<GenerateWorkerCommandInput, "toolRegistry">): Promise<GeneratedWorkerCommand> {
   signal?.throwIfAborted();
-  if (!toolRegistry) {
-    const engineResult = await (signal
-      ? engine.generateCommand(context, { signal })
-      : engine.generateCommand(context));
-    signal?.throwIfAborted();
-    return {
-      engineResult,
-      toolCalls: []
-    };
-  }
-  if (!engine.generateTurn) throw new TypeError("Worker Engine does not support Tool turns.");
+  const engineResult = await (signal
+    ? engine.generateCommand(context, { signal })
+    : engine.generateCommand(context));
+  signal?.throwIfAborted();
+  return { engineResult, toolCalls: [] };
+}
+
+async function generateToolCommand({ engine, context, toolRegistry, signal }: {
+  engine: Pick<ToolCallingEngine, "generateTurn">;
+  context: SolveContext;
+  toolRegistry: ToolRegistry;
+  signal?: AbortSignal;
+}): Promise<GeneratedWorkerCommand> {
+  signal?.throwIfAborted();
   const tools = toolRegistry.definitions();
   const firstTurn = await engine.generateTurn({ context, tools, ...(signal ? { signal } : {}) });
   signal?.throwIfAborted();
@@ -124,6 +129,26 @@ export async function generateWorkerCommand({ engine, context, toolRegistry, sig
     engineResult: finalTurn,
     toolCalls: [summary]
   };
+}
+
+/** Internal sessions have selected and validated their generation path once. */
+export function generateSessionWorkerCommand(session: WorkerGeneration, context: SolveContext, signal?: AbortSignal): Promise<GeneratedWorkerCommand> {
+  switch (session.generation) {
+    case "command": return generateCommand({ engine: session.engine, context, signal });
+    case "tools": return generateToolCommand({ engine: session.engine, context, toolRegistry: session.toolRegistry, signal });
+  }
+}
+
+/** Compatibility boundary for callers injecting a registry and legacy Tool Engine. */
+export async function generateWorkerCommand({ engine, context, toolRegistry, signal }: GenerateWorkerCommandInput): Promise<GeneratedWorkerCommand> {
+  signal?.throwIfAborted();
+  if (!toolRegistry) return generateCommand({ engine, context, signal });
+  if (!supportsToolTurns(engine)) throw new TypeError("Worker Engine does not support Tool turns.");
+  return generateToolCommand({ engine, context, toolRegistry, signal });
+}
+
+function supportsToolTurns(engine: Engine): engine is Engine & Pick<ToolCallingEngine, "generateTurn"> {
+  return typeof engine.generateTurn === "function";
 }
 
 function supportsZodSchema(inputSchema: unknown): inputSchema is z.ZodType {

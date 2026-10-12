@@ -121,14 +121,25 @@ export function createKnowledgeRetriever({ store, generationId, embedder, signal
 export const searchKnowledgeInputSchema = z.object({ query: z.string().trim().min(1).max(500) }).strict();
 export type SearchKnowledgeInput = z.infer<typeof searchKnowledgeInputSchema>;
 
+function adaptKnowledgeSearch(retriever: KnowledgeRetriever | undefined): NonNullable<KnowledgeRetriever["search"]> {
+    return input => {
+        const search = retriever?.search;
+        if (typeof search !== "function") {
+            throw new TypeError("retriever.search is not a function");
+        }
+        return search.call(retriever, input);
+    };
+}
+
 export function createSearchKnowledgeTool({ retriever }: { retriever: KnowledgeRetriever | undefined }) {
     type SearchKnowledgeOutput = { records: ReturnType<typeof formatKnowledgeRecords> };
+    const search = adaptKnowledgeSearch(retriever);
     return {
         name: "search_knowledge",
         description: "Search the persisted local shell command knowledge database using an external query embedding API. The database operation is read-only.",
         inputSchema: searchKnowledgeInputSchema,
         async execute({ query }: SearchKnowledgeInput): Promise<SearchKnowledgeOutput> {
-            const records = await retriever!.search!({ query });
+            const records = await search({ query });
             return {
                 records: formatKnowledgeRecords(records, { limit: 5 })
             };

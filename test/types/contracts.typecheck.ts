@@ -125,3 +125,28 @@ const missingCleanup: ExecutedRunResult = withoutCleanup;
 // @ts-expect-error Aborted attempts require the same normalized Runner result.
 const unnormalizedAborted: Parameters<typeof createAbortedAttempt>[0]["runResult"] = minimalRunResult;
 void [minimalRunner, normalizedRunResult, missingAborted, missingFailure, missingCleanup, unnormalizedAborted];
+
+// Ready generation contracts bind mode, Engine capability and registry together.
+type ReadyCommon = Omit<SolveSession, "generation" | "engine" | "knowledgeMode" | "toolRegistry">;
+declare const readyCommon: ReadyCommon;
+const commandSession: SolveSession = { ...readyCommon, generation: "command", engine: toolEngine, knowledgeMode: "planner" };
+const toolSession: SolveSession = { ...readyCommon, generation: "tools", engine: toolEngine, knowledgeMode: "worker", toolRegistry: registry };
+// @ts-expect-error Tool sessions require a Tool Calling Engine.
+const wrongToolEngine: SolveSession = { ...readyCommon, generation: "tools", engine: plainEngine, knowledgeMode: "worker", toolRegistry: registry };
+// @ts-expect-error Tool sessions require a registry.
+const noToolRegistry: SolveSession = { ...readyCommon, generation: "tools", engine: toolEngine, knowledgeMode: "all" };
+// @ts-expect-error Command generation cannot be paired with worker knowledge.
+const wrongCommandMode: SolveSession = { ...readyCommon, generation: "command", engine: plainEngine, knowledgeMode: "worker" };
+// @ts-expect-error Command sessions cannot carry a Tool registry.
+const wrongCommandRegistry: SolveSession = { ...readyCommon, generation: "command", engine: plainEngine, knowledgeMode: "off", toolRegistry: registry };
+declare const readyWithoutPlan: Omit<Extract<SolveSession, { generation: "command" }>, "plan">;
+// @ts-expect-error Even a normalized generation needs a plan before becoming ready.
+const missingReadyPlan: SolveSession = readyWithoutPlan;
+function exhaustiveGeneration(session: SolveSession): string {
+  switch (session.generation) {
+    case "command": { const mode: "off" | "planner" = session.knowledgeMode; return mode; }
+    case "tools": { session.engine.generateTurn({ context: { problem: "x", attempts: [], workdir: "/tmp" }, tools: session.toolRegistry.definitions() }); return session.knowledgeMode; }
+    default: { const unreachable: never = session; return unreachable; }
+  }
+}
+void [commandSession, toolSession, wrongToolEngine, noToolRegistry, wrongCommandMode, wrongCommandRegistry, missingReadyPlan, exhaustiveGeneration];

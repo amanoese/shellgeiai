@@ -22,7 +22,7 @@ import type {
 } from "../types.js";
 import { reportSolveProgress } from "./events.js";
 import { isSafeCommand } from "../execution/safety.js";
-import { generateWorkerCommand, WorkerToolLoopError } from "./tools.js";
+import { generateSessionWorkerCommand, WorkerToolLoopError } from "./tools.js";
 
 type FailedAttempt = SolveAttempt & { passed: false };
 type NormalizedRunResult = RunResult & {
@@ -216,12 +216,7 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
   };
   let generated;
   try {
-    generated = await generateWorkerCommand({
-      engine: session.engine,
-      context,
-      toolRegistry: session.toolRegistry,
-      signal
-    });
+    generated = await generateSessionWorkerCommand(session, context, signal);
   }
   catch (error) {
     const cancellationReason = getRoutineCancellationReason({ error, signal, session, control });

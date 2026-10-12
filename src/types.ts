@@ -284,6 +284,7 @@ export type Engine = EngineBase & (
   | { capabilities: { toolCalling: true }; generateTurn(input: GenerateTurnInput): Promise<EngineTurn> }
   | { capabilities?: { toolCalling: false }; generateTurn?: (input: GenerateTurnInput) => Promise<EngineTurn> }
 );
+export type ToolCallingEngine = Extract<Engine, { capabilities: { toolCalling: true } }>;
 export interface LlmClient {
   responses: {
     create(request: ResponseCreateParamsNonStreaming, options?: RequestOptions): PromiseLike<Response>;
@@ -437,7 +438,12 @@ export interface InitializingSolveSession extends ProgressSession {
   plannerProvider?: PlannerProvider;
   dispose(): Promise<void>;
 }
-export interface SolveSession extends InitializingSolveSession { plan: ExecutionPlan }
+export type WorkerGeneration =
+  | { generation: "command"; knowledgeMode: "off" | "planner"; engine: Engine; toolRegistry?: never }
+  | { generation: "tools"; knowledgeMode: "worker" | "all"; engine: ToolCallingEngine; toolRegistry: ToolRegistry };
+export type ReadySolveSession = Omit<InitializingSolveSession, "engine" | "knowledgeMode" | "toolRegistry"> &
+  { plan: ExecutionPlan } & WorkerGeneration;
+export type SolveSession = ReadySolveSession;
 export interface KnowledgeRuntimeOptions {
   datasetPath: string;
   dbPath: string;

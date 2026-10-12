@@ -42,7 +42,7 @@ describe("orchestrator generation cancellation", () => {
         ? { type: "command", command: "printf ok" }
         : { type: "tool_calls", calls: [{ id: "c1", name: "search_knowledge", arguments: { query: "awk" } }], continuation: {} })
     };
-    const session = {
+    const session = { generation: "tools", knowledgeMode: "worker",
       problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
       signal: sessionController.signal, engine, toolRegistry,
       runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
@@ -82,11 +82,11 @@ describe("orchestrator generation cancellation", () => {
       waiting = true;
       return waitForAbort(signal);
     };
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "first-pass-wins",
       engine: { name: "fake", generateCommand: (context, { signal }) => generate(context, signal),
         generateTurn: ({ context, signal, continuation }) => generate(context, signal, continuation) },
-      ...(path === "command" ? {} : { toolRegistry: { definitions: () => [], execute: async () => ({ ok: true, value: { records: [] }, validatedArguments: { query: "awk" } }) } }),
+      ...(path === "command" ? {} : { generation: "tools", knowledgeMode: "worker", toolRegistry: { definitions: () => [], execute: async () => ({ ok: true, value: { records: [] }, validatedArguments: { query: "awk" } }) } }),
       runner: { run: vi.fn(async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 })) },
       judge: { judge: async () => ({ passed: true, reason: "ok" }) },
       onProgress: event => { if (event.type === "attempt-finished" && event.passed) passed = true; },
@@ -106,7 +106,7 @@ describe("orchestrator generation cancellation", () => {
   it("returns stopped summaries on the overall deadline during generation", async () => {
     vi.useFakeTimers();
     const sessionController = new AbortController();
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() + 50,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() + 50,
       signal: sessionController.signal, engine: { name: "fake", generateCommand: (_context, { signal }) => waitForAbort(signal) },
       plan: { parallelism: 2, workerTasks: ["worker-1", "worker-2"].map(workerId => ({ workerId, strategy: "default", maxAttempts: 1 })) }
     };
@@ -184,7 +184,7 @@ describe("executeWorkerTask", () => {
     const task = { workerId: "worker-1", strategy: "default", maxAttempts: 2 };
     const generateCommand = vi.fn(async context => ({ command: context.attempts.length ? "printf ok" : "printf wrong", explanation: context.attempts.length ? "Corrected" : "First try" }));
     const control = { passingCandidateId: null };
-    const result = await executeWorkerTask({ problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "best-score-wins",
+    const result = await executeWorkerTask({ generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", selectorName: "best-score-wins",
       engine: { name: "test", generateCommand },
       runner: { run: async command => ({ stdout: command === "printf ok" ? "ok" : "wrong", stderr: "", exitCode: 0, timedOut: false }) },
       judge: { judge: async ({ stdout }) => ({ passed: stdout === "ok", reason: stdout === "ok" ? "passed" : "wrong output" }) }
@@ -197,7 +197,7 @@ describe("executeWorkerTask", () => {
   });
 
   it("keeps the generated explanation when deadline stopping produces no attempt", async () => {
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", engine: { name: "test", generateCommand: async () => {
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", engine: { name: "test", generateCommand: async () => {
       session.deadlineAtMs = Date.now() - 1;
       return { command: "printf ok", explanation: "Generated before the deadline" };
     } } };
@@ -431,7 +431,7 @@ describe("runWorkerAttempt", () => {
       get cleanup() { return { attempted: true, exitCode: 0, stderr: "" }; }
     }
     const result = await runWorkerAttempt({
-      session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
         engine: { generateCommand: async () => ({ command: "printf ok" }) },
         runner: { run: async () => new AccessorRunResult() },
         judge: { judge: async input => ({
@@ -452,7 +452,7 @@ describe("runWorkerAttempt", () => {
 
   it.each([true, false])("returns an explicit judged outcome for passed=%s", async passed => {
     const result = await runWorkerAttempt({
-      session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
         engine: { generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) },
         runner: { run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false }) },
         judge: { judge: async () => ({ passed, reason: "judged", score: { value: 1 } }) } },
@@ -471,7 +471,7 @@ describe("runWorkerAttempt", () => {
   it("returns a stopped outcome without an attempt when the deadline expires before running", async () => {
     const runnerRun = vi.fn();
     const result = await runWorkerAttempt({
-      session: { problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() - 1,
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", deadlineAtMs: Date.now() - 1,
         engine: { generateCommand: async () => ({ command: "printf ok", explanation: "Print ok" }) }, runner: { run: runnerRun } },
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: {},
       workerState: { abortController: new AbortController() }, iteration: 0, attempts: []
@@ -485,7 +485,7 @@ describe("runWorkerAttempt", () => {
     const reason = new Error("external cancellation");
     const judge = { judge: vi.fn() };
     const workerState = { abortController: new AbortController() };
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
       engine: { generateCommand: async () => ({ command: "printf ok" }) }, judge,
       runner: { run: async (_command, { signal }) => {
         sessionController.abort(reason);
@@ -505,7 +505,7 @@ describe("runWorkerAttempt", () => {
     const control = {};
     const runResult = { stdout: "partial", stderr: "", exitCode: null, aborted: true, timedOut: false, durationMs: 7,
       failure: { kind: "aborted", message: "Runner aborted" }, cleanup: { completed: true } };
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp", signal: sessionController.signal,
       engine: { generateCommand: async () => ({ command: "printf ok" }) },
       runner: { run: async () => {
         if (source === "deadline") { session.deadlineAtMs = Date.now() - 1; sessionController.abort(new Error("Solve time budget exceeded.")); }
@@ -527,7 +527,7 @@ describe("runWorkerAttempt", () => {
 
   it("preserves a sparse stopped attempt when the Judge throws", async () => {
     const result = await runWorkerAttempt({
-      session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
         engine: { generateCommand: async () => ({ command: "printf ok" }) },
         runner: { run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, timedOut: false }) },
         judge: { judge: async () => { throw new Error("Judge unavailable"); } } },
@@ -543,7 +543,7 @@ describe("runWorkerAttempt", () => {
   });
 
   it("preserves existing unrelated Runner failure results", async () => {
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => ({ command: "printf ok" }) },
       runner: { run: async () => { throw new Error("Runner unavailable"); } } };
     const result = await runWorkerAttempt({ session, control: {}, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
@@ -565,7 +565,7 @@ describe("runWorkerAttempt", () => {
       return { command: "printf ok" };
     });
     const runnerRun = vi.fn();
-    const outcome = runWorkerAttempt({ session: {
+    const outcome = runWorkerAttempt({ session: { generation: "command", knowledgeMode: "off",
       problem: { problemText: "print ok" }, workdir: "/tmp", engine: { generateCommand },
       runner: { run: runnerRun }, signal: sessionController.signal
     }, task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 }, control: {},
@@ -581,7 +581,7 @@ describe("runWorkerAttempt", () => {
     const workerController = new AbortController();
     const control = {};
     const runnerRun = vi.fn();
-    const session = { problem: { problemText: "print ok" }, workdir: "/tmp",
+    const session = { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => ({ command: "printf ok" }) }, runner: { run: runnerRun },
       onProgress: event => { if (event.type === "attempt-started") {
         control.stopRequested = true; control.stopReason = "stopped before Runner"; workerController.abort();
@@ -596,7 +596,7 @@ describe("runWorkerAttempt", () => {
   it("recognizes cancellation error names at the unknown provider boundary", async () => {
     const workerController = new AbortController();
     const result = await runWorkerAttempt({
-      session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+      session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
         engine: { generateCommand: async () => { workerController.abort(); throw { name: "AbortError" }; } } },
       control: { stopRequested: true, stopReason: "scheduler stop" },
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
@@ -608,7 +608,7 @@ describe("runWorkerAttempt", () => {
   it("preserves provider exceptions even when a stop was requested concurrently", async () => {
     const workerController = new AbortController();
     const providerError = new Error("provider unavailable");
-    await expect(runWorkerAttempt({ session: { problem: { problemText: "print ok" }, workdir: "/tmp",
+    await expect(runWorkerAttempt({ session: { generation: "command", knowledgeMode: "off", problem: { problemText: "print ok" }, workdir: "/tmp",
       engine: { generateCommand: async () => { workerController.abort(); throw providerError; } } },
       control: { stopRequested: true, stopReason: "stop requested" },
       task: { workerId: "worker-1", strategy: "default", maxAttempts: 1 },
@@ -625,7 +625,7 @@ describe("runWorkerAttempt", () => {
       aborted: false,
       durationMs: 1
     }));
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "Print ok", expectedOutput: "ok" },
       workdir: "/tmp",
       commandPolicy: undefined,
@@ -673,7 +673,7 @@ describe("runWorkerAttempt", () => {
       maxAttempts: 1
     };
     const runnerRun = vi.fn();
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: {
         problemText: "List files",
         expectedOutput: ""
@@ -755,7 +755,7 @@ describe("runWorkerAttempt", () => {
         })
     };
     const runnerRun = vi.fn();
-    const session = {
+    const session = { generation: "tools", knowledgeMode: "worker",
       problem: { problemText: "List files", expectedOutput: "" },
       workdir: "/tmp",
       commandPolicy: undefined,
@@ -803,7 +803,7 @@ describe("runWorkerAttempt", () => {
 
   it("preserves unrelated Engine generation exceptions", async () => {
     const providerError = new Error("provider unavailable");
-    const session = {
+    const session = { generation: "command", knowledgeMode: "off",
       problem: { problemText: "List files", expectedOutput: "" },
       workdir: "/tmp",
       engine: { generateCommand: vi.fn(async () => { throw providerError; }) }
