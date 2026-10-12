@@ -54,6 +54,12 @@ jobs:
         run: |
           node dist/cli.js --help
           node dist/cli.js solve --help
+          node dist/cli.js logs --help
+          node dist/cli.js knowledge --help
+          node dist/cli.js knowledge prepare --help
+          node dist/cli.js knowledge build --help
+          node dist/cli.js knowledge search --help
+          node dist/cli.js knowledge man --help
 
       - name: Verify packed contents
         run: npm pack --dry-run

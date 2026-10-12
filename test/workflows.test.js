@@ -26,7 +26,9 @@ describe("GitHub workflows", () => {
     expect(workflow).toContain('cd "$(mktemp -d)"');
     expect(workflow).toContain("shellgeiai knowledge build --help");
     expect(workflow).toContain('PACKAGE_TGZ="$(npm pack --foreground-scripts=false)"');
-    expect(workflow).toContain('npm install -g "./${PACKAGE_TGZ}"');
+    expect(workflow).toContain('npm install -g --prefix "$INSTALL_PREFIX" "./${PACKAGE_TGZ}"');
+    expect(workflow).toContain('skipLibCheck: false');
+    expect(workflow).toContain('run: npm run typecheck');
     expect(workflow).toContain("shellgei-basic.jsonl");
     expect(workflow).not.toContain("OPENROUTER_API_KEY");
   });

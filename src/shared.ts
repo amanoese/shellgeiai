@@ -74,4 +74,3 @@ export function awaitWithSignal<T>(operation: () => T | PromiseLike<T>, signal?:
     }, reject).finally(() => signal.removeEventListener("abort", aborted));
   });
 }
-

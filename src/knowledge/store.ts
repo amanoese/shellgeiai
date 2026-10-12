@@ -12,12 +12,19 @@ import * as sqliteVec from "sqlite-vec";
 
 export const KNOWLEDGE_SCHEMA_VERSION = 1;
 
+/** Public schema helpers accept only the SQLite operations they use. */
+export interface KnowledgeSchemaDatabase {
+    exec(sql: string): unknown;
+    pragma(sql: string, options?: { simple?: boolean }): unknown;
+    prepare(sql: string): { get(): unknown };
+}
+
 /** Recovery guidance is attached only to diagnosed persisted-database failures. */
 export function knowledgeDatabaseError(message: string, recovery: KnowledgeRecovery): KnowledgeDatabaseError {
     return Object.assign(new Error(message), { knowledgeRecovery: recovery });
 }
 
-export function createKnowledgeSchema(db: Database.Database, dimensions: number) {
+export function createKnowledgeSchema(db: Pick<KnowledgeSchemaDatabase, "exec">, dimensions: number) {
     validateDimensions(dimensions);
     // Only the validated integer dimension enters SQL; all user values are bound.
     db.exec(`
@@ -59,7 +66,7 @@ export function createKnowledgeSchema(db: Database.Database, dimensions: number)
   `);
 }
 
-export function validateKnowledgeSchema(db: Database.Database) {
+export function validateKnowledgeSchema(db: KnowledgeSchemaDatabase) {
     const version = db.pragma("user_version", { simple: true });
     if (version !== KNOWLEDGE_SCHEMA_VERSION) {
         throw knowledgeDatabaseError(`Unsupported knowledge SQLite schema version ${version}; rebuild the knowledge database.`, "fresh");
@@ -76,7 +83,7 @@ export function validateKnowledgeSchema(db: Database.Database) {
             throw knowledgeDatabaseError(`Incompatible knowledge SQLite schema (${table}); rebuild the knowledge database.`, "fresh");
         }
     }
-    const manifest = db.prepare<[], ManifestRow>("SELECT * FROM knowledge_manifest WHERE singleton = 1").get();
+    const manifest = db.prepare("SELECT * FROM knowledge_manifest WHERE singleton = 1").get() as ManifestRow | undefined;
     if (!manifest) {
         throw knowledgeDatabaseError("Knowledge SQLite schema has no identity manifest; rebuild the knowledge database.", "fresh");
     }
@@ -86,7 +93,7 @@ export function validateKnowledgeSchema(db: Database.Database) {
     catch (cause) {
         throw knowledgeDatabaseError((cause instanceof Error ? cause.message : String(cause)), "fresh");
     }
-    const vectorSql = db.prepare<[], {sql: string}>("SELECT sql FROM sqlite_master WHERE name = 'knowledge_vectors'").get()?.sql ?? "";
+    const vectorSql = (db.prepare("SELECT sql FROM sqlite_master WHERE name = 'knowledge_vectors'").get() as { sql: string } | undefined)?.sql ?? "";
     if (!new RegExp(`USING\\s+vec0\\s*\\([\\s\\S]*embedding\\s+FLOAT\\[${manifest.dimensions}\\]\\s+distance_metric=cosine`, "i").test(vectorSql)) {
         throw knowledgeDatabaseError("Knowledge SQLite vector schema dimensions or metric mismatch; rebuild the knowledge database.", "fresh");
     }

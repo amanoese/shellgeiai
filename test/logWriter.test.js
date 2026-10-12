@@ -127,6 +127,11 @@ describe("writeSolveSessionLog", () => {
     }
     expect(content).not.toContain('"continuation"');
     expect(content).not.toContain('"toolResults"');
+    for (const attempt of JSON.parse(content).attempts) {
+      expect(attempt).not.toBeNull();
+      expect(attempt).not.toHaveProperty("kind");
+      expect(attempt).not.toHaveProperty("attempt");
+    }
   });
 
   it("logs a reproducible knowledge snapshot and excludes injected credential fields", async () => {
@@ -143,6 +148,31 @@ describe("writeSolveSessionLog", () => {
     expect(JSON.parse(content).knowledge).toEqual({ mode: "planner", ...snapshot });
     expect(content).not.toContain("DO NOT LOG THIS");
     expect(content).not.toContain("SECRET");
+  });
+  it.each(["deadline", "judge failure"])("persists %s stopped workers without internal outcome wrappers", async (stop) => {
+    const workdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-stopped-log-"));
+    tempDirs.push(workdir);
+    const result = await solveProblem({
+      problemInput: "print ok", requestedWorkdir: workdir, parallelism: 1, maxIterations: 1,
+      timeBudgetMs: stop === "deadline" ? 100 : undefined,
+      engine: { name: "test", generateCommand: (_context, { signal } = {}) => stop === "deadline"
+        ? new Promise((_resolve, reject) => {
+          if (signal.aborted) reject(signal.reason);
+          else signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+        }) : Promise.resolve({ command: "printf ok", explanation: "Print ok" }) },
+      runner: { name: "test", run: async () => ({ stdout: "ok", stderr: "", exitCode: 0, durationMs: 1 }) },
+      judge: { judge: async () => { throw new Error("Judge unavailable"); } },
+      plannerProvider: createTestPlannerProvider()
+    });
+    const log = JSON.parse(await readFile(result.logPath, "utf8"));
+    expect(log.workerSummaries[0].state).toBe("stopped");
+    expect(log.attempts).toHaveLength(stop === "deadline" ? 0 : log.workerSummaries.length);
+    if (stop === "judge failure") expect(log.attempts[0]).toMatchObject({ command: "printf ok", passed: false, failureReason: "Judge unavailable" });
+    for (const attempt of log.attempts) {
+      expect(attempt).not.toBeNull();
+      expect(attempt).not.toHaveProperty("kind");
+      expect(attempt).not.toHaveProperty("attempt");
+    }
   });
   it("uses a unique filename when timestamp would otherwise collide", async () => {
     const logsDir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-log-writer-"));

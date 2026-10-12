@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p test/tsconfig.json",
     "dev": "npm run build && node dist/cli.js",
     "knowledge:man": "npm run build && node scripts/build-man-knowledge.js",
@@ -16,7 +17,7 @@
     "lint": "echo \"TODO: add lint\"",
     "test": "npm run build && vitest run",
     "test:docker": "npm run build && vitest run test/dockerIntegration.test.js",
-    "test:watch": "npm run build && vitest",
+    "test:watch": "vitest --watch",
     "prepack": "npm run build"
   },
   "keywords": [
@@ -26,7 +27,7 @@
     "ai",
     "docker",
     "openai",
-    "javascript"
+    "typescript"
   ],
   "license": "Apache-2.0",
   "repository": {

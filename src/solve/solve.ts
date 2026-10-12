@@ -334,4 +334,3 @@ export function normalizePlannerResult(rawPlan: unknown, session: InitializingSo
         }
     };
 }
-

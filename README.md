@@ -21,6 +21,8 @@ ShellGeiAI は、シェル芸の問題文を入力として受け取り、AI に
 npm install -g shellgeiai
 ```
 
+配布 package には build 済みの JavaScript、型宣言と source map を含みます。global install 後に TypeScript を compile する必要はありません。
+
 既定の接続先は OpenRouter の `https://openrouter.ai/api/v1` です。Planner と Worker はどちらも `openai/gpt-6.1-sol` を使います。
 
 現在のシェルだけで有効にする場合:
@@ -226,3 +228,6 @@ man の表示 locale は既定で `ja_JP.UTF-8` です。日本語 man が利用
 policy の形式や拡張方法は [docs/development.md](docs/development.md) を参照してください。
 
 開発者向けのセットアップやローカル実行方法は [docs/development.md](docs/development.md) を参照してください。
+
+
+開発 checkout は strict TypeScript の31ファイル、7ディレクトリです。`npm ci`、`npm run build` のあと `node dist/cli.js --help` で起動できます。型検査、テストと2 terminal の watch 手順は [開発ガイド](docs/development.md)、全ファイルと読む順番は [source map](docs/src-file-map.md) を参照してください。

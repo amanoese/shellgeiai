@@ -219,6 +219,26 @@ describe("npm publish metadata", () => {
       const packedPaths = manifest[0].files.map((file) => file.path);
 
       expect(packedPaths).toContain("dist/cli.js");
+      const sourcePaths = [];
+      async function collectSources(directory) {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          const filename = path.join(directory, entry.name);
+          if (entry.isDirectory()) await collectSources(filename);
+          else sourcePaths.push(path.relative(path.join(repoRoot, "src"), filename));
+        }
+      }
+      await collectSources(path.join(repoRoot, "src"));
+      expect(sourcePaths).toHaveLength(31);
+      expect(sourcePaths.every((filename) => filename.endsWith(".ts"))).toBe(true);
+      expect(new Set(sourcePaths.map((filename) => path.dirname(filename)).filter((directory) => directory !== ".")).size).toBe(7);
+      for (const sourcePath of sourcePaths) {
+        const modulePath = `dist/${sourcePath.replace(/\.ts$/, "")}`;
+        for (const extension of [".js", ".d.ts", ".js.map"]) expect(packedPaths).toContain(modulePath + extension);
+      }
+      for (const asset of ["wasm/tree-sitter-bash.wasm", "data/knowledge/shellgei-man-profile.json", "policies/default-command-policy.json", "policies/default-sandbox-policy.json"]) {
+        expect(packedPaths).toContain(asset);
+      }
+      expect(packedPaths).not.toContain("vitest.config.ts");
       expect(packedPaths.some((filePath) => filePath.startsWith("src/"))).toBe(false);
       for (const modulePath of packedModulePaths) {
         expect(packedPaths).toContain(modulePath);

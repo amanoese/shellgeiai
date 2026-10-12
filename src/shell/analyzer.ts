@@ -1,4 +1,3 @@
-import type { Node } from "web-tree-sitter";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
@@ -23,7 +22,26 @@ async function createBashParser() {
   return parser;
 }
 
-export async function getBashParser() {
+/** Structural parser boundary keeps upstream WASM ambient types out of declarations. */
+export interface BashSyntaxNode {
+  type: string;
+  text: string;
+  children: BashSyntaxNode[];
+  namedChildren: BashSyntaxNode[];
+  parent: BashSyntaxNode | null;
+  childCount: number;
+  isNamed: boolean;
+  startIndex: number;
+  endIndex: number;
+  child(index: number): BashSyntaxNode | null;
+  childForFieldName(name: string): BashSyntaxNode | null;
+}
+
+export interface BashParser {
+  parse(command: string): { rootNode: BashSyntaxNode; delete(): void } | null;
+}
+
+export async function getBashParser(): Promise<BashParser> {
   parserPromise ??= createBashParser();
   return parserPromise;
 }
@@ -89,25 +107,25 @@ function baseFeatures(): ShellCommandFeatures {
   };
 }
 
-function walk(node: Node, visit: (node: Node) => void): void {
+function walk(node: BashSyntaxNode, visit: (node: BashSyntaxNode) => void): void {
   visit(node);
   for (const child of node.children ?? []) {
     walk(child, visit);
   }
 }
 
-function isCommandNode(node: Node) {
+function isCommandNode(node: BashSyntaxNode) {
   return node.type === "command" || node.type === "simple_command";
 }
 
-function commandWords(node: Node) {
+function commandWords(node: BashSyntaxNode) {
   return node.namedChildren
     .filter((child) => ["command_name", "word", "string", "raw_string"].includes(child.type))
     .map((child) => child.text)
     .filter(Boolean);
 }
 
-function commandNameFromNode(node: Node) {
+function commandNameFromNode(node: BashSyntaxNode) {
   const nameNode = node.childForFieldName?.("name");
   if (nameNode?.text) {
     return nameNode.text;
@@ -121,7 +139,7 @@ function commandNameFromNode(node: Node) {
   return commandWords(node)[0] ?? null;
 }
 
-function pipelineAncestor(node: Node) {
+function pipelineAncestor(node: BashSyntaxNode) {
   let current = node.parent;
   while (current) {
     if (current.type === "pipeline") {
@@ -141,7 +159,7 @@ function oneLinerOption(commandName: string, words: string[]) {
   return words.find((word) => flags.has(word)) ?? null;
 }
 
-function hasErrorNode(node: Node) {
+function hasErrorNode(node: BashSyntaxNode) {
   let found = false;
   walk(node, (child) => {
     if (child.type === "ERROR") {
@@ -151,11 +169,11 @@ function hasErrorNode(node: Node) {
   return found;
 }
 
-function isHereDocNode(node: Node) {
+function isHereDocNode(node: BashSyntaxNode) {
   return node.type === "heredoc_redirect" || node.type === "heredoc_body";
 }
 
-function redirectionFromNode(node: Node) {
+function redirectionFromNode(node: BashSyntaxNode) {
   if (node.type !== "file_redirect") {
     return null;
   }
@@ -175,16 +193,16 @@ function redirectionFromNode(node: Node) {
   };
 }
 
-function functionNameFromNode(node: Node) {
+function functionNameFromNode(node: BashSyntaxNode) {
   const nameNode = node.childForFieldName?.("name") ?? node.namedChildren.find((child) => child.type === "word");
   return nameNode?.text ?? null;
 }
 
-function functionBodyFromNode(node: Node) {
+function functionBodyFromNode(node: BashSyntaxNode) {
   return node.childForFieldName?.("body") ?? node.namedChildren.find((child) => child.type === "compound_statement");
 }
 
-function commandNamesInNode(node: Node) {
+function commandNamesInNode(node: BashSyntaxNode) {
   const names: string[] = [];
   walk(node, (child) => {
     if (!isCommandNode(child)) {
@@ -199,7 +217,7 @@ function commandNamesInNode(node: Node) {
   return names;
 }
 
-function hasBackgroundOperator(node: Node) {
+function hasBackgroundOperator(node: BashSyntaxNode) {
   let found = false;
   walk(node, (child) => {
     for (let index = 0; index < child.childCount; index += 1) {
@@ -212,7 +230,7 @@ function hasBackgroundOperator(node: Node) {
   return found;
 }
 
-function recursiveBackgroundFunctionFromNode(node: Node) {
+function recursiveBackgroundFunctionFromNode(node: BashSyntaxNode) {
   if (node.type !== "function_definition") {
     return null;
   }
@@ -226,7 +244,7 @@ function recursiveBackgroundFunctionFromNode(node: Node) {
   return commandNamesInNode(body).includes(functionName) ? functionName : null;
 }
 
-export async function analyzeShellCommand(command: string, options: { parserProvider?: () => Promise<Pick<Parser, "parse">> } = {}): Promise<ShellCommandFeatures> {
+export async function analyzeShellCommand(command: string, options: { parserProvider?: () => Promise<BashParser> } = {}): Promise<ShellCommandFeatures> {
   const parserProvider = options.parserProvider ?? getBashParser;
 
   try {

@@ -5,16 +5,15 @@
     "moduleResolution": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "strict": true,
     "verbatimModuleSyntax": true,
     "noEmitOnError": true,
     "sourceMap": true,
-    "declaration": false,
+    "declaration": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.js", "src/**/*.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

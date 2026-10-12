@@ -12,7 +12,7 @@
 
 ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI SubAgent による候補探索、Docker 内での安全な並列実行、判定、結果集約を通じて最終回答を返す CLI ツールです。
 
-ただし現状の実装は、理想像へ向かう移行途中です。いまの `src/` は複数 worker の solve フローを保ちながら、`cli / solve / execution / providers / io / shared` の責務分離を先に進めている段階として理解してください。
+ただし現状の実装は、理想像へ向かう移行途中です。いまの `src/` は複数 worker の solve フローを保ちながら、31個の TypeScript ファイルで責務と型契約を整理した段階として理解してください。
 
 このリポジトリでは、次の性質を特に重視します。
 
@@ -34,31 +34,30 @@ ShellGeiAI は、シェル芸の問題文を受け取り、複数の軽量 AI Su
 
 ## 現在の主要コンポーネント
 
-- `src/cli.js`: CLI 入口
-- `src/cli/`: CLI コマンドと引数解析
-- `src/solve/solve.js`: solve の薄い入口
-- `src/solve/session/solveSession.js`: セッション初期化
-- `src/solve/orchestration/orchestrator.js`: 現行の worker 実行オーケストレーション
-- `src/solve/planning/planner.js`: LLM planner 結果の plan 正規化
-- `src/solve/selection/selector.js`: 現行の最小 selector
-- `src/solve/worker/`: worker retry loop と attempt 実行
-- `src/providers/engines/`: Engine 実装群
-- `src/io/problem/`: 問題文正規化の入口
-- `src/execution/runner/`: 実行基盤
-- `src/execution/safety/`: command policy と sandbox policy
-- `src/execution/judge/`: 判定器
-- `src/io/logs/`: セッションログ出力
-- `src/io/formatter/`: 結果表示
-- `src/shared/`: ファイル・実行補助
+`src/` は strict TypeScript の31ファイル、7ディレクトリ（`cli / solve / execution / providers / knowledge / io / shell`）です。`shared.ts` と `types.ts` は root に置きます。責務はファイル内でも分離し、責務ごとの小さなディレクトリへは分割しません。
 
-将来的な理想構成では、次の責務分割を目指します。
+- `src/cli.ts`: CLI 起動入口
+- `src/cli/program.ts`: Commander の command / option 定義と引数解析
+- `src/cli/commands.ts`: solve / logs の dispatch と結果整形
+- `src/solve/solve.ts`: 問題文正規化、session 初期化、plan 正規化と solve の入口
+- `src/solve/runtime.ts`: Engine / Runner / Judge / Planner の構築
+- `src/solve/orchestrator.ts`: worker queue、並列実行、停止制御と結果集約
+- `src/solve/worker.ts`: retry loop、attempt の生成・安全性検査・実行・判定
+- `src/solve/tools.ts`: Tool registry、引数検証と bounded Tool loop
+- `src/solve/selection.ts`: 候補選択と shellgei score
+- `src/solve/events.ts`: progress callback と session phase
+- `src/providers/`: API / CLI / mock Engine、LLM 設定・SDK client・履歴、Planner、embedding
+- `src/execution/`: Docker / local Runner、policy、safety、Judge
+- `src/knowledge/`: dataset / database / retrieval / man dataset
+- `src/io/logs.ts`: session log の保存、catalog と表示
+- `src/io/progress.ts`: progress event の bar / plain / JSONL 表示
+- `src/shell/analyzer.ts`: Bash AST 解析と共有 WASM parser
+- `src/shared.ts`: ファイル・子プロセス補助
+- `src/types.ts`: レイヤ間の型契約（runtime export は空）
 
-- `src/solve/`: session / orchestrator / planner / selector / worker
-- `src/providers/`: Engine / planner provider 実装群
-- `src/execution/runner/`: Docker 実行基盤
-- `src/execution/safety/`: command policy / sandbox policy
-- `src/execution/judge/`: worker 一次判定と最終判定
-- `src/io/logs/`: session / worker ログ
+型と schema の所有、全ファイル一覧と読む順番は [docs/src-file-map.md](docs/src-file-map.md) を参照してください。NodeNext の source import は `.js` suffix、型専用 import / export は `import type` / `export type` を使います。実行対象は build 済みの `dist/cli.js` です。
+
+将来の Planner / Agent / Runner / Judge / Selector / Logs は責務として区別します。現在のファイル配置と将来の責務図は別物です。
 
 ## 作業時のルール
 

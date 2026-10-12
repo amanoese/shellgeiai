@@ -43,10 +43,12 @@ jobs:
         run: |
           node dist/cli.js --help
           node dist/cli.js solve --help
+          node dist/cli.js logs --help
           node dist/cli.js knowledge --help
           node dist/cli.js knowledge prepare --help
           node dist/cli.js knowledge build --help
           node dist/cli.js knowledge search --help
+          node dist/cli.js knowledge man --help
 
       - name: Verify packed contents
         run: npm pack --dry-run
@@ -54,11 +56,20 @@ jobs:
       - name: Verify global install from tarball
         run: |
           PACKAGE_TGZ="$(npm pack --foreground-scripts=false)"
-          npm install -g "./${PACKAGE_TGZ}"
-          GLOBAL_MODULE_ROOT="$(npm root -g)"
+          REPOSITORY_ROOT="$PWD"
+          INSTALL_PREFIX="$(mktemp -d)"
+          npm install -g --prefix "$INSTALL_PREFIX" "./${PACKAGE_TGZ}"
+          GLOBAL_MODULE_ROOT="$(npm root -g --prefix "$INSTALL_PREFIX")"
+          export PATH="$INSTALL_PREFIX/bin:$PATH"
           cd "$(mktemp -d)"
           shellgeiai --help
+          shellgeiai solve --help
+          shellgeiai logs --help
+          shellgeiai knowledge --help
+          shellgeiai knowledge prepare --help
           shellgeiai knowledge build --help
+          shellgeiai knowledge search --help
+          shellgeiai knowledge man --help
           node --input-type=module -e '
             import { pathToFileURL } from "node:url";
             import { readFile } from "node:fs/promises";
@@ -82,3 +93,20 @@ jobs:
             const searched = await searchKnowledge({ query: "CSV", dbPath, embedder, topK: 5 });
             if (!searched.results.length || Math.abs(searched.results[0].score - 1) > 0.000001) throw new Error("Installed package cosine search failed");
           ' "${GLOBAL_MODULE_ROOT}/shellgeiai/dist/knowledge/commands.js"
+          node --input-type=module -e '
+            import { mkdirSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
+            import path from "node:path";
+            const dist = path.join(process.argv[1], "shellgeiai/dist");
+            const nodeTypes = path.join(process.cwd(), "consumer-types");
+            mkdirSync(nodeTypes);
+            symlinkSync(path.join(process.argv[2], "node_modules/@types/node"), path.join(nodeTypes, "node"), "dir");
+            const declarations = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+              const filename = path.join(directory, entry.name);
+              return entry.isDirectory() ? declarations(filename) : filename.endsWith(".d.ts") ? [filename] : [];
+            });
+            const files = declarations(dist);
+            if (files.length !== 31) throw new Error("Expected 31 published declarations");
+            writeFileSync("consumer.mts", files.map((file, index) => `import type * as Module${index} from ${JSON.stringify(file.replace(/\.d\.ts$/, ".js"))};`).join("\n"));
+            writeFileSync("tsconfig.json", JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, skipLibCheck: false, noEmit: true, types: ["node"], typeRoots: [nodeTypes] }, files: ["consumer.mts"] }));
+          ' "$GLOBAL_MODULE_ROOT" "$REPOSITORY_ROOT"
+          node "$REPOSITORY_ROOT/node_modules/typescript/bin/tsc" -p tsconfig.json
