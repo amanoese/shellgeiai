@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { commandExists } from "../../shared/exec.js";
+import { buildImprovementPrompt } from "./improvementPrompt.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -47,7 +48,8 @@ function buildPrompt(context) {
       : "",
     "Problem:",
     context.problem,
-    context.attempts.length > 0 ? `Previous attempts: ${JSON.stringify(context.attempts)}` : ""
+    context.attempts.length > 0 ? `Previous attempts: ${JSON.stringify(context.attempts)}` : "",
+    buildImprovementPrompt(context)
   ]
     .filter(Boolean)
     .join("\n");

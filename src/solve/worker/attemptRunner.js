@@ -61,7 +61,7 @@ function createStoppedGenerationResult({ session, task, workerState, reason, eng
   };
 }
 
-export async function runWorkerAttempt({ session, task, control, workerState, iteration, attempts }) {
+export async function runWorkerAttempt({ session, task, control, workerState, iteration, attempts, bestCandidate, baselineOutput }) {
   const signal = session.signal
     ? AbortSignal.any([workerState.abortController.signal, session.signal])
     : workerState.abortController.signal;
@@ -73,7 +73,8 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     workdir: session.workdir,
     workerId: task.workerId,
     strategy: task.strategy,
-    workerTask: task
+    workerTask: task,
+    bestCandidate
   };
   let generated;
   try {
@@ -88,27 +89,32 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     if (cancellationReason) {
       return createStoppedGenerationResult({ session, task, workerState, reason: cancellationReason });
     }
-    if (!(error instanceof WorkerToolLoopError)) {
+    if (!(error instanceof WorkerToolLoopError) && !bestCandidate) {
       throw error;
     }
+    throwIfExternalSessionAborted(session);
+    // Unexpected provider errors may contain request details or credentials.
+    const message = error instanceof WorkerToolLoopError
+      ? error.message
+      : "Command generation failed during improvement.";
 
     const attempt = createGenerationFailedAttempt({
       task,
       iteration,
-      reason: error.message,
-      toolCalls: error.toolCalls
+      reason: message,
+      toolCalls: error?.toolCalls ?? []
     });
     workerState.phase = "idle";
     reportWorkerState(session, task, "idle");
-    reportAttemptFinished(session, task, iteration, "", false, error.message);
+    reportAttemptFinished(session, task, iteration, "", false, message);
     return {
       attempt,
       state: "idle",
-      stopReason: "",
+      stopReason: error instanceof WorkerToolLoopError ? "" : message,
       explanation: "",
       command: "",
       passed: false,
-      reason: error.message
+      reason: message
     };
   }
   const { engineResult, toolCalls } = generated;
@@ -153,7 +159,7 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
     signal.throwIfAborted();
   }
   if (remainingBudgetMs != null && remainingBudgetMs <= 0) {
-    const stopReason = getWorkerStopReason(session, control);
+    const stopReason = getWorkerStopReason(session, control, task.workerId);
     reportWorkerState(session, task, "stopped");
     return {
       attempt: undefined,
@@ -208,7 +214,23 @@ export async function runWorkerAttempt({ session, task, control, workerState, it
 
     workerState.phase = "judging";
     reportWorkerState(session, task, "judging");
-    const decision = await session.judge.judge(buildJudgeInput(engineResult.command, runResult, session.problem));
+    let decision = await session.judge.judge(buildJudgeInput(engineResult.command, runResult, session.problem));
+    if (decision.passed && baselineOutput !== undefined && session.problem.expectedOutput === undefined &&
+        runResult.stdout.trim() !== baselineOutput) {
+      const breakdown = decision.score?.breakdown;
+      const mismatchBreakdown = breakdown ? { ...breakdown, correctness: 0, expectedOutput: 0 } : null;
+      decision = {
+        ...decision,
+        passed: false,
+        reason: "Output did not match the first passing attempt.",
+        ...(mismatchBreakdown ? { score: {
+          ...decision.score,
+          value: Object.values(mismatchBreakdown).reduce((sum, value) => sum + value, 0),
+          breakdown: mismatchBreakdown
+        } } : {}),
+        ...(decision.gate ? { gate: { ...decision.gate, disqualified: true, expectedOutputMatched: false } } : {})
+      };
+    }
     const attempt = createJudgedAttempt({
       task,
       iteration,

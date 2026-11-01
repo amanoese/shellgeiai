@@ -131,7 +131,7 @@ function describeBestScoreReason(selected, runnerUp, consensusByValue, usedPassi
   return `No passing candidate was found; selected ${selected.candidateId} as best fallback candidate; it won on ${detail}.`;
 }
 
-export function selectSolveOutcome(candidates, selectorName = "first-pass-wins") {
+export function selectSolveOutcome(candidates, selectorName = "first-pass-wins", passingCandidateId = null) {
   const passingCandidates = candidates.filter((candidate) => candidate.finalCheck?.passed);
   const consensusByValue = outputConsensusByValue(candidates);
 
@@ -161,7 +161,8 @@ export function selectSolveOutcome(candidates, selectorName = "first-pass-wins")
 
     case "first-pass-wins":
     default:
-      selectedCandidate = passingCandidates[0] ?? candidates.at(-1) ?? null;
+      selectedCandidate = passingCandidates.find((candidate) => candidate.candidateId === passingCandidateId)
+        ?? passingCandidates[0] ?? candidates.at(-1) ?? null;
       metrics = selectedCandidate ? candidateMetrics(selectedCandidate, consensusByValue) : null;
       reason = selectedCandidate?.finalCheck?.passed
         ? "Selected first candidate passed final checks."

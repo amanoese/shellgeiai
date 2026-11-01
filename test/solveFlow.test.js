@@ -109,7 +109,7 @@ describe("solveProblem", () => {
 
     expect(result.command).toBe("awk 'BEGIN{print 123}'");
     expect(result.finalCheck.passed).toBe(true);
-    expect(result.candidates[0].shellgeiScore).toEqual(
+    expect(result.candidates.find((candidate) => candidate.candidateId === result.selector.selectedCandidateId).shellgeiScore).toEqual(
       expect.objectContaining({
           mode: "simple",
         breakdown: expect.objectContaining({
@@ -118,6 +118,25 @@ describe("solveProblem", () => {
         })
       })
     );
+  });
+
+  it("logs the selected improvement and its scores for every passing attempt", async () => {
+    const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
+    tempDirs.push(requestedWorkdir);
+    const initial = "printf 'ok\\n'";
+    const improved = "printf 'ok\\n' | sed s/ok/ok/";
+    const result = await solveProblem({
+      problemInput: "print ok",
+      engine: { name: "test", generateCommand: async ({ bestCandidate }) => ({ command: bestCandidate ? improved : initial, explanation: "print ok" }) },
+      runner: new LocalRunner(), judge: new SimpleJudge(), maxIterations: 2,
+      selector: "best-score-wins", requestedWorkdir, plannerProvider: createTestPlannerProvider()
+    });
+    const log = JSON.parse(await readFile(result.logPath, "utf8"));
+    const candidate = log.candidates.find(entry => entry.candidateId === log.selectedCandidateId);
+    expect(result.command).toBe(improved);
+    expect(candidate.selectedAttemptId).toBe(`${candidate.workerId}-attempt-2`);
+    expect(candidate.attempts[0].shellgeiScore.value).toBeLessThan(candidate.shellgeiScore.value);
+    expect(candidate.attempts[1].shellgeiScore).toEqual(candidate.shellgeiScore);
   });
 
   it("keeps selector metrics shellgei score data in saved log", async () => {

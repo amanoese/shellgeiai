@@ -39,7 +39,7 @@ async function finalizeSolve(session, execution) {
         : candidate
     )
   );
-  const selection = selectSolveOutcome(candidates, session.selectorName);
+  const selection = selectSolveOutcome(candidates, session.selectorName, execution.passingCandidateId);
   const selectedCandidate = selection.selectedCandidate;
   const finalCheck = selectedCandidate?.finalCheck ?? {
     passed: false,

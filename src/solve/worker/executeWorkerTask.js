@@ -1,4 +1,5 @@
 import { reportSolveProgress } from "../session/progress.js";
+import { scoreShellgeiCandidate } from "../scoring/shellgeiScorer.js";
 import { createWorkerCandidate, createWorkerSummary } from "./attemptFactory.js";
 import { runWorkerAttempt } from "./attemptRunner.js";
 import { getWorkerStopReason } from "./stopReason.js";
@@ -12,11 +13,29 @@ function reportWorkerState(session, task, state) {
   });
 }
 
+async function selectBestAttempt(session, task, attempts) {
+  let bestAttempt = null;
+  for (const attempt of attempts) {
+    if (!attempt.passed) continue;
+    const candidate = createWorkerCandidate({
+      task, attempts, finalAttempt: attempt, finalReason: attempt.failureReason,
+      engineName: session.engine.name
+    });
+    attempt.shellgeiScore = await scoreShellgeiCandidate(candidate, { mode: session.shellgeiScoreMode });
+    if (!bestAttempt || attempt.shellgeiScore.value > bestAttempt.shellgeiScore.value) {
+      bestAttempt = attempt;
+    }
+  }
+  return bestAttempt;
+}
+
 export async function executeWorkerTask(session, task, control, workerState) {
   const attempts = [];
   let lastExplanation = "";
   let stopReason = "";
   let finalState = "idle";
+  let bestAttempt = null;
+  let baselineOutput;
   reportSolveProgress(session, {
     type: "worker-started",
     workerId: task.workerId,
@@ -25,7 +44,7 @@ export async function executeWorkerTask(session, task, control, workerState) {
   });
 
   for (let iteration = 0; iteration < task.maxAttempts; iteration += 1) {
-    const preflightStopReason = getWorkerStopReason(session, control);
+    const preflightStopReason = getWorkerStopReason(session, control, task.workerId);
     if (preflightStopReason) {
       stopReason = preflightStopReason;
       reportWorkerState(session, task, "stopped");
@@ -39,7 +58,13 @@ export async function executeWorkerTask(session, task, control, workerState) {
       control,
       workerState,
       iteration,
-      attempts
+      attempts,
+      baselineOutput,
+      bestCandidate: bestAttempt ? {
+        attemptId: bestAttempt.attemptId,
+        command: bestAttempt.command,
+        shellgeiScore: bestAttempt.shellgeiScore
+      } : undefined
     });
 
     lastExplanation = result.explanation ?? lastExplanation;
@@ -52,18 +77,21 @@ export async function executeWorkerTask(session, task, control, workerState) {
     }
 
     if (result.passed) {
-      if (session.selectorName === "first-pass-wins") {
-        control.scheduleGraceStop({
+      baselineOutput ??= result.attempt.stdout.trim();
+      if (session.selectorName === "first-pass-wins" && control.passingCandidateId == null && !control.stopRequested) {
+        control.requestStop({
           reason: "Stopped after first passing candidate was produced.",
           passingCandidateId: task.workerId,
           exceptWorkerId: task.workerId,
           force: true
-        }, 5_000);
+        });
       } else {
         control.passingCandidateId ??= task.workerId;
       }
-      finalState = "idle";
-      break;
+    }
+
+    if (attempts.some((attempt) => attempt.passed)) {
+      bestAttempt = await selectBestAttempt(session, task, attempts);
     }
 
     if (result.stopReason) {
@@ -72,7 +100,10 @@ export async function executeWorkerTask(session, task, control, workerState) {
     }
   }
 
-  const finalAttempt = attempts.at(-1);
+  if (session.signal?.aborted && (session.deadlineAtMs == null || Date.now() < session.deadlineAtMs)) {
+    session.signal.throwIfAborted();
+  }
+  const finalAttempt = bestAttempt ?? attempts.at(-1);
   const finalReason = finalAttempt?.passed
     ? finalAttempt.failureReason
     : stopReason ||
@@ -88,6 +119,7 @@ export async function executeWorkerTask(session, task, control, workerState) {
     lastExplanation,
     engineName: session.engine.name
   });
+  if (bestAttempt) candidate.shellgeiScore = bestAttempt.shellgeiScore;
   const finalCheck = candidate.finalCheck;
   const workerSummary = createWorkerSummary({ task, attempts, finalCheck, finalState });
   reportSolveProgress(session, {

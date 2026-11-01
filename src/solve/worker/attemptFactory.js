@@ -130,6 +130,7 @@ export function createWorkerCandidate({
   return {
     candidateId: task.workerId,
     workerId: task.workerId,
+    selectedAttemptId: finalAttempt?.attemptId ?? null,
     strategy: task.strategy,
     command: finalAttempt?.command ?? "",
     output: finalAttempt?.stdout?.trimEnd() ?? "",

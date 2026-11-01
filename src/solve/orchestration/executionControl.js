@@ -3,6 +3,7 @@ export function createExecutionControl(session, workers) {
     stopRequested: false,
     stopReason: "",
     passingCandidateId: null,
+    exceptWorkerId: null,
     deadlineTimer: null,
     graceStopTimer: null,
     workers,
@@ -89,6 +90,7 @@ function requestStop(control, options) {
 
   control.stopRequested = true;
   control.stopReason = options.reason;
+  control.exceptWorkerId = options.exceptWorkerId ?? null;
   for (const workerState of control.workers.values()) {
     if (workerState.workerId === options.exceptWorkerId) {
       continue;

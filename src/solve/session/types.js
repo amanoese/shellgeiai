@@ -75,6 +75,7 @@
  * @property {string} [failureReason]
  * @property {number} [durationMs]
  * @property {import("../../execution/judge/Judge.js").JudgeScore} [score]
+ * @property {ShellgeiScore} [shellgeiScore]
  * @property {import("../../execution/runner/Runner.js").RunnerFailure | null} [runnerFailure]
  * @property {import("../../execution/runner/Runner.js").RunnerCleanup | null} [runnerCleanup]
  * @property {ToolCallSummary[]} [toolCalls]
@@ -117,6 +118,7 @@
  * @property {string} [workerId]
  * @property {string} [strategy]
  * @property {WorkerTask} [workerTask]
+ * @property {{attemptId: string, command: string, shellgeiScore: ShellgeiScore}} [bestCandidate]
  */
 
 /**
