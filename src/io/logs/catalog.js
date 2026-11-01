@@ -160,6 +160,7 @@ function restoreResultFromLog(log, logPath) {
     explanation,
     attempts: log.attempts ?? selectedCandidate?.attempts ?? [],
     candidates: log.candidates ?? (selectedCandidate ? [selectedCandidate] : []),
+    shellgeiScoreVersion: log.shellgeiScoreVersion ?? selectedCandidate?.shellgeiScore?.version ?? null,
     finalCheck,
     selector: buildSelector(log, selectedCandidate, finalCheck, logPath),
     runner: log.runner ?? { name: "local", limits: {}, sandboxPolicy: {} },

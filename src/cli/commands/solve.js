@@ -29,6 +29,7 @@ export async function runSolveCommand(options) {
       mode: options.mode,
       parallelism: options.parallelism,
       selector: options.selector,
+      shellgeiScoreMode: options.shellgeiScoreMode,
       timeBudgetMs: options.timeBudget,
       writableWorkdir: options.writableWorkdir,
       dockerDevicesReadonly: options.dockerDevicesReadonly,

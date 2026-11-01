@@ -1,3 +1,5 @@
+import { compareShellgeiCandidates } from "../scoring/shellgeiScorer.js";
+
 function normalizeOutput(output) {
   return typeof output === "string" ? output.trim() : "";
 }
@@ -57,22 +59,26 @@ function candidateMetrics(candidate, consensusByValue) {
   const judgeScore = candidate.finalCheck?.score?.value ?? 0;
   const stdoutConsistency = stdoutConsistencyScore(candidate);
   const outputConsensus = outputConsensusScore(candidate, consensusByValue);
+  const selectedDuration = candidate.selectedAttemptId == null ? null
+    : attempts.find((attempt) => attempt.attemptId === candidate.selectedAttemptId)?.durationMs;
 
   return {
-    totalScore: shellgeiScore + judgeScore + stdoutConsistency + outputConsensus,
+    totalScore: shellgeiScore,
     shellgeiScore,
     rubricBreakdown: candidate.shellgeiScore?.breakdown ?? null,
     judgeScore,
     stdoutConsistency,
     outputConsensus,
     totalDurationMs,
+    selectedDurationMs: Number.isFinite(selectedDuration) && selectedDuration >= 0 ? selectedDuration : null,
     iterationCount: candidate.finalCheck?.iterations ?? attempts.length,
-    commandLength: candidate.command?.length ?? Number.MAX_SAFE_INTEGER,
+    commandLength: candidate.shellgeiScore?.breakdown?.commandLength ?? candidate.command?.length ?? Number.MAX_SAFE_INTEGER,
     explanationLength: candidate.explanation?.length ?? Number.MAX_SAFE_INTEGER
   };
 }
 
-function compareCandidateScore(left, right, consensusByValue) {
+// Preserve the existing diagnostic fallback ordering when no candidate passes.
+function compareFallbackScore(left, right, consensusByValue) {
   const leftScore = candidateMetrics(left, consensusByValue);
   const rightScore = candidateMetrics(right, consensusByValue);
 
@@ -100,6 +106,14 @@ function compareCandidateScore(left, right, consensusByValue) {
   return leftScore.explanationLength - rightScore.explanationLength;
 }
 
+function comparePassingCandidates(left, right) {
+  const comparison = compareShellgeiCandidates(left, right);
+  if (comparison) return comparison;
+  const leftId = left.candidateId ?? "";
+  const rightId = right.candidateId ?? "";
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
+
 function describeBestScoreReason(selected, runnerUp, consensusByValue, usedPassingPool) {
   if (!selected) {
     return "No candidate was produced.";
@@ -115,13 +129,20 @@ function describeBestScoreReason(selected, runnerUp, consensusByValue, usedPassi
   const runnerUpMetrics = candidateMetrics(runnerUp, consensusByValue);
   let detail = "tie-breakers";
 
-  if (selectedMetrics.shellgeiScore !== runnerUpMetrics.shellgeiScore) {
+  if (usedPassingPool && Number.isFinite(selected.shellgeiScore?.breakdown?.effectiveLength) &&
+      Number.isFinite(runnerUp.shellgeiScore?.breakdown?.effectiveLength)) {
+    const selectedLength = selected.shellgeiScore.breakdown.effectiveLength;
+    const runnerUpLength = runnerUp.shellgeiScore.breakdown.effectiveLength;
+    detail = selectedLength !== runnerUpLength
+      ? `shellgei score (effective length ${selectedLength} < ${runnerUpLength})`
+      : "static tie-breakers (length, command text, candidate ID)";
+  } else if (selectedMetrics.shellgeiScore !== runnerUpMetrics.shellgeiScore) {
     detail = `shellgei score (${selectedMetrics.shellgeiScore} > ${runnerUpMetrics.shellgeiScore})`;
-  } else if (selectedMetrics.judgeScore !== runnerUpMetrics.judgeScore) {
+  } else if (!usedPassingPool && selectedMetrics.judgeScore !== runnerUpMetrics.judgeScore) {
     detail = `judge score (${selectedMetrics.judgeScore} > ${runnerUpMetrics.judgeScore})`;
-  } else if (selectedMetrics.stdoutConsistency !== runnerUpMetrics.stdoutConsistency) {
+  } else if (!usedPassingPool && selectedMetrics.stdoutConsistency !== runnerUpMetrics.stdoutConsistency) {
     detail = `stdout consistency (${selectedMetrics.stdoutConsistency} > ${runnerUpMetrics.stdoutConsistency})`;
-  } else if (selectedMetrics.outputConsensus !== runnerUpMetrics.outputConsensus) {
+  } else if (!usedPassingPool && selectedMetrics.outputConsensus !== runnerUpMetrics.outputConsensus) {
     detail = `output consensus (${selectedMetrics.outputConsensus} > ${runnerUpMetrics.outputConsensus})`;
   }
 
@@ -143,10 +164,10 @@ export function selectSolveOutcome(candidates, selectorName = "first-pass-wins",
     case "best-score-wins": {
       const rankedPassingCandidates = passingCandidates
         .slice()
-        .sort((left, right) => compareCandidateScore(left, right, consensusByValue));
+        .sort(comparePassingCandidates);
       const rankedCandidates = candidates
         .slice()
-        .sort((left, right) => compareCandidateScore(left, right, consensusByValue));
+        .sort((left, right) => compareFallbackScore(left, right, consensusByValue));
       const competitionPool = rankedPassingCandidates[0] ? rankedPassingCandidates : rankedCandidates;
       selectedCandidate = competitionPool[0] ?? null;
       metrics = selectedCandidate ? candidateMetrics(selectedCandidate, consensusByValue) : null;

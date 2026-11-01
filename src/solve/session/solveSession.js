@@ -1,4 +1,5 @@
 import path from "node:path";
+import { SHELLGEI_SCORE_VERSION } from "../scoring/shellgeiScorer.js";
 import { parseProblemInput } from "../../io/problem/parseProblem.js";
 import { DEFAULT_KNOWLEDGE_MODEL } from "../../knowledge/modelConfig.js";
 import {
@@ -62,6 +63,7 @@ export async function createSolveSession(options) {
     parallelism,
     selectorName: options.selector ?? "first-pass-wins",
     shellgeiScoreMode: options.shellgeiScoreMode ?? "simple",
+    shellgeiScoreVersion: SHELLGEI_SCORE_VERSION,
     knowledgeMode: normalizeKnowledgeMode(options.knowledgeMode),
     knowledgeModel: options.knowledgeModel ?? DEFAULT_KNOWLEDGE_MODEL,
     knowledgeDatasetPath: path.resolve(options.knowledgeDatasetPath ?? DEFAULT_KNOWLEDGE_DATASET),

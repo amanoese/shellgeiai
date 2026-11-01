@@ -1,8 +1,54 @@
 import { describe, expect, it } from "vitest";
 
 import { formatResult } from "../src/io/formatter/formatResult.js";
+import { calculateShellgeiScore } from "../src/solve/scoring/shellgeiScorer.js";
+
+function currentResult(length = 20, artistry = 0) {
+  const { value, effectiveLength } = calculateShellgeiScore(length, artistry);
+  return {
+    shellgeiScoreVersion: "length-artistry-v1", finalCheck: { passed: true },
+    selector: { selectedCandidateId: "worker-1", score: { value: 100 }, metrics: { totalScore: value, shellgeiScore: value, selectedDurationMs: 12 } },
+    plan: { workerTasks: [{ workerId: "worker-1" }] },
+    candidates: [{ candidateId: "worker-1", command: "echo ok", shellgeiScore: {
+      value, version: "length-artistry-v1", breakdown: { commandLength: length, artistry, effectiveLength, shellness: 20, readability: 100 }
+    } }]
+  };
+}
 
 describe("formatResult", () => {
+  it("renders current scores separately from Judge points and reference metrics", () => {
+    const output = formatResult(currentResult());
+    expect(output).toContain("selected-shellgei-score: 80.97");
+    expect(output).toContain("selected-judge-score: 100");
+    expect(output).toContain("shellgei-score-version: length-artistry-v1");
+    expect(output).toContain("characters=20, artistry=0.00, effective-length=23.50");
+    expect(output).toContain("shellness-reference=20.00, readability-reference=100.00");
+    expect(output).toContain("performance-ms: 12 (runner elapsed time, including startup; reference only)");
+    expect(output).toContain("selector-metrics: total=80.97, shellgei=80.97");
+    expect(output).toContain("worker-1 # score: 80.97");
+    expect(output).not.toContain("robustness=");
+    expect(output).not.toContain("ingenuity=");
+  });
+
+  it("uses scientific notation for tiny positive scores", () => {
+    const output = formatResult(currentResult(1_000_000_000, 100));
+    expect(output).toMatch(/selected-shellgei-score: [1-9]\.\d{5}e-\d+/);
+    expect(output).not.toContain("selected-shellgei-score: 0.00");
+  });
+
+  it("marks missing performance as unmeasured and failures as unscored", () => {
+    const result = currentResult();
+    result.selector.metrics.selectedDurationMs = null;
+    result.candidates[0].shellgeiScore = null;
+    result.candidates[0].finalCheck = { passed: false, score: { value: 80 } };
+    const output = formatResult(result);
+    expect(output).toContain("selected-shellgei-score: (unscored)");
+    expect(output).toContain("worker-1 # score: (unscored)");
+    expect(output).toContain("performance-ms: (unmeasured)");
+    expect(output).toContain("shellgei-breakdown: (unscored)");
+    expect(output).not.toContain("robustness=");
+  });
+
   it("includes rubric breakdown, notes, penalties, planner provider, and worker variants", () => {
     const output = formatResult({
       command: "printf '42\\n'",

@@ -136,14 +136,15 @@
  */
 
 /**
- * @typedef {"simple" | "artistry" | "robustness"} ShellgeiScoreMode
+ * @typedef {"simple" | "artistry" | "robustness"} ShellgeiScoreMode Compatibility labels; all use the same formula.
  */
 
 /**
  * @typedef {Object} ShellgeiScore
  * @property {number} value
+ * @property {"length-artistry-v1"} version
  * @property {ShellgeiScoreMode} mode
- * @property {{conciseness: number, shellness: number, ingenuity: number, readability: number, robustness: number, artistry: number}} breakdown
+ * @property {{commandLength: number, artistry: number, effectiveLength: number, shellness: number, readability: number}} breakdown Reference fields are not summed.
  * @property {string[]} notes
  * @property {string[]} penalties
  */
@@ -240,6 +241,7 @@
  * @property {"single" | "parallel"} mode
  * @property {number} parallelism
  * @property {number} maxIterations
+ * @property {"length-artistry-v1"} shellgeiScoreVersion
  * @property {KnowledgeMode} knowledgeMode
  * @property {PlannerKnowledgeHint[]} plannerKnowledgeHints
  * @property {KnowledgeRetriever} [knowledgeRetriever]

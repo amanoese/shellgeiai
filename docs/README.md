@@ -6,6 +6,7 @@
 
 - `development.md`: 開発環境セットアップと現状実装の案内
 - `ideal-architecture.md`: 理想的な責務分離、アーキテクチャ、CLI 実行フロー
+- `shellgei_llm_rubric.md`: 現在の採点仕様と、旧ログ用の評価ルーブリック
 - `superpowers/`: Codex Superpowers の SKILLS が作業用の `specs/` と `plans/` を生成する場所。生成された `.md` は追跡しません。
 
 `plan/` と `docs/archive/` は廃止しました。過去の計画は git history を参照してください。

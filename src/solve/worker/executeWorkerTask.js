@@ -1,5 +1,5 @@
 import { reportSolveProgress } from "../session/progress.js";
-import { scoreShellgeiCandidate } from "../scoring/shellgeiScorer.js";
+import { compareShellgeiCandidates, scoreShellgeiCandidate } from "../scoring/shellgeiScorer.js";
 import { createWorkerCandidate, createWorkerSummary } from "./attemptFactory.js";
 import { runWorkerAttempt } from "./attemptRunner.js";
 import { getWorkerStopReason } from "./stopReason.js";
@@ -21,8 +21,8 @@ async function selectBestAttempt(session, task, attempts) {
       task, attempts, finalAttempt: attempt, finalReason: attempt.failureReason,
       engineName: session.engine.name
     });
-    attempt.shellgeiScore = await scoreShellgeiCandidate(candidate, { mode: session.shellgeiScoreMode });
-    if (!bestAttempt || attempt.shellgeiScore.value > bestAttempt.shellgeiScore.value) {
+    attempt.shellgeiScore ??= await scoreShellgeiCandidate(candidate, { mode: session.shellgeiScoreMode });
+    if (attempt.shellgeiScore && (!bestAttempt || compareShellgeiCandidates(attempt, bestAttempt) < 0)) {
       bestAttempt = attempt;
     }
   }

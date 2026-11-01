@@ -102,6 +102,7 @@ export async function writeSolveSessionLog({
     workdir: session.workdir,
     runner: buildRunnerSnapshot(session),
     shellgeiScoreMode: session.shellgeiScoreMode,
+    shellgeiScoreVersion: session.shellgeiScoreVersion,
     knowledge: buildKnowledgeSnapshot(session),
     plan: session.plan ?? null,
     planner: session.plan?.planner ?? null

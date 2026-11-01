@@ -1,102 +1,109 @@
 import { describe, expect, it } from "vitest";
-
-import { scoreShellgeiCandidate } from "../src/solve/scoring/shellgeiScorer.js";
+import {
+  calculateShellgeiScore,
+  countCommandCharacters,
+  normalizeArtistry,
+  scoreShellgeiCandidate
+} from "../src/solve/scoring/shellgeiScorer.js";
 
 function passingCandidate(command, overrides = {}) {
-  return {
-    command,
-    explanation: "test candidate",
-    finalCheck: { passed: true, gate: { stderrAllowed: true } },
-    attempts: [{ durationMs: 12, stdout: "42\n", stderr: "" }],
-    ...overrides
-  };
+  return { command, finalCheck: { passed: true }, ...overrides };
 }
 
+describe("length/artistry formula", () => {
+  it.each([
+    [20, 80.97, 82.14, 83.33],
+    [100, 49.14, 49.57, 50.00],
+    [500, 16.57, 16.62, 16.67],
+    [1000, 9.06, 9.08, 9.09]
+  ])("matches the agreed score table at %i characters", (length, low, middle, high) => {
+    for (const [artistry, expected] of [[0, low], [50, middle], [100, high]]) {
+      expect(calculateShellgeiScore(length, artistry).value).toBeCloseTo(expected, 2);
+    }
+  });
+
+  it.each([1, 20, 100, 1000, 1_000_000, 1_000_000_000])("allows three extra characters, never four, at length %i", length => {
+    const shortest = calculateShellgeiScore(length, 0).value;
+    expect(calculateShellgeiScore(length + 3, 100).value).toBeGreaterThan(shortest);
+    expect(calculateShellgeiScore(length + 4, 100).value).toBeLessThan(shortest);
+    for (const artistry of [0, 50, 100]) {
+      const score = calculateShellgeiScore(length, artistry).value;
+      expect(score).toBeGreaterThan(0);
+      expect(score).toBeLessThan(100);
+      expect(Number.isFinite(score)).toBe(true);
+      expect(calculateShellgeiScore(length + 1, artistry).value).toBeLessThan(score);
+    }
+  });
+
+  it("prefers artistry at equal length and limits the one-character score change", () => {
+    expect(calculateShellgeiScore(20, 100).value).toBeGreaterThan(calculateShellgeiScore(20, 0).value);
+    expect(calculateShellgeiScore(20, 100).value - calculateShellgeiScore(21, 100).value).toBeLessThan(1);
+  });
+
+  it("normalizes fixed theoretical bounds, without using other candidates", () => {
+    expect(normalizeArtistry(0.15, 0.1)).toBe(0);
+    expect(normalizeArtistry(0.95, 0.95)).toBe(100);
+    expect(normalizeArtistry(0.65, 0.425)).toBeCloseTo(50);
+  });
+
+  it("counts Unicode code points, including whitespace and combining marks", () => {
+    expect(countCommandCharacters("日😀e\u0301 \n")).toBe(6);
+    expect(countCommandCharacters("é")).toBe(1);
+    expect(countCommandCharacters("e\u0301")).toBe(2);
+    expect(countCommandCharacters("x".repeat(1_000_000))).toBe(1_000_000);
+  });
+});
+
 describe("scoreShellgeiCandidate", () => {
-  it("uses simple mode by default and returns the rubric axes for passing candidates", async () => {
-    const result = await scoreShellgeiCandidate(
-      passingCandidate("awk -F, '$3>10{sum+=$3} END{print sum}' sample.csv")
-    );
-
+  it("returns versioned static metrics and retains reference axes", async () => {
+    const result = await scoreShellgeiCandidate(passingCandidate("printf '42\\n'"));
     expect(result).toEqual({
-      value: expect.any(Number),
-      mode: "simple",
-      breakdown: {
-        conciseness: expect.any(Number),
-        shellness: expect.any(Number),
-        ingenuity: expect.any(Number),
-        readability: expect.any(Number),
-        robustness: expect.any(Number),
-        artistry: expect.any(Number)
-      },
-      notes: expect.any(Array),
-      penalties: expect.any(Array)
+      value: expect.any(Number), version: "length-artistry-v1", mode: "simple",
+      breakdown: { commandLength: 13, artistry: 0, effectiveLength: 16.5, shellness: 20, readability: 100 },
+      notes: expect.any(Array), penalties: expect.any(Array)
     });
-    expect(result.value).toBe(
-      Object.values(result.breakdown).reduce((sum, score) => sum + score, 0)
-    );
+    expect(result.value).toBeCloseTo(85.8369098712);
   });
 
-  it("returns null for non-passing candidates", async () => {
-    expect(
-      await scoreShellgeiCandidate({
-        command: "printf 'x\\n'",
-        finalCheck: { passed: false },
-        attempts: []
-      })
-    ).toBeNull();
+  it("preserves the existing feature rules at their maximum", async () => {
+    const score = await scoreShellgeiCandidate(passingCandidate("printf x | sort | node -pe '$_'"));
+    expect(score.breakdown.artistry).toBeCloseTo(100);
   });
 
-  it("weights the same command differently by evaluation mode", async () => {
-    const candidate = passingCandidate(
-      "printf '%s\n' '{a: \"b\"}' | node -pe 'JSON.stringify(eval(`(${fs.readFileSync(0)})`))'"
-    );
-
-    const simple = await scoreShellgeiCandidate(candidate, { mode: "simple" });
-    const artistry = await scoreShellgeiCandidate(candidate, { mode: "artistry" });
-    const robustness = await scoreShellgeiCandidate(candidate, { mode: "robustness" });
-
-    expect(simple.mode).toBe("simple");
-    expect(artistry.mode).toBe("artistry");
-    expect(robustness.mode).toBe("robustness");
-    expect(artistry.breakdown.ingenuity).toBeGreaterThan(simple.breakdown.ingenuity);
-    expect(robustness.breakdown.robustness).toBeGreaterThan(simple.breakdown.robustness);
+  it("scores exact command text without trimming or Unicode normalization", async () => {
+    const command = " printf '日😀' \n# e\u0301\n";
+    const score = await scoreShellgeiCandidate(passingCandidate(command));
+    expect(score.breakdown.commandLength).toBe(command.length - 1);
   });
 
-  it("rewards language one-liners when they work as stdin/stdout shell tools", async () => {
-    const oneLiner = await scoreShellgeiCandidate(
-      passingCandidate("printf '%s\n' 'a b' | perl -lane 'print $F[1]'"),
-      { mode: "artistry" }
-    );
-    const launchedProgram = await scoreShellgeiCandidate(
-      passingCandidate("python -c 'print(\"b\")'"),
-      { mode: "artistry" }
-    );
-
-    expect(oneLiner.breakdown.shellness).toBeGreaterThan(
-      launchedProgram.breakdown.shellness
-    );
-    expect(oneLiner.breakdown.artistry).toBeGreaterThan(
-      launchedProgram.breakdown.artistry
-    );
+  it("is independent of execution time, failures, Judge points, and explanations", async () => {
+    const command = "printf '42\\n'";
+    const original = await scoreShellgeiCandidate(passingCandidate(command, {
+      attempts: [{ durationMs: 1, stdout: "42" }], explanation: "short"
+    }));
+    const retried = await scoreShellgeiCandidate(passingCandidate(command, {
+      attempts: [{ durationMs: 99999, passed: false }, { durationMs: 99999, stdout: "42" }],
+      finalCheck: { passed: true, score: { value: 80 } }, explanation: "different explanation"
+    }));
+    expect(retried).toEqual(original);
   });
 
-  it("scores conciseness by whole-command length instead of pipeline size", async () => {
-    const shorterPipeline = await scoreShellgeiCandidate(
-      passingCandidate(
-        "seq 100001 100500 | factor | awk 'NF==2{print $2}' | head -10"
-      )
-    );
-    const longerPackedCommand = await scoreShellgeiCandidate(
-      passingCandidate(
-        "awk 'BEGIN{N=101000;for(i=2;i<=N;i++)a[i]=1;for(i=2;i*i<=N;i++)if(a[i])for(j=i*i;j<=N;j+=i)a[j]=0;for(i=100001;i<=N;i++)if(a[i])print i}' | head -10"
-      )
-    );
+  it.each(["simple", "artistry", "robustness"])("accepts legacy %s as a compatibility label only", async mode => {
+    const candidate = passingCandidate("printf '42\\n' | sort");
+    const score = await scoreShellgeiCandidate(candidate, { mode });
+    const base = await scoreShellgeiCandidate(candidate);
+    expect(score).toEqual({ ...base, mode });
+  });
 
-    expect(shorterPipeline.breakdown.conciseness).toBe(19);
-    expect(longerPackedCommand.breakdown.conciseness).toBe(18);
-    expect(shorterPipeline.breakdown.conciseness).toBeGreaterThan(
-      longerPackedCommand.breakdown.conciseness
-    );
+  it("does not reward adding a long redundant pipeline", async () => {
+    const short = await scoreShellgeiCandidate(passingCandidate("printf 'ok\\n'"));
+    const padded = await scoreShellgeiCandidate(passingCandidate("printf 'ok\\n' | sed s/ok/ok/"));
+    expect(padded.breakdown.artistry).toBeGreaterThan(short.breakdown.artistry);
+    expect(padded.value).toBeLessThan(short.value);
+  });
+
+  it.each([{}, { command: "echo 42" }, { command: "echo 42", finalCheck: { passed: false } },
+    passingCandidate(""), passingCandidate(" \n\t"), passingCandidate(null)])("leaves non-passing/empty candidates unscored: %j", async candidate => {
+    expect(await scoreShellgeiCandidate(candidate)).toBeNull();
   });
 });

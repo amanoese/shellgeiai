@@ -119,12 +119,27 @@ shellgeiai logs show <run-id>
 - `--writable-workdir`: workdir への書き込みを許可します
 - `--docker-device-readonly <path>` / `--device-ro <path>`: ホストデバイスを Docker 内の同じパスへ読み取り専用で共有します
 - `--time-budget <ms>`: 実行時間の上限を指定します
+- `--selector <name>`: 既定の `best-score-wins` は新しいシェル芸スコアで比較します。`first-pass-wins` は最初に成功した worker を選びます
+- `--shellgei-score-mode <mode>`: 既定は `simple`。`artistry` / `robustness` も互換指定として受け付けますが、すべて同じ採点式を使います
 - `--command-policy <path>`: カスタム command policy を読み込みます
 - `--sandbox-policy <path>`: カスタム sandbox policy を読み込みます
 
 `--engine mock` は Worker の command 生成だけを固定します。CLI の Planner は引き続き LLM API を使うため、key が必要です。完全に通信を止めるテストではコードから Planner provider も注入してください。
 
 Worker は Judge に合格した後も、試行回数と時間予算が残っていればシェル芸スコアの改善を試みます。各改善案を安全性検査・実行・判定し、合格した最も高得点の案を保持します。期待出力がない場合は、初回成功時と `trim()` 後の出力が一致することも必要です。一致は未知の入力に対する正しさを保証しません。`first-pass-wins` は最初に成功した worker の改善を待ち、`best-score-wins` は worker ごとの最良案を比較します。追加の実行と LLM 呼び出しにより、回答までの時間と API 使用量が増える場合があります。`--writable-workdir` を使う場合は、追加実行でも workdir が変更される可能性があります。
+
+シェル芸スコア `length-artistry-v1` は、文字数 `L` と、発想・芸術性を統合した芸術点 `A`（0〜100）から計算します。
+
+```text
+E = L + 3.5 × (1 − A / 100)
+スコア = 100 ÷ (1 + E / 100)
+```
+
+短い解答ほど高得点になり、芸術点で逆転できる差を最大3文字に抑えます。文字数は空白・改行・コメントを含む Unicode コードポイント数です。文字数の上限は設けず、合格した非空の解答の点数は0より大きく100未満になります。基準解答は不要で、同じコマンドなら実行時間や試行履歴によらず同じ点数です。
+
+「シェルらしさ」「可読性」は参考点として残します。「堅牢性」に代わる「性能」は、選択された attempt の Runner 実測時間（起動処理を含む）を参考表示し、順位には使いません。同点時も、短さ・コマンド文字列・candidate ID によって決めます。
+
+採点式・芸術点の正規化・旧ログの扱いは [採点仕様](docs/shellgei_llm_rubric.md) を参照してください。旧ログは再計算せず元の点数を表示するため、新旧の点数は比較できません。
 
 Docker runner に複数のデバイスを読み取り専用で共有する場合は、正式名と短い alias を繰り返し、または混在して指定できます。
 

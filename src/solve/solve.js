@@ -96,6 +96,7 @@ async function finalizeSolve(session, execution) {
     workdir: session.workdir,
     problem: session.problem,
     logPath,
-    plan: session.plan
+    plan: session.plan,
+    shellgeiScoreVersion: session.shellgeiScoreVersion
   };
 }
