@@ -113,7 +113,9 @@ describe("solveProblem", () => {
       expect.objectContaining({
           mode: "simple",
         breakdown: expect.objectContaining({
-          conciseness: expect.any(Number),
+          commandLength: expect.any(Number),
+          effectiveLength: expect.any(Number),
+          artistry: expect.any(Number),
           shellness: expect.any(Number)
         })
       })
@@ -123,8 +125,8 @@ describe("solveProblem", () => {
   it("logs the selected improvement and its scores for every passing attempt", async () => {
     const requestedWorkdir = await mkdtemp(path.join(os.tmpdir(), "shellgeiai-test-"));
     tempDirs.push(requestedWorkdir);
-    const initial = "printf 'ok\\n'";
-    const improved = "printf 'ok\\n' | sed s/ok/ok/";
+    const initial = "printf 'ok\\n' | sed s/ok/ok/";
+    const improved = "printf 'ok\\n'";
     const result = await solveProblem({
       problemInput: "print ok",
       engine: { name: "test", generateCommand: async ({ bestCandidate }) => ({ command: bestCandidate ? improved : initial, explanation: "print ok" }) },
@@ -137,6 +139,10 @@ describe("solveProblem", () => {
     expect(candidate.selectedAttemptId).toBe(`${candidate.workerId}-attempt-2`);
     expect(candidate.attempts[0].shellgeiScore.value).toBeLessThan(candidate.shellgeiScore.value);
     expect(candidate.attempts[1].shellgeiScore).toEqual(candidate.shellgeiScore);
+    expect(log.shellgeiScoreVersion).toBe("length-artistry-v1");
+    expect(candidate.shellgeiScore.version).toBe("length-artistry-v1");
+    expect(log.selector.metrics.totalScore).toBe(candidate.shellgeiScore.value);
+    expect(log.selector.metrics.selectedDurationMs).toBe(candidate.attempts[1].durationMs);
   });
 
   it("keeps selector metrics shellgei score data in saved log", async () => {

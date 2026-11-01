@@ -1,33 +1,8 @@
 import { analyzeShellCommand } from "./commandAnalyzer.js";
 
 const DEFAULT_MODE = "simple";
-
-const MODE_WEIGHTS = {
-  simple: {
-    conciseness: 25,
-    shellness: 20,
-    ingenuity: 15,
-    readability: 10,
-    robustness: 20,
-    artistry: 10
-  },
-  artistry: {
-    conciseness: 15,
-    shellness: 20,
-    ingenuity: 25,
-    readability: 10,
-    robustness: 10,
-    artistry: 20
-  },
-  robustness: {
-    conciseness: 10,
-    shellness: 15,
-    ingenuity: 10,
-    readability: 20,
-    robustness: 35,
-    artistry: 10
-  }
-};
+const SCORE_MODES = new Set(["simple", "artistry", "robustness"]);
+export const SHELLGEI_SCORE_VERSION = "length-artistry-v1";
 
 const UNIX_TOOLS = new Set([
   "awk",
@@ -71,12 +46,8 @@ function commandTokenCount(command) {
   return command.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function totalDurationMs(attempts) {
-  return (attempts ?? []).reduce((sum, attempt) => sum + (attempt.durationMs ?? 0), 0);
-}
-
 function normalizeMode(mode) {
-  return MODE_WEIGHTS[mode] ? mode : DEFAULT_MODE;
+  return SCORE_MODES.has(mode) ? mode : DEFAULT_MODE;
 }
 
 function hasUselessCat(command) {
@@ -93,12 +64,6 @@ function countTransformTools(features) {
 
 function usesLanguageAsShellTool(features) {
   return features.languageOneLiners.some((oneLiner) => oneLiner.inPipeline);
-}
-
-function scoreConcisenessRaw(command) {
-  const lengthPenalty = Math.min(0.3, command.length / 260);
-  const catPenalty = hasUselessCat(command) ? 0.2 : 0;
-  return clamp(1 - lengthPenalty - catPenalty);
 }
 
 function scoreShellnessRaw(features) {
@@ -149,16 +114,6 @@ function scoreReadabilityRaw(command, features) {
   return clamp(1 - tokenPenalty - commandPenalty - substitutionPenalty - andOrPenalty);
 }
 
-function scoreRobustnessRaw(candidate, features) {
-  const durationPenalty = Math.min(0.25, totalDurationMs(candidate.attempts) / 2500);
-  const stderrPenalty = candidate.finalCheck?.gate?.stderrAllowed === false ? 0.2 : 0;
-  const dangerousPenalty = features.dangerousCommands.length > 0 ? 0.35 : 0;
-  const substitutionPenalty = features.hasCommandSubstitution ? 0.08 : 0;
-  const xargsPenalty = features.commandNames.includes("xargs") ? 0.08 : 0;
-  const toolBonus = countUnixTools(features) > 0 || usesLanguageAsShellTool(features) ? 0.08 : 0;
-  return clamp(0.8 + toolBonus - durationPenalty - stderrPenalty - dangerousPenalty - substitutionPenalty - xargsPenalty);
-}
-
 function scoreArtistryRaw(features) {
   let score = 0.1;
   if (features.pipelineCount > 0) {
@@ -179,13 +134,51 @@ function scoreArtistryRaw(features) {
   return clamp(score);
 }
 
-function weightedBreakdown(rawScores, weights) {
-  return Object.fromEntries(
-    Object.entries(weights).map(([axis, weight]) => [
-      axis,
-      Math.round(rawScores[axis] * weight)
-    ])
-  );
+export function countCommandCharacters(command) {
+  let length = 0;
+  for (const _character of command) length += 1;
+  return length;
+}
+
+export function normalizeArtistry(ingenuityRaw, artistryRaw) {
+  const mean = (ingenuityRaw + artistryRaw) / 2;
+  // Fixed theoretical bounds of the existing rules, independent of candidates.
+  return 100 * clamp((mean - 0.125) / 0.825);
+}
+
+export function calculateShellgeiScore(commandLength, artistry) {
+  if (!Number.isSafeInteger(commandLength) || commandLength < 1) {
+    throw new Error("Command length must be a positive safe integer.");
+  }
+  if (!Number.isFinite(artistry) || artistry < 0 || artistry > 100) {
+    throw new Error("Artistry must be between 0 and 100.");
+  }
+  const effectiveLength = commandLength + 3.5 * (1 - artistry / 100);
+  return { effectiveLength, value: 100 / (1 + effectiveLength / 100) };
+}
+
+/** Compare passing attempts/candidates without execution history or rounded scores. */
+export function compareShellgeiCandidates(left, right) {
+  const leftScore = left.shellgeiScore;
+  const rightScore = right.shellgeiScore;
+  const leftEffective = leftScore?.breakdown?.effectiveLength;
+  const rightEffective = rightScore?.breakdown?.effectiveLength;
+  if (Number.isFinite(leftEffective) && Number.isFinite(rightEffective)) {
+    if (leftEffective !== rightEffective) return leftEffective < rightEffective ? -1 : 1;
+  } else {
+    // Compatibility for callers providing old, value-only score objects.
+    const leftValue = leftScore?.value ?? -Infinity;
+    const rightValue = rightScore?.value ?? -Infinity;
+    if (leftValue !== rightValue) return leftValue > rightValue ? -1 : 1;
+  }
+  const leftLength = leftScore?.breakdown?.commandLength ??
+    (typeof left.command === "string" ? countCommandCharacters(left.command) : Infinity);
+  const rightLength = rightScore?.breakdown?.commandLength ??
+    (typeof right.command === "string" ? countCommandCharacters(right.command) : Infinity);
+  if (leftLength !== rightLength) return leftLength < rightLength ? -1 : 1;
+  const leftCommand = left.command ?? "";
+  const rightCommand = right.command ?? "";
+  return leftCommand < rightCommand ? -1 : leftCommand > rightCommand ? 1 : 0;
 }
 
 function buildNotes(features) {
@@ -226,26 +219,27 @@ function buildPenalties(command, features) {
 }
 
 export async function scoreShellgeiCandidate(candidate, options = {}) {
-  if (!candidate.finalCheck?.passed) {
+  if (!candidate.finalCheck?.passed || typeof candidate.command !== "string" || !candidate.command.trim()) {
     return null;
   }
 
-  const command = candidate.command ?? "";
+  const command = candidate.command;
   const mode = normalizeMode(options.mode ?? DEFAULT_MODE);
   const features = await analyzeShellCommand(command);
-  const rawScores = {
-    conciseness: scoreConcisenessRaw(command),
-    shellness: scoreShellnessRaw(features),
-    ingenuity: scoreIngenuityRaw(features),
-    readability: scoreReadabilityRaw(command, features),
-    robustness: scoreRobustnessRaw(candidate, features),
-    artistry: scoreArtistryRaw(features)
+  const commandLength = countCommandCharacters(command);
+  const artistry = normalizeArtistry(scoreIngenuityRaw(features), scoreArtistryRaw(features));
+  const { value, effectiveLength } = calculateShellgeiScore(commandLength, artistry);
+  const breakdown = {
+    commandLength,
+    artistry,
+    effectiveLength,
+    shellness: 100 * scoreShellnessRaw(features),
+    readability: 100 * scoreReadabilityRaw(command, features)
   };
-  const breakdown = weightedBreakdown(rawScores, MODE_WEIGHTS[mode]);
-  const value = Object.values(breakdown).reduce((sum, score) => sum + score, 0);
 
   return {
     value,
+    version: SHELLGEI_SCORE_VERSION,
     mode,
     breakdown,
     notes: buildNotes(features),

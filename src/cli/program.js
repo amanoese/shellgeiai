@@ -212,7 +212,7 @@ export function createCliProgram() {
     )
     .option(
       "--shellgei-score-mode <mode>",
-      "shellgei scoring mode",
+      "compatibility scoring mode; all modes use the same length/artistry formula",
       (value) =>
         parseChoice(
           value,

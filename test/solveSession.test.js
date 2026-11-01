@@ -159,6 +159,7 @@ describe("createSolveSession", () => {
     });
 
     expect(session.shellgeiScoreMode).toBe("simple");
+    expect(session.shellgeiScoreVersion).toBe("length-artistry-v1");
   });
 
   it("defaults knowledge mode off", async () => {

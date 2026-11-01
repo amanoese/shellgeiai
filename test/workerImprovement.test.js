@@ -4,8 +4,8 @@ import { runSolveOrchestrator } from "../src/solve/orchestration/orchestrator.js
 import { __testUtils } from "../src/providers/engines/openaiEngine.js";
 import { selectSolveOutcome } from "../src/solve/selection/selector.js";
 
-const initial = "printf 'ok\\n'";
-const improved = "printf 'ok\\n' | sed s/ok/ok/";
+const initial = "printf 'ok\\n' | sed s/ok/ok/";
+const improved = "printf 'ok\\n'";
 const task = (workerId, maxAttempts = 3) => ({ workerId, strategy: "default", maxAttempts });
 
 function makeSession(commands, options = {}) {
@@ -34,6 +34,20 @@ function makeSession(commands, options = {}) {
 }
 
 describe("worker improvement", () => {
+  it.each([
+    [["printf ok", "echo 'ok'"]],
+    [["echo 'ok'", "printf ok"]]
+  ])("uses the same static tie-breaker regardless of attempt order: %j", async commands => {
+    const result = await runSolveOrchestrator(makeSession(commands));
+    expect(result.candidates[0].command).toBe("echo 'ok'");
+    expect(result.attempts[0].shellgeiScore.value).toBe(result.attempts[1].shellgeiScore.value);
+  });
+
+  it("retains the shorter answer after a redundant pipeline and identical retries", async () => {
+    const result = await runSolveOrchestrator(makeSession([improved, initial, improved]));
+    expect(result.candidates[0]).toMatchObject({ command: improved, selectedAttemptId: "worker-1-attempt-1" });
+  });
+
   it("uses remaining attempts, gives the best score to the engine, and selects the highest scoring passing attempt", async () => {
     const session = makeSession([initial, improved, initial]);
     const result = await runSolveOrchestrator(session);
@@ -140,6 +154,8 @@ describe("worker improvement", () => {
     const prompt = __testUtils().buildUserPrompt({ problem: "print ok", workdir: "/tmp", attempts: [],
       bestCandidate: { attemptId: "a1", command: initial, shellgeiScore: { value: 42, breakdown: {} } } });
     expect(prompt).toContain("Improve its shell-gei score");
+    expect(prompt).toContain("at most 3 extra characters");
+    expect(prompt).toContain("reference information only");
     expect(prompt).toContain("Best passing attempt:");
     expect(prompt).toContain('"value":42');
   });

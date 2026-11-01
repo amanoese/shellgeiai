@@ -126,7 +126,7 @@ describe("runSolveCommand", () => {
     await runSolveCommand({
       problem: "sum", engine: "api", runner: "docker", progress: "off",
       llmBaseUrl: "https://api.openai.com/v1", llmModel: "worker", plannerModel: "planner",
-      llmTimeout: 15000, llmMaxRetries: 0
+      llmTimeout: 15000, llmMaxRetries: 0, shellgeiScoreMode: "artistry"
     });
     expect(mocks.createSolveRuntime).toHaveBeenCalledWith({
       engine: "api", runner: "docker",
@@ -136,6 +136,7 @@ describe("runSolveCommand", () => {
     const solveOptions = mocks.solveProblem.mock.calls[0][0];
     expect(solveOptions.plannerProvider).toBe(runtime.plannerProvider);
     expect(solveOptions.llmConfig).toBe(runtime.llmConfig);
+    expect(solveOptions.shellgeiScoreMode).toBe("artistry");
   });
 
   it("does not add LLM defaults that would override resolver environment settings", async () => {
