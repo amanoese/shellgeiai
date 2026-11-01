@@ -10,6 +10,14 @@
 - npm
 - Docker を使った通常実行を試す場合は Docker
 
+Ubuntu で Docker をセットアップする場合は、通常ユーザーで次を実行します。Docker の公式 apt リポジトリを追加し、Docker Engine と既定の実行イメージをインストールします。`docker` グループには実質的に root 相当の権限が付与されます。
+
+```bash
+bash scripts/setup-docker-ubuntu.sh
+```
+
+実行後はログアウトして再ログインし、`npm run test:docker` で確認してください。
+
 セットアップと基本確認:
 
 ```bash

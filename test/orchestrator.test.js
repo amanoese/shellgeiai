@@ -361,6 +361,7 @@ describe("worker attempt factory", () => {
     expect(candidate).toEqual({
       candidateId: "worker-1",
       workerId: "worker-1",
+      selectedAttemptId: null,
       strategy: "default",
       command: "printf 'ok\\n'",
       output: "ok",

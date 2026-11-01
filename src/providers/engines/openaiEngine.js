@@ -1,5 +1,6 @@
 import { resolveLlmConfig } from "../llm/config.js";
 import { createLlmClient, requestLlmResponse } from "../llm/client.js";
+import { buildImprovementPrompt } from "./improvementPrompt.js";
 import {
   createResponsesContinuation,
   parseResponsesToolCalls,
@@ -79,7 +80,8 @@ function buildUserPrompt(context) {
       ? "Use suggestedTools as optional starting points, but choose any safer or better tools if needed."
       : "",
     `Retry budget: ${workerTask?.maxAttempts ?? 1}`,
-    `Previous attempts: ${attemptSummary}`
+    `Previous attempts: ${attemptSummary}`,
+    buildImprovementPrompt(context)
   ]
     .filter(Boolean)
     .join("\n");

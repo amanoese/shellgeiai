@@ -1,5 +1,10 @@
-export function getWorkerStopReason(session, control) {
-  if (control.stopRequested) {
+export function getWorkerStopReason(session, control, workerId) {
+  if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
+    control.stopReason = "Stopped because the overall time budget was exhausted.";
+    return control.stopReason;
+  }
+
+  if (control.stopRequested && (!workerId || control.exceptWorkerId !== workerId)) {
     if (control.stopReason) {
       return control.stopReason;
     }
@@ -7,11 +12,6 @@ export function getWorkerStopReason(session, control) {
       return `Stopped because ${control.passingCandidateId} already produced a passing candidate.`;
     }
     return "Execution was stopped.";
-  }
-
-  if (session.deadlineAtMs != null && Date.now() >= session.deadlineAtMs) {
-    control.stopReason = "Stopped because the overall time budget was exhausted.";
-    return control.stopReason;
   }
 
   return "";

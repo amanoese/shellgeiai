@@ -166,7 +166,7 @@ export function createCliProgram() {
     .option("--runner <runner>", "command runner", "docker")
     .option(
       "--max-iter <number>",
-      "maximum worker retry count",
+      "maximum worker attempts including improvements",
       (value) =>
         parsePositiveInteger(
           value,
